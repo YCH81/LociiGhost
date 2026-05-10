@@ -1,0 +1,173 @@
+"""locwarpd entry point.
+
+Phase 0 scaffold: opens the Unix socket, registers a `ping` handler,
+and idles waiting for clients. No polling, no background tasks.
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import logging
+import signal
+import sys
+from datetime import datetime, timezone
+
+from . import __version__, handlers
+from .device_manager import DeviceManager
+from .paths import logs_dir, socket_path
+from .routing import OsrmClient
+from .rpc import RpcServer
+from .usbmux_watcher import UsbmuxWatcher
+
+
+def _build_server(socket: str, manager: DeviceManager, osrm: OsrmClient) -> RpcServer:
+    server = RpcServer(socket)
+
+    @server.method("ping")
+    async def ping() -> dict[str, str]:
+        return {
+            "pong": True,
+            "version": __version__,
+            "time": datetime.now(timezone.utc).isoformat(),
+        }
+
+    @server.method("daemon.info")
+    async def info() -> dict[str, object]:
+        import os
+        # `is_root` tells the GUI whether utun creation (iOS 17+ tunnel)
+        # will succeed. Without it the GUI knows to surface its own
+        # "authenticate as admin" prompt instead of waiting for the
+        # tunnel call to fail at -32004 TUNNEL_FAILED.
+        return {
+            "version": __version__,
+            "python": sys.version.split()[0],
+            "socket": socket,
+            "uid": os.geteuid(),
+            "is_root": os.geteuid() == 0,
+        }
+
+    @server.method("daemon.shutdown")
+    async def shutdown() -> dict[str, bool]:
+        # Schedule graceful shutdown on the next event-loop iteration.
+        loop = asyncio.get_running_loop()
+        loop.call_soon(_request_shutdown)
+        return {"ok": True}
+
+    handlers.register(server, manager, osrm)
+
+    return server
+
+
+_shutdown_event: asyncio.Event | None = None
+
+
+def _request_shutdown() -> None:
+    if _shutdown_event is not None and not _shutdown_event.is_set():
+        _shutdown_event.set()
+
+
+async def _run(socket: str) -> int:
+    global _shutdown_event
+    _shutdown_event = asyncio.Event()
+    manager = DeviceManager()
+    osrm = OsrmClient()
+    server = _build_server(socket, manager, osrm)
+
+    # Push USB attach/detach events from usbmuxd straight to connected
+    # clients, so the GUI can refresh its device list without polling.
+    # On a detach we also tear down any active USB session, so the GUI
+    # never sees a "ghost-connected" device after its cable is gone.
+    async def on_usb_event(status: str, udid: str | None) -> None:
+        if status == "detached":
+            try:
+                await manager.handle_usbmux_detached(udid)
+            except Exception:
+                logging.getLogger("locwarpd").exception("USB detach cleanup failed")
+        params: dict[str, object] = {"status": status}
+        if udid is not None:
+            params["udid"] = udid
+        await server.broadcast_event("event.device_changed", params)
+
+    watcher = UsbmuxWatcher(on_usb_event)
+    watcher.start()
+
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, _request_shutdown)
+
+    serve_task = asyncio.create_task(server.serve_forever(), name="rpc-serve")
+    shutdown_task = asyncio.create_task(_shutdown_event.wait(), name="shutdown-wait")
+
+    done, pending = await asyncio.wait(
+        {serve_task, shutdown_task},
+        return_when=asyncio.FIRST_COMPLETED,
+    )
+
+    # Stop the USB watcher first so it doesn't fire events into a server
+    # that's already tearing down.
+    try:
+        await watcher.stop()
+    except Exception:
+        logging.getLogger("locwarpd").exception("watcher.stop on shutdown failed")
+
+    # Tear down all device sessions cleanly so we don't leave the iPhone
+    # holding a stale simulation or a half-open RSD tunnel.
+    try:
+        await manager.disconnect_all()
+    except Exception:
+        logging.getLogger("locwarpd").exception("disconnect_all on shutdown failed")
+
+    try:
+        await osrm.close()
+    except Exception:
+        logging.getLogger("locwarpd").exception("osrm.close on shutdown failed")
+
+    for task in pending:
+        task.cancel()
+    for task in pending:
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
+
+    for task in done:
+        if task is serve_task and task.exception() is not None:
+            raise task.exception()  # type: ignore[misc]
+
+    return 0
+
+
+def _setup_logging(verbose: bool) -> None:
+    level = logging.DEBUG if verbose else logging.INFO
+    log_file = logs_dir() / "locwarpd.log"
+    handlers: list[logging.Handler] = [
+        logging.StreamHandler(sys.stderr),
+        logging.FileHandler(str(log_file), encoding="utf-8"),
+    ]
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
+        handlers=handlers,
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="locwarpd")
+    parser.add_argument("--socket", default=socket_path(), help="Unix socket path")
+    parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("--version", action="version", version=__version__)
+    args = parser.parse_args(argv)
+
+    _setup_logging(args.verbose)
+    log = logging.getLogger("locwarpd")
+    log.info("locwarpd %s starting on %s", __version__, args.socket)
+
+    try:
+        return asyncio.run(_run(args.socket))
+    except KeyboardInterrupt:
+        return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
