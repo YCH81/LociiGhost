@@ -20,7 +20,7 @@ struct SpeedPicker: View {
         VStack(alignment: .leading, spacing: 6) {
             Picker("", selection: $state.travelProfile) {
                 ForEach(TravelProfile.allCases) { p in
-                    Label(p.label, systemImage: p.symbol).tag(p)
+                    Label(p.labelKey, systemImage: p.symbol).tag(p)
                 }
             }
             .pickerStyle(.segmented)

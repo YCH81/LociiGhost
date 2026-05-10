@@ -22,8 +22,15 @@ struct ControlPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 Image(systemName: "list.bullet.below.rectangle")
-                Text(stops.count > 1 ? "\(stops.count) stops" : "Target")
-                    .font(.headline)
+                if stops.count > 1 {
+                    Text("\(stops.count) stops",
+                         comment: "Header — number of staged multi-stop targets")
+                        .font(.headline)
+                } else {
+                    Text("Target",
+                         comment: "Header for a single-target route panel")
+                        .font(.headline)
+                }
                 Spacer()
                 Button {
                     state.pendingStops = []
@@ -32,7 +39,7 @@ struct ControlPanel: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
-                .help("Clear all stops")
+                .help(LocalizedStringKey("Clear all stops"))
             }
 
             stopsList
@@ -62,11 +69,13 @@ struct ControlPanel: View {
                     .controlSize(.small)
                     .labelsHidden()
                     if state.routeLaps > 1 {
-                        Text("\(state.routeLaps)× looped")
+                        Text("\(state.routeLaps)× looped",
+                             comment: "Lap count badge — N times around")
                             .font(.caption2)
                             .foregroundStyle(Color.accentColor)
                     } else {
-                        Text("single trip")
+                        Text("single trip",
+                             comment: "Lap count badge when laps == 1")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -81,9 +90,15 @@ struct ControlPanel: View {
                               : "arrow.up.right.circle")
                             .foregroundStyle(state.useStraightLine ? Color.accentColor : Color.secondary)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(state.useStraightLine
-                                 ? "Straight line — ON"
-                                 : "Straight line (skip roads)")
+                            Group {
+                                if state.useStraightLine {
+                                    Text("Straight line — ON",
+                                         comment: "Toggle label when straight-line route is on")
+                                } else {
+                                    Text("Straight line (skip roads)",
+                                         comment: "Toggle label inviting straight-line mode (off state)")
+                                }
+                            }
                                 .font(.caption.weight(state.useStraightLine ? .semibold : .regular))
                             if isLockedDuringNavigation {
                                 Text("Locked while navigating. Stop first to switch.")

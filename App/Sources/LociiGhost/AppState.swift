@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Observation
+import SwiftUI
 import LociiGhostCore
 
 /// Top-level @Observable state for the SwiftUI app.
@@ -1218,6 +1219,11 @@ enum TravelProfile: String, CaseIterable, Identifiable, Sendable {
 
     var id: String { rawValue }
 
+    /// Plain-String label for places that need a `String` (e.g. log
+    /// lines, accessibility values). Resolves against `Locale.current`
+    /// at call time. UI surfaces should prefer `labelKey` instead so
+    /// the rendered Text follows the env locale (and therefore the
+    /// language picker) on every state change.
     var label: String {
         switch self {
         case .walking:
@@ -1229,6 +1235,19 @@ enum TravelProfile: String, CaseIterable, Identifiable, Sendable {
         case .driving:
             return String(localized: "Driving", bundle: .module,
                           comment: "Travel profile name")
+        }
+    }
+
+    /// `LocalizedStringKey` flavour for use inside SwiftUI `Label(...)`,
+    /// `Picker(...)` items, etc. Unlike the `String` `label` accessor,
+    /// this one is re-evaluated by SwiftUI against the active env
+    /// locale on every render, so flipping the language picker
+    /// updates segmented-control labels live.
+    var labelKey: LocalizedStringKey {
+        switch self {
+        case .walking: return "Walking"
+        case .cycling: return "Cycling"
+        case .driving: return "Driving"
         }
     }
 

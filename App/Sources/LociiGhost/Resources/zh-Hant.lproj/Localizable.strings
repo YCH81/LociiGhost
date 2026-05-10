@@ -99,3 +99,11 @@
 
 /* Navigation status interpolations */
 "Lap %lld / %lld" = "第 %1$lld / %2$lld 圈";
+
+/* ControlPanel */
+"Target" = "目的地";
+"%lld stops" = "%lld 個停靠點";
+"%lld× looped" = "繞 %lld 圈";
+"single trip" = "單次";
+"Straight line — ON" = "直線模式 — 開";
+"Straight line (skip roads)" = "直線模式 (不沿街道)";

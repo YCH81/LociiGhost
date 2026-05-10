@@ -100,3 +100,11 @@
 
 /* Navigation status interpolations */
 "Lap %lld / %lld" = "Lap %1$lld / %2$lld";
+
+/* ControlPanel */
+"Target" = "Target";
+"%lld stops" = "%lld stops";
+"%lld× looped" = "%lld× looped";
+"single trip" = "single trip";
+"Straight line — ON" = "Straight line — ON";
+"Straight line (skip roads)" = "Straight line (skip roads)";
