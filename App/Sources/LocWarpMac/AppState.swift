@@ -238,8 +238,13 @@ final class AppState {
         // Only shut the daemon down if WE spawned it. If we attached to an
         // already-running (typically sudo-launched) daemon, leave it alone
         // so the next app launch can re-attach without re-prompting for
-        // the admin password.
+        // the admin password — and so the in-memory device caches survive
+        // an app close+reopen cycle (the on-disk cache is the safety net
+        // for harder restarts where the daemon does die).
         let ownsDaemon = lifecycle?.attachedToExisting == false
+        NSLog("LocWarpMac.teardown: ownsDaemon=%@ (attachedToExisting=%@)",
+              ownsDaemon ? "true" : "false",
+              (lifecycle?.attachedToExisting ?? false) ? "true" : "false")
         if let client {
             if ownsDaemon {
                 _ = try? await client.callRaw("daemon.shutdown")
@@ -770,7 +775,7 @@ final class AppState {
     /// Bumped every time the daemon source breaks ABI or behaviour in
     /// a way that requires an in-place restart. Must match the
     /// `__version__` in `Daemon/locwarpd/__init__.py`.
-    static let expectedDaemonVersion = "0.2.7"
+    static let expectedDaemonVersion = "0.2.8"
 
     /// Pick the right starting coordinate for a new navigation. Order:
     /// 1. Currently simulated location (chain another route on top).

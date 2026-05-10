@@ -36,6 +36,7 @@ from .location_service import (
     LocationService,
 )
 from .models import DeviceInfo, parse_ios_version
+from .paths import app_support_dir
 from .wifi_discovery import WiFiDiscovery, WiFiNotReachable
 
 log = logging.getLogger(__name__)
@@ -152,19 +153,127 @@ class DeviceManager:
         self._lock = asyncio.Lock()
         self._wifi = wifi_discovery or WiFiDiscovery()
         # Caches of device facts learned from any successful
-        # `lockdown.all_values` read in list_devices(). Sticky across
-        # the daemon lifetime so that after a USB unplug the GUI
-        # keeps showing the real name / iOS version / Dev Mode
-        # status, instead of degrading to the "iPhone (Wi-Fi) iOS 0.0
-        # · Dev Mode: unknown" placeholder that the WiFi-Bonjour
-        # path produces when it has no other source of truth.
+        # `lockdown.all_values` read in list_devices() (or pair_for_wifi).
+        # Survives daemon restart via `_cache_path` JSON: without disk
+        # persistence the GUI degrades to "iPhone (Wi-Fi) iOS 0.0 · Dev
+        # Mode: unknown" any time daemon is killed-and-respawned (e.g.
+        # by Authenticate) when the iPhone isn't in usbmuxd at that
+        # exact moment.
         self._device_names: dict[str, str] = {}
         self._device_ios: dict[str, str] = {}
         self._device_dev_mode: dict[str, bool] = {}
+        self._load_device_cache()
 
     @property
     def wifi(self) -> WiFiDiscovery:
         return self._wifi
+
+    # ------------------------------------------------------------------
+    # On-disk device cache
+    # ------------------------------------------------------------------
+
+    @property
+    def _cache_path(self):
+        return app_support_dir() / "device-cache.json"
+
+    def _load_device_cache(self) -> None:
+        """Read previously-cached `(name, ios_version, dev_mode)` per
+        UDID. Silent on any parse error — a corrupt cache shouldn't
+        prevent the daemon from starting."""
+        import json
+        try:
+            data = json.loads(self._cache_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return
+        except Exception:
+            log.warning("device cache exists but couldn't be parsed; ignoring",
+                        exc_info=True)
+            return
+        if not isinstance(data, dict):
+            return
+        for udid, entry in data.items():
+            if not isinstance(entry, dict):
+                continue
+            name = entry.get("name")
+            ios = entry.get("ios_version")
+            dev_mode = entry.get("dev_mode")
+            if isinstance(name, str) and name and name != "iPhone":
+                self._device_names[udid] = name
+            if isinstance(ios, str) and ios and ios != "0.0":
+                self._device_ios[udid] = ios
+            if isinstance(dev_mode, bool):
+                self._device_dev_mode[udid] = dev_mode
+        log.info("device cache loaded: %d entries", len(data))
+
+    def _save_device_cache(self) -> None:
+        """Atomic write of the union of name/ios/dev_mode caches.
+        Fire-and-forget — caller doesn't await; failure logs but does
+        not bubble. We chmod 0o666 so a future user-mode daemon launch
+        (before the user re-Authenticates) can still update the cache
+        with anything new it learns from a fresh USB connect."""
+        import json
+        import os
+        import tempfile
+        union: set[str] = set(self._device_names.keys())
+        union.update(self._device_ios.keys())
+        union.update(self._device_dev_mode.keys())
+        payload = {
+            udid: {
+                "name": self._device_names.get(udid),
+                "ios_version": self._device_ios.get(udid),
+                "dev_mode": self._device_dev_mode.get(udid),
+            }
+            for udid in union
+        }
+        path = self._cache_path
+        try:
+            tmp = tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=path.parent,
+                delete=False,
+                suffix=".tmp",
+            )
+            json.dump(payload, tmp, indent=2)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+            tmp.close()
+            os.replace(tmp.name, path)
+            try:
+                os.chmod(path, 0o666)
+            except OSError:
+                pass
+        except Exception:
+            log.warning("device cache save failed", exc_info=True)
+            try:
+                os.unlink(tmp.name)
+            except Exception:
+                pass
+
+    def _remember_device(
+        self,
+        udid: str,
+        *,
+        name: Optional[str] = None,
+        ios_version: Optional[str] = None,
+        dev_mode: Optional[bool] = None,
+    ) -> None:
+        """Update in-memory caches AND flush to disk if anything
+        actually changed. Called from list_devices, pair_for_wifi, and
+        connect_wifi_ip — every place that learns a fresh device fact."""
+        changed = False
+        if name and name != "iPhone" and self._device_names.get(udid) != name:
+            self._device_names[udid] = name
+            changed = True
+        if ios_version and ios_version != "0.0" \
+                and self._device_ios.get(udid) != ios_version:
+            self._device_ios[udid] = ios_version
+            changed = True
+        if dev_mode is not None and self._device_dev_mode.get(udid) != dev_mode:
+            self._device_dev_mode[udid] = dev_mode
+            changed = True
+        if changed:
+            self._save_device_cache()
 
     # ------------------------------------------------------------------
     # Discovery
@@ -223,13 +332,15 @@ class DeviceManager:
 
                 friendly_name = values.get("DeviceName", "iPhone")
                 # Cache facts for later promotion of WiFi-only sessions /
-                # placeholders whose Bonjour-only path lacks them.
-                if friendly_name and friendly_name != "iPhone":
-                    self._device_names[udid] = friendly_name
-                if ios and ios != "0.0":
-                    self._device_ios[udid] = ios
-                if dev_mode is not None:
-                    self._device_dev_mode[udid] = dev_mode
+                # placeholders whose Bonjour-only path lacks them; the
+                # helper writes through to disk so survival of daemon
+                # restart is automatic.
+                self._remember_device(
+                    udid,
+                    name=friendly_name,
+                    ios_version=ios,
+                    dev_mode=dev_mode,
+                )
 
                 info = DeviceInfo(
                     udid=udid,
@@ -753,11 +864,11 @@ class DeviceManager:
                 except Exception:
                     pass
 
-        # Cache the friendly name + iOS version for later WiFi sessions.
-        if device_name and device_name != "iPhone":
-            self._device_names[target_udid] = device_name
-        if ios_version and ios_version != "0.0":
-            self._device_ios[target_udid] = ios_version
+        # Cache the friendly name + iOS version for later WiFi sessions
+        # (writes through to disk via _remember_device).
+        self._remember_device(
+            target_udid, name=device_name, ios_version=ios_version
+        )
 
         return {
             "ok": True,
@@ -942,11 +1053,11 @@ class DeviceManager:
                 # Tear down outside the lock.
                 await self._teardown_session(old, clear_simulation=False)
 
-            # Update caches with anything fresh we just learned.
-            if device_name and device_name != "iPhone":
-                self._device_names[real_udid] = device_name
-            if ios_version and ios_version != "0.0":
-                self._device_ios[real_udid] = ios_version
+            # Update caches with anything fresh we just learned
+            # (writes through to disk via _remember_device).
+            self._remember_device(
+                real_udid, name=device_name, ios_version=ios_version
+            )
 
             log.info(
                 "connect_wifi_ip: connected udid=%s name=%s ios=%s via %s:%d",
@@ -1019,7 +1130,24 @@ class DeviceManager:
             sess = self._sessions.pop(udid, None)
         if sess is None:
             return False
-        await self._teardown_session(sess, clear_simulation=clear_simulation)
+        # Hard ceiling: even if every individual close in
+        # _teardown_session honors its 2-second timeout, multiple
+        # closers stacked sequentially could still pile up. 15s is
+        # plenty of headroom for healthy teardown but stops the GUI
+        # spinner from spinning forever when the underlying transport
+        # is wedged.
+        try:
+            await asyncio.wait_for(
+                self._teardown_session(sess, clear_simulation=clear_simulation),
+                timeout=15.0,
+            )
+        except asyncio.TimeoutError:
+            log.warning(
+                "_teardown_session for %s exceeded 15s; abandoning. "
+                "Session is already removed from the active dict so "
+                "future Connect calls will work.",
+                udid,
+            )
         return True
 
     async def disconnect_all(self, *, clear_simulations: bool = False) -> None:
@@ -1036,7 +1164,38 @@ class DeviceManager:
     async def _teardown_session(self, sess: "_Session", *, clear_simulation: bool) -> None:
         """The actual cleanup work. Split out so disconnect() and
         disconnect_all() can share it without each duplicating the
-        navigator-stop / RSD-close / tunnel-close ordering."""
+        navigator-stop / RSD-close / tunnel-close ordering.
+
+        Every individual close is wrapped in a 2-second timeout — when
+        the underlying transport is already dead (e.g. the user yanked
+        USB after the WiFi-with-USB-DVT-fallback session was set up,
+        or the iPhone screen-locked and timed out the tunnel)
+        pymobiledevice3's close paths can block forever waiting on a
+        FIN that will never arrive. Better to abandon a single close
+        than to leave the whole DeviceManager wedged.
+        """
+        async def _bounded(coro_or_callable, label: str, timeout: float = 2.0):
+            """Await `coro_or_callable` with a hard timeout. Eats every
+            exception and timeout so the caller can chain calls without
+            short-circuiting on the first wedged close."""
+            try:
+                if callable(coro_or_callable):
+                    aw = coro_or_callable()
+                else:
+                    aw = coro_or_callable
+                if aw is None:
+                    return
+                if not asyncio.iscoroutine(aw) and not asyncio.isfuture(aw):
+                    return
+                await asyncio.wait_for(aw, timeout=timeout)
+            except asyncio.TimeoutError:
+                log.warning(
+                    "teardown %s timed out after %.1fs for %s — abandoning",
+                    label, timeout, sess.udid,
+                )
+            except Exception:
+                log.exception("teardown %s failed for %s", label, sess.udid)
+
         # Stop any in-flight movement first so the loops don't push more
         # positions onto a tearing-down location service. Stopping these
         # does NOT clear the simulation — they just halt the ticker,
@@ -1044,35 +1203,35 @@ class DeviceManager:
         for runner_attr in ("navigator", "walker", "joystick"):
             runner = getattr(sess, runner_attr, None)
             if runner is not None:
-                try:
-                    await runner.stop()
-                except Exception:
-                    log.exception("%s.stop during teardown failed for %s",
-                                  runner_attr, sess.udid)
+                await _bounded(runner.stop, f"{runner_attr}.stop")
 
         if clear_simulation and sess.location is not None:
-            try:
-                await sess.location.clear()
-            except Exception:
-                log.exception("clear() during teardown failed for %s", sess.udid)
+            # location.clear talks over the (possibly-dead) tunnel; cap
+            # it tighter than the close ops since we don't actually need
+            # the iPhone's ack to consider the simulation ended.
+            await _bounded(sess.location.clear, "location.clear", timeout=1.5)
 
         # Close in reverse order of construction. DVT first (it
         # references whichever RSD it was bound to), then both RSDs,
-        # then both tunnel contexts. Fallback resources may be unset;
-        # the helper below tolerates that.
-        for closer, label in (
-            (lambda: sess.dvt_provider and sess.dvt_provider.__aexit__(None, None, None), "dvt"),
-            (lambda: sess.fallback_rsd and sess.fallback_rsd.close(),                     "fallback-rsd"),
-            (lambda: sess.rsd and sess.rsd.close(),                                       "rsd"),
-            (lambda: sess.fallback_tunnel_ctx and sess.fallback_tunnel_ctx.__aexit__(None, None, None), "fallback-tunnel-ctx"),
-            (lambda: sess.tunnel_ctx and sess.tunnel_ctx.__aexit__(None, None, None),     "tunnel-ctx"),
-        ):
-            try:
-                aw = closer()
-                if aw is not None:
-                    await aw
-            except Exception:
-                log.exception("close %s failed for %s", label, sess.udid)
+        # then both tunnel contexts. Fallback resources may be unset.
+        if sess.dvt_provider is not None:
+            await _bounded(
+                lambda: sess.dvt_provider.__aexit__(None, None, None), "dvt",
+            )
+        if sess.fallback_rsd is not None:
+            await _bounded(sess.fallback_rsd.close, "fallback-rsd")
+        if sess.rsd is not None:
+            await _bounded(sess.rsd.close, "rsd")
+        if sess.fallback_tunnel_ctx is not None:
+            await _bounded(
+                lambda: sess.fallback_tunnel_ctx.__aexit__(None, None, None),
+                "fallback-tunnel-ctx",
+            )
+        if sess.tunnel_ctx is not None:
+            await _bounded(
+                lambda: sess.tunnel_ctx.__aexit__(None, None, None),
+                "tunnel-ctx",
+            )
 
         for proxy, label in (
             (sess.fallback_tunnel_proxy, "fallback-tunnel-proxy"),
@@ -1080,24 +1239,28 @@ class DeviceManager:
         ):
             if proxy is None:
                 continue
-            # Newer pymobiledevice3 versions made `close` a coroutine.
-            # We accept either signature so an upgrade or downgrade of
-            # the dependency doesn't trigger "coroutine was never
-            # awaited" warnings (or, worse, fail to release the tunnel).
+            # Newer pymobiledevice3 versions made `close` a coroutine;
+            # accept either signature so an upgrade/downgrade of the
+            # dep doesn't trigger "coroutine was never awaited"
+            # warnings or fail to release the tunnel.
             try:
                 result = proxy.close()
-                if asyncio.iscoroutine(result):
-                    await result
             except Exception:
-                log.exception("close %s failed for %s", label, sess.udid)
+                log.exception("teardown %s sync-close raised for %s",
+                              label, sess.udid)
+                continue
+            if asyncio.iscoroutine(result):
+                await _bounded(result, label)
 
-        # Bonjour-path sessions own the RemotePairingTunnelService
-        # instead of (or alongside) the CoreDeviceTunnelProxy.
+        # RemotePairingTunnelService owned by direct-IP WiFi sessions
+        # (`connect_wifi_ip`). Closing it sends FIN to the iPhone so the
+        # tunnel slot is released immediately — without this the iPhone
+        # often refuses subsequent tunnel attempts for ~30-90s while it
+        # waits for an idle timeout to free the slot itself.
         if sess.remote_pairing_service is not None:
-            try:
-                await sess.remote_pairing_service.close()
-            except Exception:
-                log.exception("close remote-pairing-service failed for %s", sess.udid)
+            await _bounded(
+                sess.remote_pairing_service.close, "remote-pairing-service"
+            )
 
         log.info(
             "Disconnected %s (simulation %s)",
