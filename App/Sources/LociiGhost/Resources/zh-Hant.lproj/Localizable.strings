@@ -69,6 +69,7 @@
 "Stop Random Walk" = "停止隨機漫步";
 "Switching takes effect immediately on the next view update — no restart needed. Daemon-side error messages remain in English regardless." = "切換後下一次畫面更新就會生效,不需要重啟 app。Daemon 端的錯誤訊息維持英文。";
 "System Functions" = "系統功能";
+"Tap Trust on iPhone when prompted." = "出現信任對話框時請在 iPhone 上點「信任」。";
 "Teleport" = "瞬間移動";
 "Tip: click the map again to add another stop." = "提示:再次點擊地圖可加入下一個停靠點。";
 "Travel mode" = "移動方式";
@@ -77,3 +78,24 @@
 "Use when the iPhone isn't picked up by auto-discover (different subnet, VPN, etc.). Default port for RemotePairing is 49152." = "若 iPhone 沒被自動掃到(不同網段、走 VPN 等)就用這個。RemotePairing 的預設 port 是 49152。";
 "Walking randomly" = "隨機漫步中";
 "WiFi Devices" = "WiFi 裝置";
+
+/* SpeedPicker */
+"Speed: %@ km/h" = "時速: %@ km/h";
+"(custom)" = "(自訂)";
+"Drop the custom speed and use the picker's preset" = "清除自訂速度,改用預設值";
+
+/* TravelProfile labels */
+"Walking" = "走路";
+"Cycling" = "騎腳踏車";
+"Driving" = "開車";
+
+/* MovementModesSection */
+"Select a device first." = "請先選一個裝置。";
+
+/* BottomBar tooltips */
+"Stop simulating and let the device report its real location" = "停止模擬,讓裝置回報真實位置";
+"Re-scan for connected devices" = "重新掃描已連接裝置";
+"Quit LociiGhost. The privileged daemon stays running so the next launch doesn't need the password." = "離開 LociiGhost。 daemon 仍會在背景執行,下次啟動不必再次輸入密碼。";
+
+/* Navigation status interpolations */
+"Lap %lld / %lld" = "第 %1$lld / %2$lld 圈";

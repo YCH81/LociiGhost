@@ -59,11 +59,18 @@ struct SpeedPicker: View {
             HStack(spacing: 6) {
                 Image(systemName: "speedometer")
                     .foregroundStyle(.secondary)
-                Text(String(format: "Effective: %.1f km/h", effectiveKmh))
+                // Pre-format the number into a String so the SwiftUI
+                // `LocalizedStringKey` ends up with `%@` (catalog-
+                // friendly) instead of `%lf` (which can fail lookup
+                // on some Apple toolchains). Resulting key:
+                // "Speed: %@ km/h" — matches both .lproj catalogs.
+                Text("Speed: \(String(format: "%.1f", effectiveKmh)) km/h",
+                     comment: "Effective speed readout under the SpeedPicker; first %@ is the km/h value")
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
                 if state.customSpeedMps != nil {
-                    Text("(custom)")
+                    Text("(custom)",
+                         comment: "Badge next to the speed readout when the user typed a custom value")
                         .font(.caption2)
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)

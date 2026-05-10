@@ -1220,9 +1220,15 @@ enum TravelProfile: String, CaseIterable, Identifiable, Sendable {
 
     var label: String {
         switch self {
-        case .walking: return "Walking"
-        case .cycling: return "Cycling"
-        case .driving: return "Driving"
+        case .walking:
+            return String(localized: "Walking", bundle: .module,
+                          comment: "Travel profile name")
+        case .cycling:
+            return String(localized: "Cycling", bundle: .module,
+                          comment: "Travel profile name")
+        case .driving:
+            return String(localized: "Driving", bundle: .module,
+                          comment: "Travel profile name")
         }
     }
 

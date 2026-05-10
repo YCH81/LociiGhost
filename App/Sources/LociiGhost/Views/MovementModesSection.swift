@@ -25,13 +25,13 @@ struct MovementModesSection: View {
             HStack(spacing: 6) {
                 modeButton(.joystick,
                            symbol: "gamecontroller.fill",
-                           title: "Joystick")
+                           title: LocalizedStringKey("Joystick"))
                 modeButton(.randomWalk,
                            symbol: "shuffle.circle.fill",
-                           title: "Random")
+                           title: LocalizedStringKey("Random"))
                 modeButton(.multiStop,
                            symbol: "list.bullet.indent",
-                           title: "Multi-stop")
+                           title: LocalizedStringKey("Multi-stop"))
             }
 
             if let mode = activeMode {
@@ -49,7 +49,7 @@ struct MovementModesSection: View {
         .animation(.easeInOut(duration: 0.18), value: activeMode)
     }
 
-    private func modeButton(_ mode: Mode, symbol: String, title: String) -> some View {
+    private func modeButton(_ mode: Mode, symbol: String, title: LocalizedStringKey) -> some View {
         let isActive = activeMode == mode
         return Button {
             activeMode = isActive ? nil : mode
@@ -72,6 +72,8 @@ struct MovementModesSection: View {
         }
         .buttonStyle(.plain)
         .disabled(state.selectedUDID == nil)
-        .help(state.selectedUDID == nil ? "Select a device first." : title)
+        .help(state.selectedUDID == nil
+              ? LocalizedStringKey("Select a device first.")
+              : title)
     }
 }

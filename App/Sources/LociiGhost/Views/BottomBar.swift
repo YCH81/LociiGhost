@@ -66,6 +66,23 @@ struct BottomBar: View {
 
     @ViewBuilder
     private var actions: some View {
+        // ViewThatFits picks the widest variant that fits, falling
+        // back to icon-only `Label` rendering when the window is too
+        // narrow to show every button's text label. Each variant
+        // returns the SAME button tree from `actionsContent` — just
+        // styled differently — so behaviour is identical no matter
+        // which one the layout chose. Tooltips remain helpful in the
+        // icon-only mode.
+        ViewThatFits(in: .horizontal) {
+            actionsContent
+                .labelStyle(.titleAndIcon)
+            actionsContent
+                .labelStyle(.iconOnly)
+        }
+    }
+
+    @ViewBuilder
+    private var actionsContent: some View {
         HStack(spacing: 6) {
             if let active = activeDevice, active.connected {
                 // Live progress only when there's an actual navigation.
@@ -91,7 +108,7 @@ struct BottomBar: View {
                 } label: {
                     Label("Restore Real GPS", systemImage: "arrow.counterclockwise")
                 }
-                .help("Stop simulating and let the device report its real location")
+                .help(LocalizedStringKey("Stop simulating and let the device report its real location"))
 
                 Button(role: .destructive) {
                     Task { await state.disconnect(udid: active.udid) }
@@ -114,7 +131,7 @@ struct BottomBar: View {
             } label: {
                 Label("Refresh", systemImage: "arrow.clockwise")
             }
-            .help("Re-scan for connected devices")
+            .help(LocalizedStringKey("Re-scan for connected devices"))
 
             Divider()
                 .frame(height: 16)
@@ -124,7 +141,7 @@ struct BottomBar: View {
             } label: {
                 Label("Quit", systemImage: "power")
             }
-            .help("Quit LociiGhost. The privileged daemon stays running so the next launch doesn't need the password.")
+            .help(LocalizedStringKey("Quit LociiGhost. The privileged daemon stays running so the next launch doesn't need the password."))
             .keyboardShortcut("q", modifiers: .command)
         }
         .controlSize(.small)

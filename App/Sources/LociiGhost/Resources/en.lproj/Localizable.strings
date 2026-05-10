@@ -70,6 +70,7 @@
 "Stop Random Walk" = "Stop Random Walk";
 "Switching takes effect immediately on the next view update — no restart needed. Daemon-side error messages remain in English regardless." = "Switching takes effect immediately on the next view update — no restart needed. Daemon-side error messages remain in English regardless.";
 "System Functions" = "System Functions";
+"Tap Trust on iPhone when prompted." = "Tap Trust on iPhone when prompted.";
 "Teleport" = "Teleport";
 "Tip: click the map again to add another stop." = "Tip: click the map again to add another stop.";
 "Travel mode" = "Travel mode";
@@ -78,3 +79,24 @@
 "Use when the iPhone isn't picked up by auto-discover (different subnet, VPN, etc.). Default port for RemotePairing is 49152." = "Use when the iPhone isn't picked up by auto-discover (different subnet, VPN, etc.). Default port for RemotePairing is 49152.";
 "Walking randomly" = "Walking randomly";
 "WiFi Devices" = "WiFi Devices";
+
+/* SpeedPicker */
+"Speed: %@ km/h" = "Speed: %@ km/h";
+"(custom)" = "(custom)";
+"Drop the custom speed and use the picker's preset" = "Drop the custom speed and use the picker's preset";
+
+/* TravelProfile labels */
+"Walking" = "Walking";
+"Cycling" = "Cycling";
+"Driving" = "Driving";
+
+/* MovementModesSection */
+"Select a device first." = "Select a device first.";
+
+/* BottomBar tooltips */
+"Stop simulating and let the device report its real location" = "Stop simulating and let the device report its real location";
+"Re-scan for connected devices" = "Re-scan for connected devices";
+"Quit LociiGhost. The privileged daemon stays running so the next launch doesn't need the password." = "Quit LociiGhost. The privileged daemon stays running so the next launch doesn't need the password.";
+
+/* Navigation status interpolations */
+"Lap %lld / %lld" = "Lap %1$lld / %2$lld";

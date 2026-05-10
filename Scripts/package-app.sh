@@ -39,6 +39,20 @@ if [[ -d "$RESOURCE_BUNDLE" ]]; then
     cp -R "$RESOURCE_BUNDLE" "$OUT/Contents/MacOS/"
 fi
 
+# Copy *.lproj directories from the SOURCE tree (not the SwiftPM-
+# processed bundle, which lowercases the lproj directory names — and
+# `Locale(identifier: "zh-Hant")` lookups want the canonical
+# camel-cased "zh-Hant.lproj"). Going straight from source avoids
+# the lowercase rewrite. We put them into Contents/Resources/ so
+# `Bundle.main`'s default lookup picks them up — SwiftUI Text(...)
+# uses Bundle.main, not Bundle.module, by default.
+SOURCE_RES="$APP_DIR/Sources/LociiGhost/Resources"
+for lproj in "$SOURCE_RES"/*.lproj; do
+    if [[ -d "$lproj" ]]; then
+        cp -R "$lproj" "$OUT/Contents/Resources/"
+    fi
+done
+
 cat >"$OUT/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -46,6 +60,11 @@ cat >"$OUT/Contents/Info.plist" <<'PLIST'
 <dict>
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>en</string>
+        <string>zh-Hant</string>
+    </array>
     <key>CFBundleExecutable</key>
     <string>LociiGhost</string>
     <key>CFBundleIdentifier</key>

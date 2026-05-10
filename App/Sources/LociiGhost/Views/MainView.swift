@@ -234,9 +234,9 @@ private struct WiFiSection: View {
                         .foregroundStyle(allPairedAlready ? Color.green : Color.accentColor)
                 }
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(buttonTitle)
+                    pairButtonTitleText
                         .font(.body)
-                    Text(buttonSubtitle)
+                    pairButtonSubtitleText
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(3)
@@ -252,21 +252,46 @@ private struct WiFiSection: View {
         .disabled(state.isPairingForWiFi)
     }
 
-    private var buttonTitle: String {
-        if state.isPairingForWiFi { return "Pairing…" }
-        if allPairedAlready { return "Already paired · Re-pair…" }
-        return "Pair for WiFi"
+    /// Inline @ViewBuilder so each branch's `Text("literal")` is a real
+    /// `LocalizedStringKey` and gets translated by the env locale.
+    /// (The earlier `Text(stringFunction())` form passed a plain
+    /// `String`, which SwiftUI shows verbatim — so the picker did
+    /// nothing for these specific labels.)
+    @ViewBuilder
+    private var pairButtonTitleText: some View {
+        if state.isPairingForWiFi {
+            Text("Pairing…")
+        } else if allPairedAlready {
+            Text("Already paired · Re-pair…",
+                 comment: "Pair-for-WiFi button title when pair record already exists")
+        } else {
+            Text("Pair for WiFi",
+                 comment: "Sidebar button — runs the M-style RemotePairing setup ritual")
+        }
     }
 
-    private var buttonSubtitle: String {
+    @ViewBuilder
+    private var pairButtonSubtitleText: some View {
         if state.isPairingForWiFi {
-            return state.pairProgress?.message
-                ?? "Tap Trust on iPhone when prompted."
+            // The progress message is a daemon-emitted English string
+            // and doesn't pass through Localizable.strings — that's
+            // intentional, since translating daemon output would mean
+            // sending a locale param down the RPC and per-locale Python
+            // strings. For Phase 5.1 the live progress message stays
+            // English; the static fallback below honours the locale.
+            if let progressMessage = state.pairProgress?.message {
+                Text(verbatim: progressMessage)
+            } else {
+                Text("Tap Trust on iPhone when prompted.",
+                     comment: "Pair button subtitle while RPC is in flight but no progress event yet")
+            }
+        } else if allPairedAlready {
+            Text("Pair record on disk. Click only if WiFi connect stops working — generates a fresh record.",
+                 comment: "Pair button subtitle when already paired")
+        } else {
+            Text("Plug iPhone in once. Two Trust prompts will appear; after that, WiFi works without the cable.",
+                 comment: "Pair button subtitle for first-time pairing")
         }
-        if allPairedAlready {
-            return "Pair record on disk. Click only if WiFi connect stops working — generates a fresh record."
-        }
-        return "Plug iPhone in once. Two Trust prompts will appear; after that, WiFi works without the cable."
     }
 }
 
