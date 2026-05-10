@@ -136,6 +136,20 @@ final class AppState {
     var isPairingForWiFi: Bool = false
     var isDiscoveringWiFi: Bool = false
     var isConnectingWiFiByIP: Bool = false
+    /// Live two-stage pair-progress, populated from
+    /// `event.wifi_pair_progress` while `pairForWiFi()` runs. nil
+    /// outside of an active pair operation. The GUI uses `.fraction`
+    /// for a determinate ProgressView and `.message` for the
+    /// "Step 1/2: tap Trust on iPhone" label.
+    var pairProgress: PairProgress?
+    /// When non-nil, the WiFi-connect selection sheet is open for the
+    /// given device. Set by `openWiFiConnectFlow(udid:)` (which the
+    /// Connect-via-WiFi button hooks into); the sheet itself owns the
+    /// dismiss and clears this back to nil. Letting AppState own the
+    /// presentation makes auto-discover-on-open trivial: the sheet
+    /// kicks off `discoverWiFi()` on appear and the existing
+    /// observable bindings paint the result.
+    var wifiConnectSheet: WiFiConnectSheetTarget?
 
     // MARK: - Movement modes (Phase 3)
     /// Latest snapshot from a `location.random_walk` session, populated
@@ -367,6 +381,22 @@ final class AppState {
         }
     }
 
+    /// Open the WiFi-connect selection sheet for `udid`. This is what
+    /// the device row's "Connect via WiFi" button calls — instead of
+    /// firing the legacy Bonjour-only connect path that returns a
+    /// service-map-stripped RSD on iOS 26, the sheet auto-discovers
+    /// LAN-reachable iPhones, lists them, and routes the user's pick
+    /// through `connectWiFiByIP` (which opens the FULL RSD). If
+    /// discovery returns nothing the sheet falls back to a manual
+    /// IP entry field.
+    func openWiFiConnectFlow(udid: String) {
+        wifiConnectSheet = WiFiConnectSheetTarget(udid: udid)
+        // Kick off a fresh discover so the sheet's list is current.
+        // Fire-and-forget — the sheet's body re-renders as soon as
+        // `wifiCandidates` updates.
+        Task { await self.discoverWiFi() }
+    }
+
     /// Connect to an iPhone discovered by `discoverWiFi()` (or any
     /// IP+port the user typed in manually). Uses the daemon's
     /// `wifi.connect_ip` which goes through
@@ -374,6 +404,12 @@ final class AppState {
     /// bypassing Bonjour at connect time and yielding the FULL RSD
     /// (with `dtservicehub`) — i.e. WiFi-only DVT location simulation
     /// works without a USB cable.
+    ///
+    /// On `-32004 TUNNEL_FAILED` (which on this path almost always
+    /// means "iPhone moved to a different IP since the last
+    /// discover"), kicks off a fresh `discoverWiFi()` automatically.
+    /// The user sees the candidate list refresh and can click again
+    /// without thinking about IP rotation.
     func connectWiFiByIP(ip: String, port: Int = 49152, udid: String? = nil) async {
         guard let client else { return }
         guard !isConnectingWiFiByIP else { return }
@@ -397,6 +433,11 @@ final class AppState {
             if let rpc = error as? RPCError, rpc.code == -32004 {
                 needsAdminElevation = true
             }
+            // Tunnel failures on this path strongly correlate with the
+            // iPhone having taken a new DHCP lease since we last
+            // discovered. Fire-and-forget a refresh so the candidate
+            // list is current next time the user clicks.
+            Task { await self.discoverWiFi() }
         }
     }
 
@@ -775,7 +816,7 @@ final class AppState {
     /// Bumped every time the daemon source breaks ABI or behaviour in
     /// a way that requires an in-place restart. Must match the
     /// `__version__` in `Daemon/locwarpd/__init__.py`.
-    static let expectedDaemonVersion = "0.2.8"
+    static let expectedDaemonVersion = "0.2.13"
 
     /// Pick the right starting coordinate for a new navigation. Order:
     /// 1. Currently simulated location (chain another route on top).
@@ -913,8 +954,27 @@ final class AppState {
             applyPositionEvent(event.params)
         case "event.state_changed":
             applyStateEvent(event.params)
+        case "event.wifi_pair_progress":
+            applyPairProgressEvent(event.params)
         default:
             break
+        }
+    }
+
+    /// Map daemon-emitted `event.wifi_pair_progress` payloads to the
+    /// observable `pairProgress` state. Stages map to a percentage so
+    /// the GUI can render a smooth ProgressView; "done"/"failed" clear
+    /// to nil so the spinner button reverts to its idle label.
+    private func applyPairProgressEvent(_ params: [String: AnyCodable]) {
+        let stage = stringValue(params["stage"]) ?? ""
+        let message = stringValue(params["message"]) ?? ""
+        switch stage {
+        case "done", "failed":
+            pairProgress = nil
+        case "":
+            return
+        default:
+            pairProgress = PairProgress(stage: stage, message: message)
         }
     }
 
@@ -1045,6 +1105,35 @@ struct WiFiCandidate: Codable, Identifiable, Hashable, Sendable {
     var id: String { "\(ip):\(port)" }
 }
 
+/// Identifies which device the WiFi-connect selection sheet is open
+/// for. `Identifiable` so the sheet can be presented via SwiftUI's
+/// `.sheet(item:content:)` modifier — that pattern auto-handles the
+/// "set to nil to dismiss" lifecycle without extra state plumbing.
+struct WiFiConnectSheetTarget: Identifiable, Hashable, Sendable {
+    let udid: String
+    var id: String { udid }
+}
+
+/// Two-stage pairing progress fed by `event.wifi_pair_progress`. The
+/// stage strings come straight from the daemon and are stable enough
+/// to switch on for UI labels / fractions.
+struct PairProgress: Hashable, Sendable {
+    let stage: String
+    let message: String
+
+    /// 0.0–1.0 for ProgressView. Stages map to round numbers so the
+    /// bar moves monotonically.
+    var fraction: Double {
+        switch stage {
+        case "usbmux_query":   return 0.10
+        case "usb_pairing":    return 0.30
+        case "tunnel_setup":   return 0.55
+        case "remote_pairing": return 0.80
+        default:               return 0.50
+        }
+    }
+}
+
 /// Decoded `DeviceInfo` from `device.list`. Mirrors the daemon's
 /// `models.DeviceInfo` shape.
 struct DeviceVM: Codable, Identifiable, Hashable, Sendable {
@@ -1058,6 +1147,18 @@ struct DeviceVM: Codable, Identifiable, Hashable, Sendable {
     /// contains the active `transport`. May be empty for legacy
     /// daemons that don't yet report this field.
     let transports: [String]?
+    /// True if `~/.pymobiledevice3/remote_<UDID>.plist` exists — i.e.
+    /// the M-style WiFi pairing ritual has already run for this device
+    /// and the GUI should hide / soften its "Pair for WiFi" button.
+    /// nil for legacy daemons (< v0.2.9) that don't yet report it.
+    let wifi_paired: Bool?
+    /// When connected via WiFi (direct-IP RemotePairing), the peer
+    /// endpoint the tunnel goes to. Lets the GUI's WiFi-Devices
+    /// candidate list know exactly which row to flip into "Connected"
+    /// state instead of all rows lighting up. nil for USB sessions
+    /// or legacy daemons (< v0.2.10).
+    let peer_ip: String?
+    let peer_port: Int?
 
     var id: String { udid }
     var iosVersion: String { ios_version }
@@ -1071,6 +1172,10 @@ struct DeviceVM: Codable, Identifiable, Hashable, Sendable {
     }
     var supportsUSB: Bool { availableTransports.contains("usb") }
     var supportsWiFi: Bool { availableTransports.contains("network") }
+    /// Convenience: the pair record exists on disk. Daemons older than
+    /// v0.2.9 don't send this field; we return false in that case so
+    /// the button stays visible.
+    var isWiFiPaired: Bool { wifi_paired ?? false }
 
     /// Short label for the device's dev-mode state. Tri-state because an
     /// unpaired/untrusted device can return nil even when dev mode is on.

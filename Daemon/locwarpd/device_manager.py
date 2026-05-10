@@ -138,7 +138,13 @@ class _Session:
     # `RemotePairingTunnelService` instance returned by
     # `create_core_device_tunnel_service_using_remotepairing`; its
     # `start_tcp_tunnel()` async context manager is held in
-    # `tunnel_ctx`. Both must be released on teardown.
+    # `tunnel_ctx`. Both must be released on teardown. The (peer_ip,
+    # peer_port) pair we connected to is also kept so list_devices can
+    # tell the GUI exactly which WiFi-Devices candidate row this
+    # session corresponds to (and the background health check knows
+    # which IP to probe).
+    peer_ip: Optional[str] = None
+    peer_port: Optional[int] = None
 
 
 class DeviceManager:
@@ -279,6 +285,110 @@ class DeviceManager:
     # Discovery
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # Background health-check for WiFi sessions
+    # ------------------------------------------------------------------
+
+    async def run_health_check_loop(
+        self,
+        on_session_lost,
+        interval: float = 30.0,
+        probe_timeout: float = 2.5,
+    ) -> None:
+        """Periodically TCP-probe every WiFi session's peer endpoint
+        and disconnect (+ notify) the ones that don't respond. The
+        daemon's `__main__.py` spawns this once at startup.
+
+        Why a TCP probe and not an actual RPC ping over the tunnel?
+        The tunnel often holds a TCP connection open for minutes after
+        the iPhone has actually left the network — its TCP keepalive
+        is hours-long by default. A fresh `open_connection` to the
+        public RemotePairing port (49152) is the cheapest accurate
+        liveness signal we can do without disturbing the tunnel
+        itself: if the iPhone is gone from the LAN, the connect
+        attempt fails almost immediately (RST or routing error).
+
+        ``on_session_lost`` is `(udid: str) -> Awaitable | None`,
+        invoked AFTER `disconnect()` has cleaned the session up.
+        """
+        while True:
+            try:
+                await asyncio.sleep(interval)
+            except asyncio.CancelledError:
+                return
+            try:
+                await self._health_check_once(on_session_lost, probe_timeout)
+            except asyncio.CancelledError:
+                return
+            except Exception:
+                log.exception("health-check tick failed (will retry)")
+
+    async def _health_check_once(self, on_session_lost, probe_timeout: float) -> None:
+        # Snapshot to avoid dict-mutated-during-iteration: disconnect
+        # below pops from `_sessions`.
+        snapshot = list(self._sessions.items())
+        for udid, sess in snapshot:
+            if sess.transport != "network":
+                continue
+            if not sess.peer_ip or not sess.peer_port:
+                continue
+            alive = await self._probe_peer(sess.peer_ip, sess.peer_port,
+                                           timeout=probe_timeout)
+            if alive:
+                continue
+            log.warning(
+                "health-check: %s at %s:%d is unreachable; disconnecting",
+                udid, sess.peer_ip, sess.peer_port,
+            )
+            try:
+                await self.disconnect(udid, clear_simulation=False)
+            except Exception:
+                log.exception("health-check disconnect failed for %s", udid)
+            try:
+                result = on_session_lost(udid)
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception:
+                log.exception("on_session_lost callback raised for %s", udid)
+
+    @staticmethod
+    async def _probe_peer(ip: str, port: int, *, timeout: float) -> bool:
+        """Best-effort TCP probe. True if the port accepts a connection
+        within `timeout`, False otherwise. Closes immediately."""
+        try:
+            fut = asyncio.open_connection(ip, port)
+            r, w = await asyncio.wait_for(fut, timeout=timeout)
+            w.close()
+            try:
+                await w.wait_closed()
+            except Exception:
+                pass
+            return True
+        except (asyncio.TimeoutError, OSError):
+            return False
+
+    @staticmethod
+    def _paired_udids_on_disk() -> set[str]:
+        """Set of UDIDs that have a `remote_<UDID>.plist` file. The GUI
+        uses this to hide the "Pair for WiFi" button when the M-style
+        pair record already exists for a device."""
+        try:
+            from pymobiledevice3.pair_records import iter_remote_pair_records
+        except Exception:
+            return set()
+        out: set[str] = set()
+        try:
+            for rec in iter_remote_pair_records():
+                stem = rec.name
+                if stem.startswith("remote_"):
+                    stem = stem.split("remote_", 1)[1]
+                ident = stem.split(".", 1)[0]
+                if ident:
+                    out.add(ident)
+        except Exception:
+            log.debug("paired_udids_on_disk enumeration failed", exc_info=True)
+        return out
+
     async def list_devices(self) -> list[DeviceInfo]:
         """Return every iOS device usbmuxd currently sees, USB or network.
 
@@ -286,6 +396,7 @@ class DeviceManager:
         Calling this is cheap; it's safe to call on every UI refresh.
         """
         out: list[DeviceInfo] = []
+        paired_set = self._paired_udids_on_disk()
         try:
             raw = await list_devices()
         except Exception:
@@ -350,6 +461,7 @@ class DeviceManager:
                     connected=udid in self._sessions,
                     developer_mode=dev_mode,
                     transports=tuple(sorted(transports_per_udid.get(udid, {transport}))),
+                    wifi_paired=udid in paired_set,
                 )
                 seen[udid] = info
             except Exception:
@@ -359,13 +471,20 @@ class DeviceManager:
         # ground truth — that's what we're actually pushing simulated
         # locations through. usbmuxd's preference rules will happily
         # report USB even when the user explicitly opened a Wi-Fi
-        # session, so don't trust them over the live session.
+        # session, so don't trust them over the live session. Also
+        # propagate peer_ip/peer_port so the WiFi-Devices candidate
+        # row in the GUI can match by (ip, port) and flip to its
+        # "已連線" state — without this merge, sessions opened via
+        # connect_wifi_ip while USB was still plugged in would never
+        # carry peer info into the UI's view of the device.
         for udid, sess in self._sessions.items():
             if udid in seen:
                 seen[udid] = dataclasses.replace(
                     seen[udid],
                     transport=sess.transport,
                     connected=True,
+                    peer_ip=sess.peer_ip,
+                    peer_port=sess.peer_port,
                 )
 
         # If we have an active session for a UDID that usbmuxd no
@@ -392,6 +511,9 @@ class DeviceManager:
                 connected=True,
                 developer_mode=self._device_dev_mode.get(udid),
                 transports=(sess.transport,),
+                wifi_paired=udid in paired_set,
+                peer_ip=sess.peer_ip,
+                peer_port=sess.peer_port,
             )
 
         # WiFi pass: enumerate paired UDIDs from the local pairing-record
@@ -424,6 +546,7 @@ class DeviceManager:
                     connected=udid in self._sessions,
                     developer_mode=self._device_dev_mode.get(udid),
                     transports=("network",),
+                    wifi_paired=udid in paired_set,
                 )
                 seen[udid] = placeholder
 
@@ -447,6 +570,7 @@ class DeviceManager:
                 ios_version=sess.ios_version,
                 transport=sess.transport,
                 connected=True,
+                wifi_paired=udid in paired_set,
             ))
 
         return out
@@ -713,7 +837,11 @@ class DeviceManager:
     # WiFi pairing + IP-direct connect (M-style flow)
     # ------------------------------------------------------------------
 
-    async def wifi_repair(self, udid: Optional[str] = None) -> dict[str, Any]:
+    async def wifi_repair(
+        self,
+        udid: Optional[str] = None,
+        progress: Optional[Any] = None,
+    ) -> dict[str, Any]:
         """Generate a fresh RemotePairing record for WiFi-only operation.
         Mirrors M v0.2.99's `/wifi/repair` ritual exactly:
 
@@ -733,8 +861,23 @@ class DeviceManager:
         forgets the pairing or the host record is deleted).
 
         ``udid`` is optional — if omitted we pick the first USB device
-        usbmuxd reports.
+        usbmuxd reports. ``progress`` is an optional callback
+        ``(stage: str, message: str) -> Awaitable | None`` invoked
+        before each long-running step so the GUI can render a
+        two-stage Trust-prompt progress bar without polling.
         """
+        async def _emit(stage: str, message: str) -> None:
+            if progress is None:
+                return
+            try:
+                result = progress(stage, message)
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception:
+                log.debug("wifi_repair progress callback raised", exc_info=True)
+
+        await _emit("usbmux_query", "Looking for USB-attached iPhone…")
+
         try:
             raw = await list_devices()
         except Exception as exc:
@@ -782,6 +925,8 @@ class DeviceManager:
             log.debug("wifi_repair: stale-record cleanup skipped", exc_info=True)
 
         # Step 1: USB lockdown with autopair → iOS Trust prompt #1.
+        await _emit("usb_pairing",
+                    "Step 1/2: tap Trust on iPhone (USB pairing)…")
         try:
             lockdown = await create_using_usbmux(serial=target_udid, autopair=True)
         except Exception as exc:
@@ -798,6 +943,7 @@ class DeviceManager:
         if ver < (17, 0):
             # iOS 16 doesn't have the RemotePairing path; lockdown
             # autopair above is already enough to unblock USB usage.
+            await _emit("done", "Done — iOS 16 doesn't need WiFi pairing.")
             return {
                 "ok": True,
                 "udid": target_udid,
@@ -809,6 +955,8 @@ class DeviceManager:
 
         # Step 2-4: USB tunnel → RSD → second Trust prompt → write
         # remote_<UDID>.plist.
+        await _emit("tunnel_setup",
+                    "Setting up developer tunnel over USB…")
         proxy = None
         tunnel_ctx = None
         rsd = None
@@ -824,12 +972,16 @@ class DeviceManager:
                 "— Trust prompt should appear on iPhone shortly",
                 tres.address, tres.port,
             )
+            await _emit("remote_pairing",
+                        "Step 2/2: tap Trust on iPhone (WiFi pairing)…")
             tunnel_svc = await create_core_device_tunnel_service_using_rsd(
                 rsd, autopair=True
             )
             log.info(
                 "wifi_repair: RemotePairing record written for %s", target_udid
             )
+            await _emit("done",
+                        "Pairing complete. WiFi connect now works without USB.")
         except Exception as exc:
             log.exception("wifi_repair: RSD/RemotePairing handshake failed")
             msg = str(exc)
@@ -932,7 +1084,18 @@ class DeviceManager:
                         "method": "tcp_scan",
                     })
 
-        # Dedupe on (ip, port).
+        # Dedupe on (ip, port). We deliberately do NOT pair-verify
+        # here any more — the v0.2.10 filter that opened a
+        # `create_core_device_tunnel_service_using_remotepairing` per
+        # hit with a 1.5s timeout was over-eager and silently dropped
+        # the user's real iPhone whenever that handshake took even a
+        # bit longer (screen-locked iPhone, iOS-26 RemotePairing
+        # warm-up, etc). Better to show every (ip, port) we see and
+        # let the user (or `connect_wifi_ip`'s candidate sweep) work
+        # out which one is the right iPhone — the WiFi-Devices UI
+        # row already only lights its "已連線" badge on the row whose
+        # (peer_ip, peer_port) matches an active session, so a few
+        # extra non-iPhone rows are visual noise rather than a trap.
         seen: set[tuple[str, int]] = set()
         unique: list[dict[str, Any]] = []
         for r in results:
@@ -940,9 +1103,22 @@ class DeviceManager:
             if key in seen:
                 continue
             seen.add(key)
+            # Promote the cached friendly name when we have one for
+            # ANY paired UDID — this is purely cosmetic, but in the
+            # common single-iPhone case it labels every tcp_scan hit
+            # with the user's actual device name instead of just the
+            # IP, which reads much better in the GUI.
+            if r["method"] == "tcp_scan" and self._device_names:
+                # We don't know which UDID maps to this IP yet, but
+                # if the user only has one paired device it's
+                # unambiguous; pick the most-recently-cached name as
+                # the best guess.
+                best = next(iter(self._device_names.values()), None)
+                if best:
+                    r = {**r, "name": best}
             unique.append(r)
 
-        log.info("wifi_discover: %d candidate(s) found", len(unique))
+        log.info("wifi_discover: %d candidate(s)", len(unique))
         return unique
 
     async def connect_wifi_ip(
@@ -1043,6 +1219,8 @@ class DeviceManager:
                 tunnel_proxy=None,
                 tunnel_ctx=tunnel_ctx,
                 remote_pairing_service=tunnel_service,
+                peer_ip=ip,
+                peer_port=port,
             )
 
             async with self._lock:
@@ -1069,6 +1247,8 @@ class DeviceManager:
                 ios_version=ios_version,
                 transport="network",
                 connected=True,
+                peer_ip=ip,
+                peer_port=port,
             )
 
         # Exhausted all candidates without success.

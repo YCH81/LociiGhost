@@ -75,8 +75,31 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
     async def wifi_repair(udid: str | None = None) -> dict[str, Any]:
         """One-time pairing ritual that writes a fresh
         ~/.pymobiledevice3/remote_<UDID>.plist using a USB-attached iPhone.
-        After this completes, `wifi.connect_ip` works without the cable."""
-        return await manager.wifi_repair(udid=udid)
+        After this completes, `wifi.connect_ip` works without the cable.
+
+        Broadcasts `event.wifi_pair_progress` at each stage so the GUI
+        can render a 2-step Trust-prompt progress bar without polling.
+        Stages emitted: usbmux_query → usb_pairing → tunnel_setup →
+        remote_pairing → done.
+        """
+        async def _on_progress(stage: str, message: str) -> None:
+            await server.broadcast_event("event.wifi_pair_progress", {
+                "stage": stage,
+                "message": message,
+                "udid": udid,
+            })
+        try:
+            result = await manager.wifi_repair(udid=udid, progress=_on_progress)
+        except Exception:
+            # Surface a final "failed" event so the GUI can clear its
+            # "step 1/2" progress text instead of leaving it stuck.
+            await server.broadcast_event("event.wifi_pair_progress", {
+                "stage": "failed",
+                "message": "Pairing failed; see error message.",
+                "udid": udid,
+            })
+            raise
+        return result
 
     @server.method("wifi.discover")
     async def wifi_discover(scan_subnet: bool = True) -> list[dict[str, Any]]:

@@ -92,6 +92,27 @@ async def _run(socket: str) -> int:
     watcher = UsbmuxWatcher(on_usb_event)
     watcher.start()
 
+    # Background health-check: every 5s probe each WiFi session's
+    # peer IP. If an iPhone leaves the LAN (powered off, walked away,
+    # joined a different SSID) the GUI flips to "disconnected" within
+    # one tick instead of staying stuck on a stale "connected" badge
+    # until the user tries an operation. 5s is the user-tested sweet
+    # spot — quick enough that "I just put the phone on airplane mode"
+    # reflects in the GUI before the user looks again, and the probe
+    # itself is a single TCP-connect-and-close so the network cost is
+    # trivial even at 1 iPhone × 5s.
+    async def on_session_lost(udid: str) -> None:
+        await server.broadcast_event("event.device_changed", {
+            "udid": udid,
+            "status": "disconnected",
+            "reason": "wifi_health_check_failed",
+        })
+
+    health_task = asyncio.create_task(
+        manager.run_health_check_loop(on_session_lost, interval=5.0),
+        name="wifi-health-check",
+    )
+
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, _request_shutdown)
@@ -103,6 +124,14 @@ async def _run(socket: str) -> int:
         {serve_task, shutdown_task},
         return_when=asyncio.FIRST_COMPLETED,
     )
+
+    # Cancel the WiFi health-check loop. Doing this before USB watcher
+    # stop so a probe-then-disconnect can't race the teardown.
+    health_task.cancel()
+    try:
+        await health_task
+    except (asyncio.CancelledError, Exception):
+        pass
 
     # Stop the USB watcher first so it doesn't fire events into a server
     # that's already tearing down.
