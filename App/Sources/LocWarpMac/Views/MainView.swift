@@ -91,6 +91,12 @@ private struct Sidebar: View {
 
             Divider()
 
+            WiFiSection()
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+
+            Divider()
+
             // Movement Modes sits ABOVE System Functions: it's the
             // primary day-to-day surface (changing how the iPhone
             // moves) whereas System Functions is one-time setup
@@ -106,6 +112,119 @@ private struct Sidebar: View {
                 .padding(.vertical, 10)
         }
         .frame(minWidth: 260)
+    }
+}
+
+/// Sidebar section for the M-style WiFi-only flow: a one-shot "Pair
+/// for WiFi" that mints a fresh `~/.pymobiledevice3/remote_<UDID>.plist`
+/// (USB cable required *only* for this single ritual), then a list of
+/// LAN-discovered iPhones the user can Connect to without the cable.
+private struct WiFiSection: View {
+    @Environment(AppState.self) private var state
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("WiFi Devices")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Button {
+                    Task { await state.discoverWiFi() }
+                } label: {
+                    if state.isDiscoveringWiFi {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                }
+                .buttonStyle(.borderless)
+                .disabled(state.isDiscoveringWiFi)
+                .help("Scan LAN for paired iPhones")
+            }
+
+            // The pair-for-wifi button is the entry point for first-time
+            // setup. After running once (and tapping Trust on the
+            // iPhone twice), this Mac can talk to the iPhone over WiFi
+            // without a USB cable. Subsequent restarts re-use the
+            // existing pair record — no need to re-run.
+            Button {
+                Task { await state.pairForWiFi() }
+            } label: {
+                HStack(spacing: 8) {
+                    if state.isPairingForWiFi {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: "key.radiowaves.forward.fill")
+                            .foregroundStyle(.tint)
+                    }
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(state.isPairingForWiFi
+                             ? "Pairing… (tap Trust on iPhone)"
+                             : "Pair for WiFi")
+                            .font(.body)
+                        Text("Plug iPhone in once. Two Trust prompts will appear; after that, WiFi works without the cable.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .disabled(state.isPairingForWiFi)
+
+            // Discovery results — empty state until user clicks
+            // refresh OR pair-for-wifi (which auto-discovers on
+            // success). nil distinguishes "haven't browsed yet" from
+            // "browsed and found nothing".
+            if let candidates = state.wifiCandidates {
+                if candidates.isEmpty {
+                    Text("No iPhones found on the LAN. Make sure the iPhone is on the same Wi-Fi and you've run **Pair for WiFi** once.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 4)
+                } else {
+                    ForEach(candidates) { c in
+                        WiFiCandidateRow(candidate: c)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct WiFiCandidateRow: View {
+    let candidate: WiFiCandidate
+    @Environment(AppState.self) private var state
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "wifi")
+                .foregroundStyle(.tint)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(candidate.name)
+                    .font(.callout)
+                Text("\(candidate.ip):\(candidate.port) · \(candidate.method)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 4)
+            Button("Connect") {
+                Task {
+                    await state.connectWiFiByIP(
+                        ip: candidate.ip, port: candidate.port
+                    )
+                }
+            }
+            .buttonStyle(.borderless)
+            .font(.caption)
+            .disabled(state.isConnectingWiFiByIP)
+        }
+        .padding(.vertical, 2)
     }
 }
 

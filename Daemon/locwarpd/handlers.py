@@ -68,6 +68,37 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
         return {"disconnected": was_connected}
 
     # ------------------------------------------------------------------
+    # wifi.*  (M-style direct-IP RemotePairing flow)
+    # ------------------------------------------------------------------
+
+    @server.method("wifi.repair")
+    async def wifi_repair(udid: str | None = None) -> dict[str, Any]:
+        """One-time pairing ritual that writes a fresh
+        ~/.pymobiledevice3/remote_<UDID>.plist using a USB-attached iPhone.
+        After this completes, `wifi.connect_ip` works without the cable."""
+        return await manager.wifi_repair(udid=udid)
+
+    @server.method("wifi.discover")
+    async def wifi_discover(scan_subnet: bool = True) -> list[dict[str, Any]]:
+        """Find iPhones reachable on the LAN: mDNS first, /24 TCP scan
+        on port 49152 as fallback. Returns `[{ip, port, name, method}, ...]`."""
+        return await manager.wifi_discover(scan_subnet=scan_subnet)
+
+    @server.method("wifi.connect_ip")
+    async def wifi_connect_ip(
+        ip: str, port: int = 49152, udid: str | None = None
+    ) -> dict[str, Any]:
+        """Connect to an iPhone at the given IP via direct RemotePairing
+        (no Bonjour browse needed). Returns the resolved DeviceInfo."""
+        info = await manager.connect_wifi_ip(ip=ip, port=port, udid=udid)
+        await server.broadcast_event("event.device_changed", {
+            "udid": info.udid,
+            "status": "connected",
+            "device": info.to_json(),
+        })
+        return info.to_json()
+
+    # ------------------------------------------------------------------
     # routing.*
     # ------------------------------------------------------------------
 

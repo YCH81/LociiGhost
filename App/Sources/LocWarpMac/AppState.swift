@@ -125,6 +125,18 @@ final class AppState {
     /// dialog is up or the daemon is still spawning.
     var isElevating: Bool = false
 
+    // MARK: - WiFi pairing + IP-direct connect (Phase 4.5)
+    /// Latest set of iPhones the daemon found on the LAN via mDNS or
+    /// /24 TCP scan. `nil` until `discoverWiFi()` runs once. Each entry
+    /// is `(ip, port, name, method)` — UDID is unknown until the actual
+    /// pair-verify in `connectWiFiByIP` resolves it.
+    var wifiCandidates: [WiFiCandidate]?
+    /// True while a `wifi.repair`, `wifi.discover`, or `wifi.connect_ip`
+    /// RPC is in flight, so the UI can disable buttons + show spinners.
+    var isPairingForWiFi: Bool = false
+    var isDiscoveringWiFi: Bool = false
+    var isConnectingWiFiByIP: Bool = false
+
     // MARK: - Movement modes (Phase 3)
     /// Latest snapshot from a `location.random_walk` session, populated
     /// from `event.position_update` / `event.state_changed` notifications.
@@ -302,6 +314,84 @@ final class AppState {
             await refreshDevices()
         } catch {
             lastError = String(describing: error)
+        }
+    }
+
+    // MARK: - WiFi pairing + IP-direct connect
+
+    /// Run the daemon's one-time `wifi.repair` ritual: USB autopair →
+    /// CoreDeviceTunnelProxy → RSD → `create_core_device_tunnel_service_using_rsd(autopair=True)`
+    /// which writes a fresh `~/.pymobiledevice3/remote_<UDID>.plist`.
+    /// Two iOS Trust prompts appear during this; user must tap Trust on
+    /// each. After this completes once, `connectWiFiByIP` works without
+    /// the cable indefinitely.
+    func pairForWiFi(udid: String? = nil) async {
+        guard let client else { return }
+        guard !isPairingForWiFi else { return }
+        isPairingForWiFi = true
+        defer { isPairingForWiFi = false }
+        do {
+            var params: [String: AnyCodable] = [:]
+            if let udid { params["udid"] = AnyCodable(udid) }
+            _ = try await client.callRaw("wifi.repair", params: params)
+            lastError = nil
+            // Pairing record is fresh — kick off discovery so the
+            // newly-pairable iPhone appears in the WiFi list.
+            await discoverWiFi()
+        } catch {
+            lastError = String(describing: error)
+        }
+    }
+
+    /// Browse the LAN for paired iPhones (mDNS first, /24 TCP scan
+    /// fallback). Stores results in `wifiCandidates` for the UI.
+    func discoverWiFi() async {
+        guard let client else { return }
+        guard !isDiscoveringWiFi else { return }
+        isDiscoveringWiFi = true
+        defer { isDiscoveringWiFi = false }
+        do {
+            let raw: [WiFiCandidate] = try await client.call(
+                "wifi.discover",
+                params: ["scan_subnet": AnyCodable(true)]
+            )
+            wifiCandidates = raw
+        } catch {
+            wifiCandidates = []
+            lastError = String(describing: error)
+        }
+    }
+
+    /// Connect to an iPhone discovered by `discoverWiFi()` (or any
+    /// IP+port the user typed in manually). Uses the daemon's
+    /// `wifi.connect_ip` which goes through
+    /// `create_core_device_tunnel_service_using_remotepairing` directly,
+    /// bypassing Bonjour at connect time and yielding the FULL RSD
+    /// (with `dtservicehub`) — i.e. WiFi-only DVT location simulation
+    /// works without a USB cable.
+    func connectWiFiByIP(ip: String, port: Int = 49152, udid: String? = nil) async {
+        guard let client else { return }
+        guard !isConnectingWiFiByIP else { return }
+        isConnectingWiFiByIP = true
+        defer { isConnectingWiFiByIP = false }
+        do {
+            var params: [String: AnyCodable] = [
+                "ip": AnyCodable(ip),
+                "port": AnyCodable(port),
+            ]
+            if let udid { params["udid"] = AnyCodable(udid) }
+            _ = try await client.callRaw("wifi.connect_ip", params: params)
+            lastError = nil
+            await refreshDevices()
+            // Successful Connect → full developer tunnel up → daemon is
+            // exercising root utun, so admin signals are stale-clear.
+            needsAdminElevation = false
+            daemonIsRoot = true
+        } catch {
+            lastError = String(describing: error)
+            if let rpc = error as? RPCError, rpc.code == -32004 {
+                needsAdminElevation = true
+            }
         }
     }
 
@@ -680,7 +770,7 @@ final class AppState {
     /// Bumped every time the daemon source breaks ABI or behaviour in
     /// a way that requires an in-place restart. Must match the
     /// `__version__` in `Daemon/locwarpd/__init__.py`.
-    static let expectedDaemonVersion = "0.2.6"
+    static let expectedDaemonVersion = "0.2.7"
 
     /// Pick the right starting coordinate for a new navigation. Order:
     /// 1. Currently simulated location (chain another route on top).
@@ -933,6 +1023,21 @@ final class AppState {
         }
         return false
     }
+}
+
+/// One row of `wifi.discover` output: an iPhone (or candidate IP) the
+/// daemon found on the LAN. UDID is intentionally absent — we don't
+/// know which paired device is at this IP until `wifi.connect_ip`
+/// runs the pair-verify candidate sweep on the daemon side.
+struct WiFiCandidate: Codable, Identifiable, Hashable, Sendable {
+    let ip: String
+    let port: Int
+    let host: String
+    let name: String
+    /// "mdns" for Bonjour-discovered, "tcp_scan" for /24 fallback.
+    let method: String
+
+    var id: String { "\(ip):\(port)" }
 }
 
 /// Decoded `DeviceInfo` from `device.list`. Mirrors the daemon's
