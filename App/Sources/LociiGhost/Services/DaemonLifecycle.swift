@@ -2,14 +2,14 @@ import Foundation
 #if canImport(Darwin)
 import Darwin
 #endif
-import LocWarpCore
+import LociiGhostCore
 
-/// Spawns and supervises the `locwarpd` Python helper as a child process.
+/// Spawns and supervises the `lociighostd` Python helper as a child process.
 ///
 /// Discovery order for the daemon executable:
 ///
-/// 1. Bundle resource named `locwarpd` (when shipped as a packaged .app).
-/// 2. The development venv at `~/Documents/LocWarp.Mac/Daemon/.venv/bin/python -m locwarpd`.
+/// 1. Bundle resource named `lociighostd` (when shipped as a packaged .app).
+/// 2. The development venv at `~/Documents/LociiGhost/Daemon/.venv/bin/python -m lociighostd`.
 ///
 /// Phase 1 keeps this deliberately simple: the app spawns one daemon
 /// instance, owns its lifetime, and kills it on `stop()`. Later phases
@@ -23,9 +23,9 @@ final class DaemonLifecycle {
         var description: String {
             switch self {
             case .daemonNotFound:
-                return "Could not locate locwarpd. Build the daemon first or place it next to the app."
+                return "Could not locate lociighostd. Build the daemon first or place it next to the app."
             case .launchFailed(let s):
-                return "Failed to launch locwarpd: \(s)"
+                return "Failed to launch lociighostd: \(s)"
             }
         }
     }
@@ -48,7 +48,7 @@ final class DaemonLifecycle {
         let exe = try resolveExecutable()
         let p = Process()
         p.executableURL = exe.url
-        p.arguments = exe.arguments + ["--socket", LocWarpPaths.socketPath]
+        p.arguments = exe.arguments + ["--socket", LociiGhostPaths.socketPath]
 
         // macOS Sequoia auto-flags files in ~/Documents/ as UF_HIDDEN, and
         // Python 3.13's site.py refuses to load hidden .pth files — so editable
@@ -66,8 +66,8 @@ final class DaemonLifecycle {
         }
 
         // Keep stdout/stderr connected to the log file rather than the GUI app.
-        let logURL = LocWarpPaths.logsDir.appending(path: "daemon-stdout.log")
-        let errURL = LocWarpPaths.logsDir.appending(path: "daemon-stderr.log")
+        let logURL = LociiGhostPaths.logsDir.appending(path: "daemon-stdout.log")
+        let errURL = LociiGhostPaths.logsDir.appending(path: "daemon-stderr.log")
         FileManager.default.createFile(atPath: logURL.path(percentEncoded: false), contents: nil)
         FileManager.default.createFile(atPath: errURL.path(percentEncoded: false), contents: nil)
         p.standardOutput = try FileHandle(forWritingTo: logURL)
@@ -106,7 +106,7 @@ final class DaemonLifecycle {
     /// We don't ping; merely opening the socket is enough proof the file
     /// belongs to a live process and isn't a stale leftover from a crash.
     private func isExistingSocketResponsive() -> Bool {
-        let path = LocWarpPaths.socketPath
+        let path = LociiGhostPaths.socketPath
         guard FileManager.default.fileExists(atPath: path) else { return false }
 
         let s = socket(AF_UNIX, SOCK_STREAM, 0)
@@ -143,7 +143,7 @@ final class DaemonLifecycle {
 
     private func resolveExecutable() throws -> Resolved {
         // 1. Bundled native binary (PyInstaller output).
-        if let bundled = Bundle.module.url(forResource: "locwarpd", withExtension: nil),
+        if let bundled = Bundle.module.url(forResource: "lociighostd", withExtension: nil),
            FileManager.default.isExecutableFile(atPath: bundled.path(percentEncoded: false)) {
             return Resolved(url: bundled, arguments: [], pythonPathOverride: nil)
         }
@@ -158,7 +158,7 @@ final class DaemonLifecycle {
         if FileManager.default.isExecutableFile(atPath: stagedPython.path(percentEncoded: false)) {
             return Resolved(
                 url: stagedPython,
-                arguments: ["-m", "locwarpd"],
+                arguments: ["-m", "lociighostd"],
                 pythonPathOverride: stagedSrc.path(percentEncoded: false),
             )
         }

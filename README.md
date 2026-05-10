@@ -1,7 +1,7 @@
-# LocWarp.Mac
+# LociiGhost
 
 A from-scratch, Apple-Silicon-only iOS location simulation tool inspired by
-[LocWarp](https://github.com/keezxc1223/locwarp), but rebuilt as a native
+[LociiGhost](https://github.com/keezxc1223/lociighost), but rebuilt as a native
 macOS application — not a port of the cross-platform Electron version.
 
 ## Why
@@ -21,16 +21,16 @@ This rebuild targets:
 - **Same product concept.** Six movement modes, dual device sync, GPX import,
   bookmarks, ETA, hot speed swap.
 
-See [`/Users/ych/.claude/plans/locwarp-copy-0-mac-m-keen-harbor.md`](../../.claude/plans/locwarp-copy-0-mac-m-keen-harbor.md)
+See [`/Users/ych/.claude/plans/lociighost-copy-0-mac-m-keen-harbor.md`](../../.claude/plans/lociighost-copy-0-mac-m-keen-harbor.md)
 for the full plan, including the thermal/power section that drives most
 implementation decisions.
 
 ## Repo layout
 
 ```
-LocWarp.Mac/
-├── App/          Swift package (LocWarpCore lib + locwarpctl CLI)
-├── Daemon/       Python helper (locwarpd) using pymobiledevice3
+LociiGhost/
+├── App/          Swift package (LociiGhostCore lib + lociighostctl CLI)
+├── Daemon/       Python helper (lociighostd) using pymobiledevice3
 ├── Scripts/      build-daemon.sh, build-app.sh
 └── docs/         rpc-protocol.md, etc.
 ```
@@ -41,21 +41,21 @@ Scaffolding and end-to-end RPC round-trip verified.
 
 - Daemon project with `pyproject.toml`, JSON-RPC 2.0 server over Unix
   domain socket, 7 unit tests passing.
-- `locwarpd` registers `ping`, `daemon.info`, `daemon.shutdown`.
-- Swift package with `LocWarpCore` (paths, JSON-RPC types, `DaemonClient`
-  actor) and `locwarpctl` CLI; 2 Swift tests passing.
+- `lociighostd` registers `ping`, `daemon.info`, `daemon.shutdown`.
+- Swift package with `LociiGhostCore` (paths, JSON-RPC types, `DaemonClient`
+  actor) and `lociighostctl` CLI; 2 Swift tests passing.
 - Build scripts for both halves.
 
 End-to-end measurements (May 2026, on M-series, macOS 15.6.1):
 
-- `locwarpctl ping` → `{"pong":true,"version":"0.1.0",...}` — round-trip < 5 ms
+- `lociighostctl ping` → `{"pong":true,"version":"0.1.0",...}` — round-trip < 5 ms
 - Daemon idle CPU: **0.0%** after the connection settles
 - Daemon idle RSS: ~22 MB
 - Shutdown is graceful (signal handler + RPC method both work)
 
 The DaemonClient deliberately puts the blocking `read(2)` on a background
 thread, **off the actor's executor**, to avoid deadlocking the actor when
-a syscall blocks. See `App/Sources/LocWarpCore/DaemonClient.swift`.
+a syscall blocks. See `App/Sources/LociiGhostCore/DaemonClient.swift`.
 
 Not yet done (next phases):
 
@@ -74,14 +74,14 @@ Not yet done (next phases):
 
 # 2. Run it (foreground)
 cd Daemon && source .venv/bin/activate
-locwarpd --socket /tmp/lw.sock -v &
+lociighostd --socket /tmp/lw.sock -v &
 
 # 3. Talk to it from Swift
-cd ../App && swift run locwarpctl --socket /tmp/lw.sock ping
+cd ../App && swift run lociighostctl --socket /tmp/lw.sock ping
 # => {"pong":true,"version":"0.1.0", ...}
 
 # 4. Shut it down
-swift run locwarpctl --socket /tmp/lw.sock shutdown
+swift run lociighostctl --socket /tmp/lw.sock shutdown
 ```
 
 ## Requirements
@@ -96,4 +96,4 @@ swift run locwarpctl --socket /tmp/lw.sock shutdown
 
 ## License
 
-MIT (matches upstream LocWarp).
+MIT (matches upstream LociiGhost).

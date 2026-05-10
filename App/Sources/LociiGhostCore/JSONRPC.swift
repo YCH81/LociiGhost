@@ -1,6 +1,6 @@
 import Foundation
 
-/// Minimal JSON-RPC 2.0 types used between the Mac app and `locwarpd`.
+/// Minimal JSON-RPC 2.0 types used between the Mac app and `lociighostd`.
 public enum JSONRPC {
     public static let version = "2.0"
 

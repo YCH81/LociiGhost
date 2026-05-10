@@ -1,7 +1,7 @@
 import AppKit
 import Foundation
 import Observation
-import LocWarpCore
+import LociiGhostCore
 
 /// Top-level @Observable state for the SwiftUI app.
 ///
@@ -202,7 +202,7 @@ final class AppState {
         do {
             try lifecycle.start()
             // Wait for the socket to appear (daemon binds it on startup).
-            let path = LocWarpPaths.socketPath
+            let path = LociiGhostPaths.socketPath
             let started = await Self.waitForSocket(path: path, timeout: 5.0)
             guard started else {
                 daemonStatus = .failed("daemon socket did not appear")
@@ -256,7 +256,7 @@ final class AppState {
         // an app close+reopen cycle (the on-disk cache is the safety net
         // for harder restarts where the daemon does die).
         let ownsDaemon = lifecycle?.attachedToExisting == false
-        NSLog("LocWarpMac.teardown: ownsDaemon=%@ (attachedToExisting=%@)",
+        NSLog("LociiGhost.teardown: ownsDaemon=%@ (attachedToExisting=%@)",
               ownsDaemon ? "true" : "false",
               (lifecycle?.attachedToExisting ?? false) ? "true" : "false")
         if let client {
@@ -695,7 +695,7 @@ final class AppState {
 
     /// Switch travel mode mid-route. The route polyline doesn't change
     /// (it was computed for the original profile), only the speed at
-    /// which we walk it. This is the hot-swap from the original LocWarp.
+    /// which we walk it. This is the hot-swap from the original LociiGhost.
     func changeNavigationProfile(udid: String, to profile: TravelProfile) async {
         let speed = customSpeedMps ?? profile.defaultSpeedMps
         await applyNavigationSpeed(udid: udid, speedMps: speed)
@@ -815,8 +815,8 @@ final class AppState {
 
     /// Bumped every time the daemon source breaks ABI or behaviour in
     /// a way that requires an in-place restart. Must match the
-    /// `__version__` in `Daemon/locwarpd/__init__.py`.
-    static let expectedDaemonVersion = "0.2.13"
+    /// `__version__` in `Daemon/lociighostd/__init__.py`.
+    static let expectedDaemonVersion = "1.0.0"
 
     /// Pick the right starting coordinate for a new navigation. Order:
     /// 1. Currently simulated location (chain another route on top).

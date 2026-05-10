@@ -32,7 +32,7 @@ struct MainView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
-        .navigationTitle("LocWarp")
+        .navigationTitle("LociiGhost")
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 DaemonStatusPill()
@@ -836,7 +836,7 @@ private struct DaemonStatusPill: View {
     var body: some View {
         HStack(spacing: 6) {
             Circle().fill(color).frame(width: 8, height: 8)
-            Text("locwarpd: \(state.daemonStatus.label)")
+            Text("lociighostd: \(state.daemonStatus.label)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if !state.daemonVersion.isEmpty {

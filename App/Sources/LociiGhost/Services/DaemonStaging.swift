@@ -1,5 +1,5 @@
 import Foundation
-import LocWarpCore
+import LociiGhostCore
 
 /// Copy the developer-mode daemon source + venv out of `~/Documents`
 /// (TCC-protected on macOS 15+) into `~/Library/Application Support`,
@@ -7,7 +7,7 @@ import LocWarpCore
 /// privileges` can actually read it.
 ///
 /// Without this step, the root daemon dies at `import site` because
-/// even root can't read `~/Documents/LocWarp.Mac/Daemon/.venv/pyvenv.cfg`
+/// even root can't read `~/Documents/LociiGhost/Daemon/.venv/pyvenv.cfg`
 /// without the user explicitly granting Full Disk Access. Staging once
 /// to `~/Library/...` sidesteps the whole TCC dance — the user-mode app
 /// has read access to its own `~/Documents`, and the destination isn't
@@ -20,7 +20,7 @@ enum DaemonStaging {
         var errorDescription: String? {
             switch self {
             case .sourceMissing(let u):
-                return "Daemon source not found at \(u.path). Did you check out the project under ~/Documents/LocWarp.Mac?"
+                return "Daemon source not found at \(u.path). Did you check out the project under ~/Documents/LociiGhost?"
             case .copyFailed(let s, let c):
                 return "Daemon copy failed (\(c)): \(s)"
             case .rsyncMissing:
@@ -30,10 +30,10 @@ enum DaemonStaging {
     }
 
     /// Where the staged daemon lives. Mirrors the layout under the
-    /// developer's `~/Documents/LocWarp.Mac/Daemon/` so paths inside
+    /// developer's `~/Documents/LociiGhost/Daemon/` so paths inside
     /// the venv stay valid.
     static var stagedRoot: URL {
-        LocWarpPaths.appSupportDir
+        LociiGhostPaths.appSupportDir
             .appending(path: "runtime/Daemon", directoryHint: .isDirectory)
     }
 
@@ -52,7 +52,7 @@ enum DaemonStaging {
     /// Documents); root scripts spawned via osascript do not.
     static var sourceRoot: URL {
         FileManager.default.homeDirectoryForCurrentUser
-            .appending(path: "Documents/LocWarp.Mac/Daemon", directoryHint: .isDirectory)
+            .appending(path: "Documents/LociiGhost/Daemon", directoryHint: .isDirectory)
     }
 
     /// Make sure a usable copy of the daemon exists at `stagedRoot`.
@@ -111,7 +111,7 @@ enum DaemonStaging {
 
         // The editable-install path files inside the venv still point
         // at the source location after copy. Rewrite them so `import
-        // locwarpd` resolves to the staged tree, not back into
+        // lociighostd` resolves to the staged tree, not back into
         // ~/Documents.
         rewriteEditablePathFiles(
             stagedRoot: stagedRoot,

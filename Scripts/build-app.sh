@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Build the Swift package (LocWarpCore library + locwarpctl CLI).
+# Build the Swift package (LociiGhostCore library + lociighostctl CLI).
 #
-# Phase 0: produces the locwarpctl CLI smoke client only.
+# Phase 0: produces the lociighostctl CLI smoke client only.
 # Phase 1+: will additionally drive xcodebuild for the full SwiftUI .app bundle
 #           (requires full Xcode -- not just Command Line Tools).
 
@@ -21,7 +21,7 @@ CONFIG=${CONFIG:-release}
 echo "==> swift build --configuration $CONFIG"
 swift build --configuration "$CONFIG"
 
-BIN="$APP_DIR/.build/$([ "$CONFIG" = "release" ] && echo arm64-apple-macosx/release || echo debug)/locwarpctl"
+BIN="$APP_DIR/.build/$([ "$CONFIG" = "release" ] && echo arm64-apple-macosx/release || echo debug)/lociighostctl"
 if [[ -f "$BIN" ]]; then
     echo "==> built: $BIN"
     "$BIN" --help || true

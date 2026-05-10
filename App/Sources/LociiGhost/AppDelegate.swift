@@ -15,7 +15,7 @@ import SwiftUI
 ///    attached to externally (sudo-launched), so the user doesn't pay the
 ///    sudo prompt on the next launch.
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    /// Set by `LocWarpMacApp` so we can drive teardown from the delegate.
+    /// Set by `LociiGhostApp` so we can drive teardown from the delegate.
     @MainActor static weak var sharedAppState: AppState?
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

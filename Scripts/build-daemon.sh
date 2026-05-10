@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Build a self-contained arm64 locwarpd binary using PyInstaller.
-# Output: Daemon/dist/locwarpd/locwarpd  (and a sibling _internal/ dir)
+# Build a self-contained arm64 lociighostd binary using PyInstaller.
+# Output: Daemon/dist/lociighostd/lociighostd  (and a sibling _internal/ dir)
 #
 # Design notes (see plan, "性能與散熱"):
 # - --onedir, NOT --onefile: avoid the "extract to /tmp on every launch"
@@ -38,7 +38,7 @@ pip install --quiet -e ".[dev]"
 
 # macOS Sequoia auto-flags some files in ~/Documents as UF_HIDDEN. Python 3.13's
 # site.py refuses to load hidden .pth files, which silently breaks editable
-# installs. Strip the flag so `python -m locwarpd` works from any cwd.
+# installs. Strip the flag so `python -m lociighostd` works from any cwd.
 chflags nohidden .venv/lib/python*/site-packages/*.pth 2>/dev/null || true
 
 echo "==> cleaning previous build"
@@ -48,12 +48,12 @@ echo "==> running PyInstaller"
 pyinstaller \
     --noconfirm \
     --clean \
-    --name locwarpd \
+    --name lociighostd \
     --onedir \
     --target-arch arm64 \
     --distpath "$DIST_DIR" \
     --workpath "$BUILD_DIR" \
-    --hidden-import locwarpd \
+    --hidden-import lociighostd \
     --exclude-module tkinter \
     --exclude-module test \
     --exclude-module unittest \
@@ -63,8 +63,8 @@ pyinstaller \
     --exclude-module IPython \
     --exclude-module matplotlib \
     --exclude-module numpy.tests \
-    locwarpd/__main__.py
+    lociighostd/__main__.py
 
 echo
-echo "==> built: $DIST_DIR/locwarpd/locwarpd"
-"$DIST_DIR/locwarpd/locwarpd" --version
+echo "==> built: $DIST_DIR/lociighostd/lociighostd"
+"$DIST_DIR/lociighostd/lociighostd" --version

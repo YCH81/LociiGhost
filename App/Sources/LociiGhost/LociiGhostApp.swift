@@ -1,13 +1,13 @@
 import SwiftUI
-import LocWarpCore
+import LociiGhostCore
 
 @main
-struct LocWarpMacApp: App {
+struct LociiGhostApp: App {
     @State private var appState = AppState()
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        WindowGroup("LocWarp") {
+        WindowGroup("LociiGhost") {
             MainView()
                 .environment(appState)
                 .frame(minWidth: 900, minHeight: 600)

@@ -5,7 +5,7 @@ It's rate-limited and not for production-grade traffic, but it's free,
 needs no API key, and is plenty for one user driving a teleport tool.
 
 Routes are cached by (from, to, profile) so re-running the same route
-doesn't re-hit the network. Cache lives in `~/Library/Caches/LocWarp.Mac/`
+doesn't re-hit the network. Cache lives in `~/Library/Caches/LociiGhost/`
 and entries expire after 30 days.
 """
 

@@ -7,25 +7,25 @@ from pathlib import Path
 
 
 def app_support_dir() -> Path:
-    """~/Library/Application Support/LocWarp.Mac/"""
-    base = Path(os.path.expanduser("~/Library/Application Support/LocWarp.Mac"))
+    """~/Library/Application Support/LociiGhost/"""
+    base = Path(os.path.expanduser("~/Library/Application Support/LociiGhost"))
     base.mkdir(parents=True, exist_ok=True)
     return base
 
 
 def cache_dir() -> Path:
-    """~/Library/Caches/LocWarp.Mac/"""
-    base = Path(os.path.expanduser("~/Library/Caches/LocWarp.Mac"))
+    """~/Library/Caches/LociiGhost/"""
+    base = Path(os.path.expanduser("~/Library/Caches/LociiGhost"))
     base.mkdir(parents=True, exist_ok=True)
     return base
 
 
 def logs_dir() -> Path:
-    """~/Library/Logs/LocWarp.Mac/"""
-    base = Path(os.path.expanduser("~/Library/Logs/LocWarp.Mac"))
+    """~/Library/Logs/LociiGhost/"""
+    base = Path(os.path.expanduser("~/Library/Logs/LociiGhost"))
     base.mkdir(parents=True, exist_ok=True)
     return base
 
 
 def socket_path() -> str:
-    return str(app_support_dir() / "locwarp.sock")
+    return str(app_support_dir() / "lociighost.sock")

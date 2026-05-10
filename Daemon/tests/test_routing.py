@@ -10,8 +10,8 @@ from pathlib import Path
 import httpx
 import pytest
 
-from locwarpd import paths
-from locwarpd.routing import OsrmClient, Route, RoutingError
+from lociighostd import paths
+from lociighostd.routing import OsrmClient, Route, RoutingError
 
 pytestmark = pytest.mark.asyncio(loop_scope="function")
 
@@ -55,7 +55,7 @@ def isolated_cache(monkeypatch, tmp_path):
     the `routing` module — patching the original `paths` attribute would be
     a no-op against an already-imported symbol.
     """
-    monkeypatch.setattr("locwarpd.routing.cache_dir", lambda: tmp_path)
+    monkeypatch.setattr("lociighostd.routing.cache_dir", lambda: tmp_path)
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import LocWarpCore
+@testable import LociiGhostCore
 
 @Suite("DaemonClient round-trip")
 struct DaemonClientTests {
@@ -42,7 +42,7 @@ struct DaemonClientTests {
 
     @Test("connect to nonexistent socket fails cleanly")
     func nonexistentSocket() async throws {
-        let client = DaemonClient(socketPath: "/tmp/locwarp-does-not-exist-\(UUID().uuidString).sock")
+        let client = DaemonClient(socketPath: "/tmp/lociighost-does-not-exist-\(UUID().uuidString).sock")
         do {
             try await client.connect()
             Issue.record("expected connect to fail")

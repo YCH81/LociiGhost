@@ -1,8 +1,8 @@
 import AppKit
 import Foundation
-import LocWarpCore
+import LociiGhostCore
 
-/// Spawn the `locwarpd` daemon as root **without ever asking the user
+/// Spawn the `lociighostd` daemon as root **without ever asking the user
 /// to open a terminal**.
 ///
 /// The flow is the macOS-standard one:
@@ -43,7 +43,7 @@ enum PrivilegedDaemonInstaller {
         }
     }
 
-    /// Show the macOS admin auth dialog, then start `locwarpd` as root.
+    /// Show the macOS admin auth dialog, then start `lociighostd` as root.
     /// Returns once the daemon's Unix socket has appeared.
     static func install() async throws {
         let layout = try resolveLayout()
@@ -79,17 +79,17 @@ enum PrivilegedDaemonInstaller {
         guard FileManager.default.fileExists(atPath: venvPython.path) else {
             throw InstallError.daemonNotFound(venvPython)
         }
-        let logDir = home.appending(path: "Library/Logs/LocWarp.Mac",
+        let logDir = home.appending(path: "Library/Logs/LociiGhost",
                                     directoryHint: .isDirectory)
-        let socketDir = home.appending(path: "Library/Application Support/LocWarp.Mac",
+        let socketDir = home.appending(path: "Library/Application Support/LociiGhost",
                                        directoryHint: .isDirectory)
         return Layout(
             home: home,
             projectDir: projectDir,
             venvPython: venvPython,
-            logFile: logDir.appending(path: "locwarpd-sudo.log"),
+            logFile: logDir.appending(path: "lociighostd-sudo.log"),
             socketDir: socketDir,
-            socketPath: LocWarpPaths.socketPath,
+            socketPath: LociiGhostPaths.socketPath,
             uid: getuid(),
             gid: getgid()
         )
@@ -123,13 +123,13 @@ enum PrivilegedDaemonInstaller {
         log "===== privileged install start ====="
         log "uid=$(id -u) euid=$(id -un) home=$HOME"
         mkdir -p \(q(layout.socketDir.path)) \(q(layout.logFile.deletingLastPathComponent().path)) || log "mkdir failed: $?"
-        log "killing any prior locwarpd..."
-        # The daemon is invoked as `<...>/Python -m locwarpd` — note
+        log "killing any prior lociighostd..."
+        # The daemon is invoked as `<...>/Python -m lociighostd` — note
         # the CAPITAL P on Homebrew's binary name. Earlier versions of
-        # this script tried to match `'python -m locwarpd'` (lowercase)
+        # this script tried to match `'python -m lociighostd'` (lowercase)
         # and silently caught nothing, so every Authenticate cycle
         # leaked an entire daemon process (3+ root daemons routinely
-        # alive after a single Mac session). Match on `-m locwarpd`
+        # alive after a single Mac session). Match on `-m lociighostd`
         # which is invariant across binary capitalisation.
         #
         # We also have to kill user-mode daemons that DaemonLifecycle
@@ -141,17 +141,17 @@ enum PrivilegedDaemonInstaller {
         # osascript-with-admin-privileges doesn't reliably pass SUDO_UID
         # through.
         # First TERM (graceful), short pause, then KILL.
-        pkill -TERM -f '\\-m locwarpd' >>"$LOG" 2>&1 \\
+        pkill -TERM -f '\\-m lociighostd' >>"$LOG" 2>&1 \\
           || log "no daemons matched TERM (root)"
-        pkill -TERM -u \(layout.uid) -f '\\-m locwarpd' >>"$LOG" 2>&1 \\
+        pkill -TERM -u \(layout.uid) -f '\\-m lociighostd' >>"$LOG" 2>&1 \\
           || log "no daemons matched TERM (uid=\(layout.uid))"
         sleep 0.5
-        pkill -KILL -f '\\-m locwarpd' >>"$LOG" 2>&1 \\
+        pkill -KILL -f '\\-m lociighostd' >>"$LOG" 2>&1 \\
           || log "no daemons matched KILL (root)"
-        pkill -KILL -u \(layout.uid) -f '\\-m locwarpd' >>"$LOG" 2>&1 \\
+        pkill -KILL -u \(layout.uid) -f '\\-m lociighostd' >>"$LOG" 2>&1 \\
           || log "no daemons matched KILL (uid=\(layout.uid))"
         sleep 0.2
-        log "post-kill survivors: $(pgrep -fl '\\-m locwarpd' || echo none)"
+        log "post-kill survivors: $(pgrep -fl '\\-m lociighostd' || echo none)"
         log "removing stale socket..."
         rm -f \(q(layout.socketPath)) >>"$LOG" 2>&1 || true
         log "spawning daemon..."
@@ -165,7 +165,7 @@ enum PrivilegedDaemonInstaller {
             SUDO_UID=\(layout.uid) \\
             SUDO_GID=\(layout.gid) \\
             PYTHONPATH=\(q(layout.projectDir.appending(path: "Daemon").path)) \\
-            \(q(layout.venvPython.path)) -m locwarpd >>"$LOG" 2>&1 &
+            \(q(layout.venvPython.path)) -m lociighostd >>"$LOG" 2>&1 &
           disown
         )
         log "spawn returned $?; sleeping 0.4s"
@@ -175,7 +175,7 @@ enum PrivilegedDaemonInstaller {
         """
 
         let tmp = FileManager.default.temporaryDirectory
-            .appending(path: "locwarp-elevate-\(UUID().uuidString).sh")
+            .appending(path: "lociighost-elevate-\(UUID().uuidString).sh")
         try body.write(to: tmp, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes(
             [.posixPermissions: NSNumber(value: Int16(0o755))],

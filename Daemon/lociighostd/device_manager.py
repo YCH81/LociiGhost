@@ -1,7 +1,7 @@
 """Discover, connect to, and tear down iOS device sessions.
 
 This module is the single owner of all `pymobiledevice3` state. The rest of
-`locwarpd` should never import `pymobiledevice3` directly; instead it asks
+`lociighostd` should never import `pymobiledevice3` directly; instead it asks
 the `DeviceManager` for a connection or a `LocationService` instance.
 
 Phase 1 supports USB only. Phase 4 adds RemotePairing WiFi tunnel support.
@@ -117,9 +117,9 @@ class _Session:
     tunnel_ctx: Any = None
     dvt_provider: Optional[DvtProvider] = None
     location: Optional[LocationService] = None
-    navigator: Optional[Any] = None       # locwarpd.navigator.Navigator
-    walker: Optional[Any] = None          # locwarpd.random_walker.RandomWalker
-    joystick: Optional[Any] = None        # locwarpd.joystick.JoystickController
+    navigator: Optional[Any] = None       # lociighostd.navigator.Navigator
+    walker: Optional[Any] = None          # lociighostd.random_walker.RandomWalker
+    joystick: Optional[Any] = None        # lociighostd.joystick.JoystickController
     # Bonjour-only sessions hold a RemotePairingTunnelService instead of
     # a CoreDeviceTunnelProxy; the rest of the lifecycle is the same.
     remote_pairing_service: Any = None

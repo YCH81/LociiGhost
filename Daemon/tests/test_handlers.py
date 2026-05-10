@@ -21,10 +21,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from locwarpd import handlers
-from locwarpd.device_manager import DeviceManager
-from locwarpd.routing import OsrmClient
-from locwarpd.rpc import RpcServer
+from lociighostd import handlers
+from lociighostd.device_manager import DeviceManager
+from lociighostd.routing import OsrmClient
+from lociighostd.rpc import RpcServer
 
 pytestmark = pytest.mark.asyncio(loop_scope="function")
 
@@ -67,7 +67,7 @@ async def _call(sock: str, method: str, **params):
 
 @pytest.mark.asyncio
 async def test_device_list_no_devices():
-    with patch("locwarpd.device_manager.list_devices", AsyncMock(return_value=[])):
+    with patch("lociighostd.device_manager.list_devices", AsyncMock(return_value=[])):
         async with serving_with_handlers() as (sock, _, _):
             resp = await _call(sock, "device.list")
             assert resp["result"] == []
@@ -77,8 +77,8 @@ async def test_device_list_no_devices():
 async def test_device_list_one_device():
     raw = MagicMock(serial="ABC", connection_type="USB")
     lockdown = MagicMock(all_values={"DeviceName": "Test", "ProductVersion": "17.4.1"})
-    with patch("locwarpd.device_manager.list_devices", AsyncMock(return_value=[raw])), \
-         patch("locwarpd.device_manager.create_using_usbmux", AsyncMock(return_value=lockdown)):
+    with patch("lociighostd.device_manager.list_devices", AsyncMock(return_value=[raw])), \
+         patch("lociighostd.device_manager.create_using_usbmux", AsyncMock(return_value=lockdown)):
         async with serving_with_handlers() as (sock, _, _):
             resp = await _call(sock, "device.list")
             assert len(resp["result"]) == 1
@@ -108,8 +108,8 @@ async def test_device_connect_disconnect_emits_events():
     raw = MagicMock(serial="X", connection_type="USB")
     lockdown = MagicMock(all_values={"DeviceName": "T", "ProductVersion": "16.5"})
 
-    with patch("locwarpd.device_manager.list_devices", AsyncMock(return_value=[raw])), \
-         patch("locwarpd.device_manager.create_using_usbmux", AsyncMock(return_value=lockdown)):
+    with patch("lociighostd.device_manager.list_devices", AsyncMock(return_value=[raw])), \
+         patch("lociighostd.device_manager.create_using_usbmux", AsyncMock(return_value=lockdown)):
         async with serving_with_handlers() as (sock, _, _):
             reader, writer = await asyncio.open_unix_connection(sock)
 

@@ -254,7 +254,7 @@ private final class ReaderThread: @unchecked Sendable {
         let t = Thread { [fd, onFrame] in
             ReaderThread.runLoop(fd: fd, onFrame: onFrame)
         }
-        t.name = "LocWarp.DaemonClient.reader"
+        t.name = "LociiGhost.DaemonClient.reader"
         t.start()
         thread = t
     }

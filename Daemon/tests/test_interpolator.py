@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from locwarpd.interpolator import (
+from lociighostd.interpolator import (
     Tick,
     haversine_m,
     interpolate,

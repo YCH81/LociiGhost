@@ -1,4 +1,4 @@
-"""locwarpd entry point.
+"""lociighostd entry point.
 
 Phase 0 scaffold: opens the Unix socket, registers a `ping` handler,
 and idles waiting for clients. No polling, no background tasks.
@@ -83,7 +83,7 @@ async def _run(socket: str) -> int:
             try:
                 await manager.handle_usbmux_detached(udid)
             except Exception:
-                logging.getLogger("locwarpd").exception("USB detach cleanup failed")
+                logging.getLogger("lociighostd").exception("USB detach cleanup failed")
         params: dict[str, object] = {"status": status}
         if udid is not None:
             params["udid"] = udid
@@ -138,19 +138,19 @@ async def _run(socket: str) -> int:
     try:
         await watcher.stop()
     except Exception:
-        logging.getLogger("locwarpd").exception("watcher.stop on shutdown failed")
+        logging.getLogger("lociighostd").exception("watcher.stop on shutdown failed")
 
     # Tear down all device sessions cleanly so we don't leave the iPhone
     # holding a stale simulation or a half-open RSD tunnel.
     try:
         await manager.disconnect_all()
     except Exception:
-        logging.getLogger("locwarpd").exception("disconnect_all on shutdown failed")
+        logging.getLogger("lociighostd").exception("disconnect_all on shutdown failed")
 
     try:
         await osrm.close()
     except Exception:
-        logging.getLogger("locwarpd").exception("osrm.close on shutdown failed")
+        logging.getLogger("lociighostd").exception("osrm.close on shutdown failed")
 
     for task in pending:
         task.cancel()
@@ -169,7 +169,7 @@ async def _run(socket: str) -> int:
 
 def _setup_logging(verbose: bool) -> None:
     level = logging.DEBUG if verbose else logging.INFO
-    log_file = logs_dir() / "locwarpd.log"
+    log_file = logs_dir() / "lociighostd.log"
     handlers: list[logging.Handler] = [
         logging.StreamHandler(sys.stderr),
         logging.FileHandler(str(log_file), encoding="utf-8"),
@@ -182,15 +182,15 @@ def _setup_logging(verbose: bool) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="locwarpd")
+    parser = argparse.ArgumentParser(prog="lociighostd")
     parser.add_argument("--socket", default=socket_path(), help="Unix socket path")
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("--version", action="version", version=__version__)
     args = parser.parse_args(argv)
 
     _setup_logging(args.verbose)
-    log = logging.getLogger("locwarpd")
-    log.info("locwarpd %s starting on %s", __version__, args.socket)
+    log = logging.getLogger("lociighostd")
+    log.info("lociighostd %s starting on %s", __version__, args.socket)
 
     try:
         return asyncio.run(_run(args.socket))

@@ -29,7 +29,7 @@ def stub_wifi_discovery(monkeypatch):
     stub.paired_udids = []
 
     monkeypatch.setattr(
-        "locwarpd.device_manager.WiFiDiscovery",
+        "lociighostd.device_manager.WiFiDiscovery",
         lambda *args, **kwargs: stub,
     )
     yield stub

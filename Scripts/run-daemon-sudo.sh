@@ -16,7 +16,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$(pwd)
 VENV_PY="$ROOT/Daemon/.venv/bin/python"
-SOCKET="$HOME/Library/Application Support/LocWarp.Mac/locwarp.sock"
+SOCKET="$HOME/Library/Application Support/LociiGhost/lociighost.sock"
 
 if [[ ! -x "$VENV_PY" ]]; then
     echo "venv missing — run Scripts/build-daemon.sh first" >&2
@@ -26,11 +26,11 @@ fi
 echo "==> requesting sudo (cached for the rest of this session)"
 sudo -v
 
-echo "==> stopping any locwarpd that's already holding the socket"
+echo "==> stopping any lociighostd that's already holding the socket"
 # Unprivileged ones we own.
-pkill -TERM -u "$(id -u)" -f "python -m locwarpd" 2>/dev/null || true
+pkill -TERM -u "$(id -u)" -f "python -m lociighostd" 2>/dev/null || true
 # Stale sudo daemon from a previous run.
-sudo pkill -TERM -f "python -m locwarpd" 2>/dev/null || true
+sudo pkill -TERM -f "python -m lociighostd" 2>/dev/null || true
 # Also clean a dangling socket file so the new daemon binds cleanly.
 rm -f "$SOCKET"
 
@@ -38,7 +38,7 @@ rm -f "$SOCKET"
 # we bind a new one on the same path.
 sleep 0.3
 
-LOG="$HOME/Library/Logs/LocWarp.Mac/locwarpd-sudo.log"
+LOG="$HOME/Library/Logs/LociiGhost/lociighostd-sudo.log"
 mkdir -p "$(dirname "$LOG")"
 
 echo "==> launching daemon as root in the background"
@@ -51,7 +51,7 @@ echo "    log:    $LOG"
 nohup sudo -E -H \
     PYTHONPATH="$ROOT/Daemon" \
     HOME="$HOME" \
-    "$VENV_PY" -m locwarpd -v \
+    "$VENV_PY" -m lociighostd -v \
     >"$LOG" 2>&1 &
 
 # Wait briefly for the socket to appear so we can confirm a clean start.
@@ -65,7 +65,7 @@ done
 if [[ -S "$SOCKET" ]]; then
     echo
     echo "    daemon is running in the background. You can close this terminal."
-    echo "    To stop the daemon manually: sudo pkill -f 'python -m locwarpd'"
+    echo "    To stop the daemon manually: sudo pkill -f 'python -m lociighostd'"
     echo "    To follow the log:           tail -f \"$LOG\""
 else
     echo

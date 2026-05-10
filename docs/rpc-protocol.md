@@ -1,10 +1,10 @@
-# LocWarp.Mac RPC Protocol
+# LociiGhost RPC Protocol
 
-Wire format between the SwiftUI app and `locwarpd`.
+Wire format between the SwiftUI app and `lociighostd`.
 
 ## Transport
 
-- **Unix domain socket** at `~/Library/Application Support/LocWarp.Mac/locwarp.sock`
+- **Unix domain socket** at `~/Library/Application Support/LociiGhost/lociighost.sock`
 - Permissions `0600` (owner-only)
 - Both sides speak **line-delimited JSON** — exactly one JSON object per line, terminated by `\n`
 - No length prefix, no framing other than newlines

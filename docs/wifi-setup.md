@@ -1,6 +1,6 @@
 # WiFi tunnel setup
 
-LocWarp talks to paired iPhones over WiFi using the same path Xcode
+LociiGhost talks to paired iPhones over WiFi using the same path Xcode
 does — Bonjour mDNS discovery → RemotePairing tunnel → RSD. There is
 no "Sync this iPhone over Wi-Fi" toggle to flip; iOS 17+ advertises the
 `_remotepairing._tcp` service automatically once the iPhone is paired
@@ -11,15 +11,15 @@ and Developer Mode is on.
 1. Plug the iPhone into the Mac with a USB cable.
 2. Tap **Trust this Computer** when prompted (iOS asks for the device
    passcode).
-3. Connect the device once in LocWarp — that confirms the pairing
+3. Connect the device once in LociiGhost — that confirms the pairing
    record was written to `~/.pymobiledevice3`.
 4. Make sure Developer Mode is on (Settings → Privacy & Security →
-   Developer Mode). LocWarp's sidebar can flip the toggle for you with
+   Developer Mode). LociiGhost's sidebar can flip the toggle for you with
    the **Enable Developer Mode...** button.
 
 ## Day-to-day flow
 
-1. Open LocWarp. The daemon does a 2-second Bonjour browse on the
+1. Open LociiGhost. The daemon does a 2-second Bonjour browse on the
    first device list refresh.
 2. Each iPhone appears as one row in the sidebar with capsule badges:
    - `USB` — currently plugged in over USB.
@@ -56,7 +56,7 @@ onto the network.
 - **iOS 17+ still needs admin.** The WiFi tunnel uses the same utun
   interface the USB tunnel does, so the daemon still has to run as
   root. The app's Authenticate banner handles this for you.
-- **Switching transport.** LocWarp doesn't migrate an in-flight
+- **Switching transport.** LociiGhost doesn't migrate an in-flight
   session from USB to WiFi (or vice versa). To switch, Disconnect the
   device, then Connect again with the transport you want.
 

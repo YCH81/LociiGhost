@@ -31,7 +31,7 @@ struct DeveloperModeSheet: View {
                 }
             }
 
-            Text("iOS 17+ requires Developer Mode for any tool that injects a simulated GPS coordinate over the RSD tunnel. The toggle is hidden by default; LocWarp can ask iOS to surface it for you.")
+            Text("iOS 17+ requires Developer Mode for any tool that injects a simulated GPS coordinate over the RSD tunnel. The toggle is hidden by default; LociiGhost can ask iOS to surface it for you.")
                 .font(.callout)
 
             if !nextSteps.isEmpty {

@@ -1,8 +1,8 @@
 import Foundation
-import LocWarpCore
+import LociiGhostCore
 
 @main
-struct LocWarpCtl {
+struct LociiGhostCtl {
     static func main() async {
         let args = CommandLine.arguments
         guard args.count >= 2 else {
@@ -10,7 +10,7 @@ struct LocWarpCtl {
             exit(2)
         }
 
-        var socket = LocWarpPaths.socketPath
+        var socket = LociiGhostPaths.socketPath
         var positional: [String] = []
         var i = 1
         while i < args.count {
@@ -72,7 +72,7 @@ struct LocWarpCtl {
 
     static func printUsage() {
         let usage = """
-        usage: locwarpctl [--socket PATH] <command>
+        usage: lociighostctl [--socket PATH] <command>
           commands:
             ping              -- daemon liveness check
             info              -- daemon.info

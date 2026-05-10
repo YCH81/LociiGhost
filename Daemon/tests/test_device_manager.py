@@ -6,10 +6,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from locwarpd.device_manager import DeviceManager
-from locwarpd.errors import DEVICE_NOT_CONNECTED, DEVICE_NOT_FOUND, UNSUPPORTED_IOS
-from locwarpd.models import parse_ios_version
-from locwarpd.rpc import RpcError
+from lociighostd.device_manager import DeviceManager
+from lociighostd.errors import DEVICE_NOT_CONNECTED, DEVICE_NOT_FOUND, UNSUPPORTED_IOS
+from lociighostd.models import parse_ios_version
+from lociighostd.rpc import RpcError
 
 pytestmark = pytest.mark.asyncio(loop_scope="function")
 
@@ -47,7 +47,7 @@ def test_parse_ios_version_garbage():
 
 @pytest.mark.asyncio
 async def test_list_devices_empty():
-    with patch("locwarpd.device_manager.list_devices", AsyncMock(return_value=[])):
+    with patch("lociighostd.device_manager.list_devices", AsyncMock(return_value=[])):
         dm = DeviceManager()
         devices = await dm.list_devices()
         assert devices == []
@@ -56,8 +56,8 @@ async def test_list_devices_empty():
 @pytest.mark.asyncio
 async def test_list_devices_one_iphone():
     raw = [_raw_device("ABC", "USB")]
-    with patch("locwarpd.device_manager.list_devices", AsyncMock(return_value=raw)), \
-         patch("locwarpd.device_manager.create_using_usbmux", AsyncMock(return_value=_lockdown("My iPhone", "17.4.1"))):
+    with patch("lociighostd.device_manager.list_devices", AsyncMock(return_value=raw)), \
+         patch("lociighostd.device_manager.create_using_usbmux", AsyncMock(return_value=_lockdown("My iPhone", "17.4.1"))):
         dm = DeviceManager()
         devices = await dm.list_devices()
 
@@ -79,8 +79,8 @@ async def test_list_devices_dedupes_usb_over_network():
         _raw_device("ABC", "Network"),
         _raw_device("ABC", "USB"),
     ]
-    with patch("locwarpd.device_manager.list_devices", AsyncMock(return_value=raw)), \
-         patch("locwarpd.device_manager.create_using_usbmux", AsyncMock(return_value=_lockdown())):
+    with patch("lociighostd.device_manager.list_devices", AsyncMock(return_value=raw)), \
+         patch("lociighostd.device_manager.create_using_usbmux", AsyncMock(return_value=_lockdown())):
         dm = DeviceManager()
         devices = await dm.list_devices()
         assert len(devices) == 1
@@ -93,8 +93,8 @@ async def test_list_devices_dedupes_usb_over_network():
 @pytest.mark.asyncio
 async def test_list_devices_wifi_only_marks_only_network():
     raw = [_raw_device("ABC", "Network")]
-    with patch("locwarpd.device_manager.list_devices", AsyncMock(return_value=raw)), \
-         patch("locwarpd.device_manager.create_using_usbmux", AsyncMock(return_value=_lockdown())):
+    with patch("lociighostd.device_manager.list_devices", AsyncMock(return_value=raw)), \
+         patch("lociighostd.device_manager.create_using_usbmux", AsyncMock(return_value=_lockdown())):
         dm = DeviceManager()
         devices = await dm.list_devices()
         assert len(devices) == 1
@@ -112,9 +112,9 @@ async def test_connect_prefer_wifi_picks_network_when_available():
         captured.append(connection_type)
         return _lockdown(version="17.4")
 
-    with patch("locwarpd.device_manager.list_devices", AsyncMock(return_value=raw)), \
-         patch("locwarpd.device_manager.create_using_usbmux", side_effect=capturing_lockdown), \
-         patch("locwarpd.device_manager.CoreDeviceTunnelProxy"):
+    with patch("lociighostd.device_manager.list_devices", AsyncMock(return_value=raw)), \
+         patch("lociighostd.device_manager.create_using_usbmux", side_effect=capturing_lockdown), \
+         patch("lociighostd.device_manager.CoreDeviceTunnelProxy"):
         dm = DeviceManager()
         # Force WiFi: Network transport must be requested.
         try:
@@ -136,8 +136,8 @@ async def test_list_devices_skips_failed_lockdown():
             raise RuntimeError("permission denied")
         return _lockdown()
 
-    with patch("locwarpd.device_manager.list_devices", AsyncMock(return_value=raw)), \
-         patch("locwarpd.device_manager.create_using_usbmux", side_effect=fake_lockdown):
+    with patch("lociighostd.device_manager.list_devices", AsyncMock(return_value=raw)), \
+         patch("lociighostd.device_manager.create_using_usbmux", side_effect=fake_lockdown):
         dm = DeviceManager()
         devices = await dm.list_devices()
         assert [d.udid for d in devices] == ["good"]
@@ -149,8 +149,8 @@ async def test_list_devices_skips_failed_lockdown():
 
 @pytest.mark.asyncio
 async def test_connect_unsupported_ios_raises():
-    with patch("locwarpd.device_manager.list_devices", AsyncMock(return_value=[_raw_device("X")])), \
-         patch("locwarpd.device_manager.create_using_usbmux", AsyncMock(return_value=_lockdown(version="15.0"))):
+    with patch("lociighostd.device_manager.list_devices", AsyncMock(return_value=[_raw_device("X")])), \
+         patch("lociighostd.device_manager.create_using_usbmux", AsyncMock(return_value=_lockdown(version="15.0"))):
         dm = DeviceManager()
         with pytest.raises(RpcError) as ei:
             await dm.connect("X")
@@ -162,9 +162,9 @@ async def test_connect_legacy_ios16(monkeypatch):
     """iOS 16.x should NOT try to set up an RSD tunnel."""
     raw = [_raw_device("X")]
     proxy_mock = MagicMock()
-    with patch("locwarpd.device_manager.list_devices", AsyncMock(return_value=raw)), \
-         patch("locwarpd.device_manager.create_using_usbmux", AsyncMock(return_value=_lockdown(version="16.5"))), \
-         patch("locwarpd.device_manager.CoreDeviceTunnelProxy", proxy_mock):
+    with patch("lociighostd.device_manager.list_devices", AsyncMock(return_value=raw)), \
+         patch("lociighostd.device_manager.create_using_usbmux", AsyncMock(return_value=_lockdown(version="16.5"))), \
+         patch("lociighostd.device_manager.CoreDeviceTunnelProxy", proxy_mock):
         dm = DeviceManager()
         info = await dm.connect("X")
         assert info.connected
@@ -176,8 +176,8 @@ async def test_connect_legacy_ios16(monkeypatch):
 @pytest.mark.asyncio
 async def test_connect_idempotent():
     raw = [_raw_device("X")]
-    with patch("locwarpd.device_manager.list_devices", AsyncMock(return_value=raw)), \
-         patch("locwarpd.device_manager.create_using_usbmux", AsyncMock(return_value=_lockdown(version="16.5"))):
+    with patch("lociighostd.device_manager.list_devices", AsyncMock(return_value=raw)), \
+         patch("lociighostd.device_manager.create_using_usbmux", AsyncMock(return_value=_lockdown(version="16.5"))):
         dm = DeviceManager()
         first = await dm.connect("X")
         second = await dm.connect("X")
@@ -187,8 +187,8 @@ async def test_connect_idempotent():
 
 @pytest.mark.asyncio
 async def test_connect_lockdown_failure_maps_to_device_not_found():
-    with patch("locwarpd.device_manager.list_devices", AsyncMock(return_value=[])), \
-         patch("locwarpd.device_manager.create_using_usbmux", AsyncMock(side_effect=RuntimeError("nope"))):
+    with patch("lociighostd.device_manager.list_devices", AsyncMock(return_value=[])), \
+         patch("lociighostd.device_manager.create_using_usbmux", AsyncMock(side_effect=RuntimeError("nope"))):
         dm = DeviceManager()
         with pytest.raises(RpcError) as ei:
             await dm.connect("UNKNOWN")
@@ -220,8 +220,8 @@ async def test_disconnect_unknown_returns_false():
 @pytest.mark.asyncio
 async def test_disconnect_legacy_session():
     raw = [_raw_device("X")]
-    with patch("locwarpd.device_manager.list_devices", AsyncMock(return_value=raw)), \
-         patch("locwarpd.device_manager.create_using_usbmux", AsyncMock(return_value=_lockdown(version="16.5"))):
+    with patch("lociighostd.device_manager.list_devices", AsyncMock(return_value=raw)), \
+         patch("lociighostd.device_manager.create_using_usbmux", AsyncMock(return_value=_lockdown(version="16.5"))):
         dm = DeviceManager()
         await dm.connect("X")
         assert await dm.disconnect("X") is True

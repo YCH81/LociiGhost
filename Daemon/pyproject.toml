@@ -1,7 +1,7 @@
 [project]
-name = "locwarpd"
-version = "0.1.0"
-description = "LocWarp.Mac iOS location simulation daemon"
+name = "lociighostd"
+version = "1.0.0"
+description = "LociiGhost iOS location simulation daemon"
 requires-python = ">=3.13"
 dependencies = [
     "pymobiledevice3>=9.9.0",
@@ -17,7 +17,7 @@ dev = [
 ]
 
 [project.scripts]
-locwarpd = "locwarpd.__main__:main"
+lociighostd = "lociighostd.__main__:main"
 
 [build-system]
 requires = ["setuptools>=70"]
@@ -25,4 +25,4 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["locwarpd*"]
+include = ["lociighostd*"]

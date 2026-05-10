@@ -115,7 +115,7 @@ class RpcServer:
             if st is not None and stat.S_ISSOCK(st.st_mode):
                 if _is_socket_alive(self.socket_path):
                     raise RuntimeError(
-                        f"Another locwarpd is already listening on {self.socket_path}; "
+                        f"Another lociighostd is already listening on {self.socket_path}; "
                         f"refusing to clobber its socket."
                     )
             try:

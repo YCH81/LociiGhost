@@ -124,7 +124,7 @@ struct BottomBar: View {
             } label: {
                 Label("Quit", systemImage: "power")
             }
-            .help("Quit LocWarp. The privileged daemon stays running so the next launch doesn't need the password.")
+            .help("Quit LociiGhost. The privileged daemon stays running so the next launch doesn't need the password.")
             .keyboardShortcut("q", modifiers: .command)
         }
         .controlSize(.small)

@@ -66,7 +66,7 @@ class DvtLocationService(LocationService):
     async def _reconnect(self) -> None:
         """Tear down and rebuild the DVT provider once on a transient drop.
 
-        The original LocWarp goes through several retries here; we keep it
+        The original LociiGhost goes through several retries here; we keep it
         deliberately short. A single retry covers the common screen-lock
         blip; if it fails twice the device is almost certainly gone and
         bubbling up is more useful than blocking on backoffs.

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from locwarpd.rpc import RpcError, RpcServer
+from lociighostd.rpc import RpcError, RpcServer
 
 pytestmark = pytest.mark.asyncio(loop_scope="function")
 
