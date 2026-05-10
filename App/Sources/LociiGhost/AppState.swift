@@ -816,7 +816,7 @@ final class AppState {
     /// Bumped every time the daemon source breaks ABI or behaviour in
     /// a way that requires an in-place restart. Must match the
     /// `__version__` in `Daemon/lociighostd/__init__.py`.
-    static let expectedDaemonVersion = "1.0.0"
+    static let expectedDaemonVersion = "1.0.1"
 
     /// Pick the right starting coordinate for a new navigation. Order:
     /// 1. Currently simulated location (chain another route on top).
@@ -1179,11 +1179,21 @@ struct DeviceVM: Codable, Identifiable, Hashable, Sendable {
 
     /// Short label for the device's dev-mode state. Tri-state because an
     /// unpaired/untrusted device can return nil even when dev mode is on.
+    /// Uses `String(localized:bundle:)` so the label tracks the user's
+    /// language picker — the bundle reference is necessary because
+    /// Bundle.module isn't visible from extensions in the LociiGhost
+    /// executable target without going through .module explicitly.
     var developerModeLabel: String {
         switch developer_mode {
-        case .some(true):  return "Dev Mode: ON"
-        case .some(false): return "Dev Mode: OFF"
-        case .none:        return "Dev Mode: unknown"
+        case .some(true):
+            return String(localized: "Dev Mode: ON", bundle: .module,
+                          comment: "Device chip label — Developer Mode is enabled")
+        case .some(false):
+            return String(localized: "Dev Mode: OFF", bundle: .module,
+                          comment: "Device chip label — Developer Mode is disabled")
+        case .none:
+            return String(localized: "Dev Mode: unknown", bundle: .module,
+                          comment: "Device chip label — couldn't query Developer Mode state")
         }
     }
 }

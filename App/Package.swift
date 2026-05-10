@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "LociiGhost",
+    defaultLocalization: "en",
     platforms: [
         .macOS(.v14)
     ],

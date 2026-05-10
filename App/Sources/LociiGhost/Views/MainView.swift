@@ -298,7 +298,8 @@ private struct WiFiCandidateRow: View {
                     Text(matchedSession?.name ?? candidate.name)
                         .font(.callout)
                     if matchedSession != nil {
-                        Text("已連線")
+                        Text("Connected",
+                             comment: "Capsule badge on a WiFi candidate row that's the active session")
                             .font(.caption2.weight(.bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 6)
@@ -664,11 +665,12 @@ private struct DeviceRow: View {
                             // around (we still have a pair record on
                             // disk, so it's NOT really gone — just not
                             // talking to us right now). Without an
-                            // explicit "未有任何連線" tag the entry
-                            // looks identical to a healthy disconnected
-                            // device and the user can't tell why
-                            // Connect immediately fails.
-                            Text("未有任何連線")
+                            // explicit "No active connection" tag the
+                            // entry looks identical to a healthy
+                            // disconnected device and the user can't
+                            // tell why Connect immediately fails.
+                            Text("No active connection",
+                                 comment: "Capsule badge on a device row whose iPhone is offline")
                                 .font(.caption2.weight(.medium))
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 6)
