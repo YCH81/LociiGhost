@@ -107,3 +107,19 @@
 "single trip" = "單次";
 "Straight line — ON" = "直線模式 — 開";
 "Straight line (skip roads)" = "直線模式 (不沿街道)";
+
+/* PhoneControlSheet (Phase 5.2 — Mobile-Web Phone Control) */
+"Phone Control…" = "手機操控…";
+"Drive LociiGhost from your phone over WiFi." = "用手機從 WiFi 操作 LociiGhost。";
+"Phone Control" = "手機操控";
+"Type the URL into your phone's browser, then enter the PIN." = "把網址打到手機瀏覽器,輸入 PIN 即可開始操作。";
+"Loading…" = "載入中…";
+"Phone control HTTP server isn't reachable." = "無法連到手機操控的 HTTP server。";
+"Make sure the daemon is running (Authenticate above if the banner is showing) and try again." = "確認 daemon 在執行(若有橘色 banner 請先按授權),然後重試。";
+"Retry" = "重試";
+"Regenerate PIN" = "重新產生 PIN";
+"Generate a fresh PIN + token. Any phone tab still using the old PIN gets logged out." = "產生新的 PIN 跟 token。之前用舊 PIN 配對過的手機會被登出。";
+"URL" = "網址";
+"PIN" = "PIN";
+"Copy" = "複製";
+"Phone must be on the same Wi-Fi as this Mac. The PIN regenerates each time the daemon restarts; tap Regenerate below to invalidate any phone that's currently paired." = "手機必須跟這台 Mac 在同一個 Wi-Fi。每次 daemon 重啟 PIN 都會重新產生; 按下方「重新產生」可以讓現在配對中的手機立刻失效。";

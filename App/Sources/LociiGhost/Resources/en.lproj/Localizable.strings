@@ -108,3 +108,19 @@
 "single trip" = "single trip";
 "Straight line — ON" = "Straight line — ON";
 "Straight line (skip roads)" = "Straight line (skip roads)";
+
+/* PhoneControlSheet (Phase 5.2 — Mobile-Web Phone Control) */
+"Phone Control…" = "Phone Control…";
+"Drive LociiGhost from your phone over WiFi." = "Drive LociiGhost from your phone over WiFi.";
+"Phone Control" = "Phone Control";
+"Type the URL into your phone's browser, then enter the PIN." = "Type the URL into your phone's browser, then enter the PIN.";
+"Loading…" = "Loading…";
+"Phone control HTTP server isn't reachable." = "Phone control HTTP server isn't reachable.";
+"Make sure the daemon is running (Authenticate above if the banner is showing) and try again." = "Make sure the daemon is running (Authenticate above if the banner is showing) and try again.";
+"Retry" = "Retry";
+"Regenerate PIN" = "Regenerate PIN";
+"Generate a fresh PIN + token. Any phone tab still using the old PIN gets logged out." = "Generate a fresh PIN + token. Any phone tab still using the old PIN gets logged out.";
+"URL" = "URL";
+"PIN" = "PIN";
+"Copy" = "Copy";
+"Phone must be on the same Wi-Fi as this Mac. The PIN regenerates each time the daemon restarts; tap Regenerate below to invalidate any phone that's currently paired." = "Phone must be on the same Wi-Fi as this Mac. The PIN regenerates each time the daemon restarts; tap Regenerate below to invalidate any phone that's currently paired.";

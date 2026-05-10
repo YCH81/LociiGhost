@@ -18,6 +18,7 @@ import asyncio
 import inspect
 import logging
 from abc import ABC, abstractmethod
+from typing import Optional
 
 from pymobiledevice3.exceptions import ConnectionTerminatedError
 from pymobiledevice3.services.dvt.instruments.dvt_provider import DvtProvider
@@ -39,6 +40,14 @@ _RECOVERABLE = (
 
 
 class LocationService(ABC):
+    # Last (lat, lng) successfully pushed to the iPhone. Used by
+    # phone-side `/api/phone/navigate` (and any future caller that
+    # needs an "origin" for routing) so we don't have to round-trip
+    # through the iPhone to ask "where did we last put you?". Set by
+    # subclasses inside their `set()` implementation; cleared on
+    # `clear()`. Subclass `__init__` should default this to None.
+    last_lat_lng: Optional[tuple[float, float]] = None
+
     @abstractmethod
     async def set(self, lat: float, lng: float) -> None: ...
 
@@ -54,6 +63,7 @@ class DvtLocationService(LocationService):
         self._rsd = rsd_lockdown
         self._sim: LocationSimulation | None = None
         self._reconnect_lock = asyncio.Lock()
+        self.last_lat_lng = None
 
     async def _instrument(self) -> LocationSimulation:
         if self._sim is None:
@@ -107,6 +117,10 @@ class DvtLocationService(LocationService):
                     "the WiFi tunnel alone can't reach the simulator on "
                     "this iOS version. Reconnect the cable and try again."
                 ) from fatal
+        # Track last successful position so callers (notably the
+        # phone-side `/api/phone/navigate` endpoint, which has no
+        # local map state to consult) can use it as the route origin.
+        self.last_lat_lng = (lat, lng)
         log.info("DVT location set to (%.6f, %.6f)", lat, lng)
 
     async def clear(self) -> None:
@@ -127,6 +141,7 @@ class DvtLocationService(LocationService):
                     "DVT clear couldn't reach the iPhone (transport gone); "
                     "skipping — the next Connect will reset the simulation."
                 )
+        self.last_lat_lng = None
         log.info("DVT location cleared")
 
 
@@ -136,6 +151,7 @@ class LegacyLocationService(LocationService):
     def __init__(self, lockdown) -> None:
         self._lockdown = lockdown
         self._svc: DtSimulateLocation | None = None
+        self.last_lat_lng = None
 
     def _service(self) -> DtSimulateLocation:
         if self._svc is None:
@@ -153,6 +169,7 @@ class LegacyLocationService(LocationService):
         except _RECOVERABLE:
             self._svc = None
             await self._maybe_await(self._service().set(lat, lng))
+        self.last_lat_lng = (lat, lng)
         log.info("Legacy location set to (%.6f, %.6f)", lat, lng)
 
     async def clear(self) -> None:
@@ -161,4 +178,5 @@ class LegacyLocationService(LocationService):
         except _RECOVERABLE:
             self._svc = None
             await self._maybe_await(self._service().clear())
+        self.last_lat_lng = None
         log.info("Legacy location cleared")

@@ -1,0 +1,1398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>LociiGhost — Phone Control</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin="">
+<style>
+  /* ── Reset ──────────────────────────────────────────────── */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", sans-serif;
+    background: #000;
+    color: #fff;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  button { font: inherit; cursor: pointer; }
+
+  /* ── PIN screen ─────────────────────────────────────────── */
+  #pin-screen {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: env(safe-area-inset-top, 20px) 20px env(safe-area-inset-bottom, 20px) 20px;
+    background: #1a1a1a;
+    z-index: 100;
+  }
+  #pin-screen h1 {
+    font-size: 28px; font-weight: 700;
+    margin-bottom: 8px;
+  }
+  #pin-screen .subtitle {
+    color: #aaa; font-size: 14px;
+    margin-bottom: 36px;
+    text-align: center;
+  }
+  #pin-input {
+    width: 220px;
+    background: #2a2a2a; color: #fff;
+    border: 2px solid #444; border-radius: 14px;
+    font-size: 32px; letter-spacing: 12px;
+    text-align: center;
+    padding: 16px 14px;
+    outline: none;
+    margin-bottom: 14px;
+  }
+  #pin-input:focus { border-color: #0a84ff; }
+  #pin-submit {
+    background: #0a84ff; color: #fff;
+    border: none; border-radius: 12px;
+    padding: 14px 38px;
+    font-size: 17px; font-weight: 600;
+    width: 220px;
+  }
+  #pin-submit:disabled { background: #333; color: #888; }
+  #pin-error {
+    color: #ff6b6b; font-size: 14px;
+    margin-top: 14px;
+    min-height: 20px;
+  }
+
+  /* ── Map screen ─────────────────────────────────────────── */
+  #app-screen { position: fixed; inset: 0; display: none; }
+  #app-screen.active { display: block; }
+
+  #map { position: absolute; inset: 0; }
+
+  /* status bar at top */
+  #status {
+    position: absolute; top: 0; left: 0; right: 0;
+    padding: max(env(safe-area-inset-top), 12px) 16px 10px 16px;
+    background: linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0));
+    color: #fff;
+    z-index: 1000;
+    pointer-events: none;
+    font-size: 13px;
+  }
+  #status .device-name { font-weight: 600; font-size: 15px; }
+  #status .device-meta { color: #ccc; margin-top: 2px; font-size: 11px; }
+  #status .pill {
+    display: inline-block; padding: 2px 7px; border-radius: 8px;
+    font-size: 10px; font-weight: 600;
+    background: rgba(255,255,255,0.18);
+    margin-left: 6px;
+  }
+  #status .pill.connected { background: rgba(48,209,88,0.85); }
+
+  /* fab + action sheet */
+  #fab {
+    position: absolute;
+    right: 18px; bottom: max(env(safe-area-inset-bottom), 24px);
+    width: 60px; height: 60px;
+    border-radius: 30px;
+    background: #0a84ff; color: #fff;
+    border: none;
+    font-size: 30px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    z-index: 1000;
+  }
+  #actions {
+    position: absolute; left: 0; right: 0;
+    bottom: max(env(safe-area-inset-bottom), 16px);
+    padding: 0 16px;
+    display: none; grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    z-index: 1000;
+  }
+  #actions.open { display: grid; }
+  .btn {
+    background: rgba(28,28,30,0.92);
+    color: #fff;
+    border-radius: 14px;
+    padding: 14px 8px;
+    text-align: center;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+  .btn .ico { font-size: 22px; display: block; margin-bottom: 4px; }
+  .btn .lbl { font-size: 12px; }
+  .btn[data-kind="restore"] { background: rgba(255,69,58,0.85); }
+  .btn[data-kind="stop"]    { background: rgba(255,159,10,0.85); }
+
+  /* sheet (search / coord input) */
+  .sheet-backdrop {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 2000;
+    display: none;
+    align-items: flex-end;
+  }
+  .sheet-backdrop.open { display: flex; }
+  .sheet {
+    background: #1a1a1a;
+    color: #fff;
+    width: 100%;
+    border-radius: 18px 18px 0 0;
+    padding: 18px 16px max(env(safe-area-inset-bottom), 16px) 16px;
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+  .sheet h2 {
+    font-size: 16px; font-weight: 600;
+    margin-bottom: 14px;
+  }
+  .sheet input[type="text"],
+  .sheet input[type="number"],
+  .sheet input[type="search"] {
+    width: 100%;
+    background: #2a2a2a; color: #fff;
+    border: 1px solid #444; border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 16px;
+    outline: none;
+    margin-bottom: 10px;
+  }
+  .sheet input:focus { border-color: #0a84ff; }
+  .sheet .row { display: flex; gap: 8px; margin-bottom: 10px; }
+  .sheet .row input { margin-bottom: 0; }
+  .sheet .btn-row {
+    display: flex; gap: 10px; justify-content: flex-end;
+    margin-top: 8px;
+  }
+  .sheet .btn-row button {
+    border: none; border-radius: 10px;
+    padding: 12px 20px; font-size: 15px; font-weight: 600;
+  }
+  .sheet .btn-row .ghost   { background: #2a2a2a; color: #fff; }
+  .sheet .btn-row .primary { background: #0a84ff; color: #fff; }
+
+  /* coord input hint */
+  .coord-hint, .hint {
+    color: #aaa; font-size: 12px;
+    margin: -2px 0 12px 0; line-height: 1.5;
+  }
+  .coord-hint code {
+    background: #2a2a2a; color: #fff;
+    padding: 1px 5px; border-radius: 4px;
+    font-size: 11px;
+  }
+
+  /* joystick pad */
+  #joystick-pad {
+    width: 200px; height: 200px;
+    border-radius: 50%;
+    background: radial-gradient(circle at center, #2a2a2a 0%, #1a1a1a 80%);
+    border: 2px solid #444;
+    margin: 6px auto 14px auto;
+    position: relative;
+    touch-action: none;
+  }
+  #joystick-knob {
+    position: absolute;
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    background: #0a84ff;
+    border: 3px solid #fff;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    transition: background 0.1s;
+  }
+  #joystick-knob.active { background: #ff453a; }
+  .joystick-meta {
+    text-align: center;
+    font-size: 13px; color: #aaa;
+    margin: -4px 0 12px 0;
+    font-family: -apple-system-monospaced;
+  }
+
+  /* random walk */
+  .random-center {
+    background: #2a2a2a;
+    color: #ccc; font-size: 13px;
+    padding: 10px 12px; border-radius: 8px;
+    margin-bottom: 12px;
+    font-family: monospace;
+  }
+  .random-center.empty { color: #ff6b6b; }
+  .random-label {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 13px; color: #aaa;
+    margin-bottom: 6px;
+  }
+  .random-value { color: #fff; font-weight: 600; font-size: 15px; }
+  #random-radius {
+    width: 100%; margin-bottom: 8px; accent-color: #0a84ff;
+  }
+
+  .geocode-results { list-style: none; max-height: 50vh; overflow-y: auto; }
+  .geocode-results li {
+    padding: 14px 12px;
+    border-bottom: 1px solid #333;
+    font-size: 14px;
+  }
+  .geocode-results li:active { background: #2a2a2a; }
+  .geocode-results .empty,
+  .geocode-results .loading {
+    color: #888; padding: 14px 4px; font-size: 13px; text-align: center;
+  }
+
+  /* toast */
+  #toast {
+    position: absolute;
+    bottom: max(env(safe-area-inset-bottom), 90px);
+    left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.85);
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: 22px;
+    font-size: 14px;
+    z-index: 3000;
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+    max-width: 80vw;
+    text-align: center;
+  }
+  #toast.show { opacity: 1; }
+
+  /* recenter floating button — Apple-Maps-style "snap to me" */
+  #recenter-btn {
+    position: absolute;
+    left: 14px;
+    bottom: max(env(safe-area-inset-bottom), 24px);
+    width: 50px; height: 50px;
+    border-radius: 25px;
+    background: rgba(28,28,30,0.92);
+    color: #0a84ff;
+    border: none;
+    font-size: 26px;
+    font-weight: 600;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    display: none;
+  }
+  #recenter-btn.show { display: block; }
+  #recenter-btn.following { color: #fff; background: #0a84ff; }
+
+  /* selected pin (destination) */
+  .selected-pin {
+    width: 22px; height: 22px;
+    background: #ff453a;
+    border: 3px solid #fff;
+    border-radius: 50%;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  }
+  /* iPhone's current simulated location dot */
+  .current-pin {
+    width: 16px; height: 16px;
+    background: #0a84ff;
+    border: 3px solid #fff;
+    border-radius: 50%;
+    box-shadow: 0 0 0 6px rgba(10,132,255,0.25),
+                0 2px 8px rgba(0,0,0,0.4);
+  }
+
+  /* Floating overlays — sit ON TOP of the map without blanking it. */
+  .overlay {
+    position: absolute;
+    right: 14px;
+    bottom: max(env(safe-area-inset-bottom), 24px);
+    background: rgba(28,28,30,0.96);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    color: #fff;
+    border-radius: 18px;
+    padding: 12px 14px;
+    z-index: 1500;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    display: none;
+    max-width: calc(100vw - 28px);
+  }
+  .overlay.open { display: block; }
+  .overlay.random { left: 14px; }     /* full-width on small screens */
+  .overlay-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 6px;
+  }
+  .overlay-title {
+    font-size: 13px; font-weight: 600; color: #ccc;
+  }
+  .overlay-close {
+    background: transparent; color: #888; border: none;
+    font-size: 22px; line-height: 1;
+    padding: 0 4px;
+  }
+  .overlay-stop {
+    width: 100%;
+    background: rgba(255,69,58,0.85); color: #fff;
+    border: none; border-radius: 10px;
+    padding: 10px;
+    font-size: 14px; font-weight: 600;
+    margin-top: 8px;
+  }
+  .overlay-primary {
+    width: 100%;
+    background: #0a84ff; color: #fff;
+    border: none; border-radius: 10px;
+    padding: 12px;
+    font-size: 15px; font-weight: 600;
+    margin-top: 4px;
+  }
+  .hint.compact {
+    font-size: 11px; margin: -2px 0 8px 0; line-height: 1.4;
+  }
+
+  /* Travel-mode picker (compact, lives inside Joystick + Random walk overlays) */
+  .mode-picker {
+    display: flex; gap: 6px;
+    margin-bottom: 8px;
+  }
+  .mode-btn {
+    flex: 1;
+    background: #2a2a2a; color: #fff;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    padding: 6px 0;
+    font-size: 18px;
+  }
+  .mode-btn.active {
+    border-color: #0a84ff;
+    background: rgba(10,132,255,0.18);
+  }
+
+  /* Navigate sheet — travel-mode picker grid */
+  .nav-modes {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 8px; margin-bottom: 14px;
+  }
+  .nav-mode {
+    background: #2a2a2a; color: #fff;
+    border: 2px solid transparent;
+    border-radius: 12px;
+    padding: 14px 6px;
+    text-align: center;
+  }
+  .nav-mode.active {
+    border-color: #0a84ff;
+    background: rgba(10,132,255,0.18);
+  }
+  .nav-ico { font-size: 24px; display: block; margin-bottom: 4px; }
+  .nav-lbl { font-size: 13px; }
+</style>
+</head>
+<body>
+
+<!-- PIN entry -->
+<div id="pin-screen">
+  <h1>LociiGhost</h1>
+  <p class="subtitle" id="pin-subtitle">Enter the 6-digit PIN shown on the Mac</p>
+  <input id="pin-input" type="tel" maxlength="6" pattern="\d{6}"
+         autocomplete="off" inputmode="numeric"
+         placeholder="------">
+  <button id="pin-submit" disabled>Connect</button>
+  <p id="pin-error"></p>
+</div>
+
+<!-- Map app -->
+<div id="app-screen">
+  <div id="status">
+    <div class="device-name" id="status-name">—</div>
+    <div class="device-meta" id="status-meta"></div>
+  </div>
+
+  <div id="map"></div>
+
+  <button id="recenter-btn" aria-label="Recenter">⊙</button>
+  <button id="fab" aria-label="Actions">＋</button>
+  <div id="actions">
+    <div class="btn" data-kind="teleport">
+      <span class="ico">📍</span><span class="lbl" data-i18n="teleport">Teleport</span>
+    </div>
+    <div class="btn" data-kind="navigate">
+      <span class="ico">🧭</span><span class="lbl" data-i18n="navigate">Navigate</span>
+    </div>
+    <div class="btn" data-kind="search">
+      <span class="ico">🔍</span><span class="lbl" data-i18n="search">Search</span>
+    </div>
+    <div class="btn" data-kind="coord">
+      <span class="ico">🎯</span><span class="lbl" data-i18n="coord">Coord</span>
+    </div>
+    <div class="btn" data-kind="joystick">
+      <span class="ico">🕹️</span><span class="lbl" data-i18n="joystick">Joystick</span>
+    </div>
+    <div class="btn" data-kind="random">
+      <span class="ico">🌀</span><span class="lbl" data-i18n="random">Random</span>
+    </div>
+    <div class="btn" data-kind="stop">
+      <span class="ico">⏹</span><span class="lbl" data-i18n="stop">Stop</span>
+    </div>
+    <div class="btn" data-kind="restore">
+      <span class="ico">↩︎</span><span class="lbl" data-i18n="restore">Restore</span>
+    </div>
+  </div>
+
+  <div class="sheet-backdrop" id="search-sheet">
+    <div class="sheet" onclick="event.stopPropagation()">
+      <h2 data-i18n="search-title">Search address or place</h2>
+      <input type="search" id="search-input" placeholder="e.g. 台北 101"
+             autocomplete="off">
+      <ul class="geocode-results" id="search-results"></ul>
+      <div class="btn-row">
+        <button class="ghost" id="search-close" data-i18n="close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="sheet-backdrop" id="coord-sheet">
+    <div class="sheet" onclick="event.stopPropagation()">
+      <h2 data-i18n="coord-title">Enter coordinates</h2>
+      <input type="text" id="coord-input"
+             placeholder="25.03361, 121.56444"
+             autocomplete="off"
+             autocapitalize="none" spellcheck="false">
+      <p class="coord-hint" id="coord-hint">
+        <span data-i18n="coord-hint">Paste any "lat, lng" — accepts e.g.</span>
+        <code>25.03361, 121.56444</code>
+        <span data-i18n="coord-or">or</span>
+        <code>25.03361°N 121.56444°E</code>
+        <span data-i18n="coord-eg-101">— Taipei 101</span>
+      </p>
+      <div class="btn-row">
+        <button class="ghost"   id="coord-close" data-i18n="cancel">Cancel</button>
+        <button class="primary" id="coord-go"    data-i18n="fly">Fly there</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Navigate sheet (travel-mode picker) -->
+  <div class="sheet-backdrop" id="nav-sheet">
+    <div class="sheet" onclick="event.stopPropagation()">
+      <h2 data-i18n="nav-title">Navigate to here</h2>
+      <p class="hint" data-i18n="nav-hint">Pick how to travel. The route follows real streets via OpenStreetMap.</p>
+      <div class="nav-modes">
+        <button class="nav-mode" data-profile="walking">
+          <span class="nav-ico">🚶</span>
+          <span class="nav-lbl" data-i18n="walking">Walking</span>
+        </button>
+        <button class="nav-mode" data-profile="cycling">
+          <span class="nav-ico">🚴</span>
+          <span class="nav-lbl" data-i18n="cycling">Cycling</span>
+        </button>
+        <button class="nav-mode active" data-profile="driving">
+          <span class="nav-ico">🚗</span>
+          <span class="nav-lbl" data-i18n="driving">Driving</span>
+        </button>
+      </div>
+      <div class="btn-row">
+        <button class="ghost"   id="nav-close" data-i18n="cancel">Cancel</button>
+        <button class="primary" id="nav-go"    data-i18n="nav-start">Start</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Joystick floating overlay (non-blocking, map stays visible) -->
+  <div id="joystick-overlay" class="overlay">
+    <div class="overlay-header">
+      <span class="overlay-title" data-i18n="joystick-title">Joystick</span>
+      <button class="overlay-close" id="joystick-close" aria-label="Close">×</button>
+    </div>
+    <div class="mode-picker" data-target="joystick">
+      <button class="mode-btn"        data-mode="walking">🚶</button>
+      <button class="mode-btn"        data-mode="cycling">🚴</button>
+      <button class="mode-btn active"  data-mode="driving">🚗</button>
+    </div>
+    <div id="joystick-pad">
+      <div id="joystick-knob"></div>
+    </div>
+    <div class="joystick-meta">
+      <span id="joystick-status" data-i18n="joystick-idle">Idle</span>
+    </div>
+    <button class="overlay-stop" id="joystick-stop" data-i18n="stop">Stop</button>
+  </div>
+
+  <!-- Random walk bottom sheet (non-blocking — map stays visible) -->
+  <div id="random-overlay" class="overlay random">
+    <div class="overlay-header">
+      <span class="overlay-title" data-i18n="random-title">Random walk</span>
+      <button class="overlay-close" id="random-close" aria-label="Close">×</button>
+    </div>
+    <p class="hint compact" data-i18n="random-hint">Tap the map for centre, then pick a radius.</p>
+    <div class="mode-picker" data-target="random">
+      <button class="mode-btn active" data-mode="walking">🚶</button>
+      <button class="mode-btn"        data-mode="cycling">🚴</button>
+      <button class="mode-btn"        data-mode="driving">🚗</button>
+    </div>
+    <div class="random-center" id="random-center"></div>
+    <label class="random-label">
+      <span data-i18n="radius">Radius</span>
+      <span class="random-value" id="random-radius-value">200 m</span>
+    </label>
+    <input type="range" id="random-radius" min="20" max="2000" step="20" value="200">
+    <button class="overlay-primary" id="random-go" data-i18n="random-start">Start</button>
+  </div>
+
+  <div id="toast"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""></script>
+<script>
+(() => {
+  // ── i18n (system-language detection, simple two-locale dict) ────
+  const I18N = {
+    'zh-Hant': {
+      'subtitle': '請輸入 Mac 上顯示的 6 位數 PIN',
+      'connect': '連線',
+      'bad_pin': 'PIN 不正確',
+      'connecting': '連線中...',
+      'teleport': '瞬移',
+      'navigate': '導航',
+      'search': '搜尋',
+      'coord': '座標',
+      'stop': '停止',
+      'restore': '還原',
+      'search-title': '搜尋地點或地址',
+      'coord-title': '輸入座標',
+      'close': '關閉',
+      'cancel': '取消',
+      'fly': '飛過去',
+      'no_device': '請先在 Mac 上連線一台 iPhone',
+      'tap_map': '點地圖選一個位置',
+      'teleport_ok': '已瞬間移動 ✅',
+      'navigate_ok': '導航中...',
+      'restore_ok': '已還原真實 GPS',
+      'stop_ok': '已停止',
+      'searching': '搜尋中...',
+      'no_results': '找不到結果',
+      'invalid_coord': '座標格式不正確',
+      'request_failed': '請求失敗',
+      'coord-hint': '貼上任何「lat, lng」格式都行,例如',
+      'coord-or': '或',
+      'coord-eg-101': '— 台北 101',
+      'joystick': '搖桿',
+      'random': '隨機漫步',
+      'joystick-title': '搖桿',
+      'joystick-hint': '拖動圓點朝該方向走。離中心越遠速度越快(最快約 10 km/h)。',
+      'joystick-idle': '待機',
+      'joystick-active': '前進中',
+      'joystick-error': '請先點地圖選一個起點',
+      'joystick-started': '搖桿啟動',
+      'joystick-stopped': '搖桿停止',
+      'random-title': '隨機漫步',
+      'random-hint': '先在地圖點選一個中心點,然後選半徑。',
+      'radius': '半徑',
+      'random-start': '開始',
+      'random-no-center': '尚未選擇中心點 — 請先點地圖',
+      'random-started': '隨機漫步啟動',
+      'nav-title': '導航前往',
+      'nav-hint': '選交通方式。路線會走實際街道(透過 OpenStreetMap)。',
+      'nav-start': '開始',
+      'walking': '走路',
+      'cycling': '騎腳踏車',
+      'driving': '開車',
+      'navigate_no_origin': '請先 Teleport 到一個位置作為起點',
+    },
+    'en': {
+      'subtitle': 'Enter the 6-digit PIN shown on the Mac',
+      'connect': 'Connect',
+      'bad_pin': 'Wrong PIN',
+      'connecting': 'Connecting...',
+      'teleport': 'Teleport',
+      'navigate': 'Navigate',
+      'search': 'Search',
+      'coord': 'Coord',
+      'stop': 'Stop',
+      'restore': 'Restore',
+      'search-title': 'Search address or place',
+      'coord-title': 'Enter coordinates',
+      'close': 'Close',
+      'cancel': 'Cancel',
+      'fly': 'Fly there',
+      'no_device': 'Connect an iPhone on the Mac first',
+      'tap_map': 'Tap the map to pick a spot',
+      'teleport_ok': 'Teleported ✅',
+      'navigate_ok': 'Navigating...',
+      'restore_ok': 'Restored real GPS',
+      'stop_ok': 'Stopped',
+      'searching': 'Searching...',
+      'no_results': 'No results',
+      'invalid_coord': 'Bad coordinate format',
+      'request_failed': 'Request failed',
+      'coord-hint': 'Paste any "lat, lng" — accepts e.g.',
+      'coord-or': 'or',
+      'coord-eg-101': '— Taipei 101',
+      'joystick': 'Joystick',
+      'random': 'Random',
+      'joystick-title': 'Joystick',
+      'joystick-hint': 'Drag the dot to walk that direction. Distance from center sets speed (max ~10 km/h).',
+      'joystick-idle': 'Idle',
+      'joystick-active': 'Moving',
+      'joystick-error': 'Tap the map to set a starting point first',
+      'joystick-started': 'Joystick started',
+      'joystick-stopped': 'Joystick stopped',
+      'random-title': 'Random walk',
+      'random-hint': 'Tap a spot on the map first to set the centre, then choose a radius.',
+      'radius': 'Radius',
+      'random-start': 'Start',
+      'random-no-center': 'No centre picked — tap the map first',
+      'random-started': 'Random walk started',
+      'nav-title': 'Navigate to here',
+      'nav-hint': 'Pick how to travel. Route follows real streets (via OpenStreetMap).',
+      'nav-start': 'Start',
+      'walking': 'Walking',
+      'cycling': 'Cycling',
+      'driving': 'Driving',
+      'navigate_no_origin': 'Teleport to a starting position first',
+    },
+  };
+  const lang = (navigator.language || 'en').toLowerCase().startsWith('zh') ? 'zh-Hant' : 'en';
+  const t = (k) => (I18N[lang][k] || I18N.en[k] || k);
+  // Apply data-i18n keys.
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    el.textContent = t(el.dataset.i18n);
+  });
+  document.getElementById('pin-subtitle').textContent = t('subtitle');
+  document.getElementById('pin-submit').textContent = t('connect');
+
+  // ── Auth flow ────────────────────────────────────────────────
+  const TOKEN_KEY = 'lociighost-token';
+  let token = localStorage.getItem(TOKEN_KEY) || '';
+
+  const pinInput = document.getElementById('pin-input');
+  const pinSubmit = document.getElementById('pin-submit');
+  const pinError = document.getElementById('pin-error');
+
+  pinInput.addEventListener('input', () => {
+    pinInput.value = pinInput.value.replace(/\D/g, '').slice(0, 6);
+    pinSubmit.disabled = pinInput.value.length !== 6;
+  });
+  pinInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !pinSubmit.disabled) pinSubmit.click();
+  });
+  pinSubmit.addEventListener('click', async () => {
+    pinSubmit.disabled = true;
+    pinError.textContent = '';
+    pinSubmit.textContent = t('connecting');
+    try {
+      const r = await fetch('/api/phone/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: pinInput.value }),
+      });
+      if (!r.ok) {
+        pinError.textContent = t('bad_pin');
+        pinSubmit.disabled = false;
+        pinSubmit.textContent = t('connect');
+        pinInput.value = '';
+        return;
+      }
+      const data = await r.json();
+      token = data.token;
+      localStorage.setItem(TOKEN_KEY, token);
+      enterApp();
+    } catch (e) {
+      pinError.textContent = t('request_failed') + ': ' + e.message;
+      pinSubmit.disabled = false;
+      pinSubmit.textContent = t('connect');
+    }
+  });
+
+  // Auto-skip PIN if existing token still works.
+  async function tryExistingToken() {
+    if (!token) return false;
+    try {
+      const r = await fetch('/api/phone/state', {
+        headers: { 'X-LociiGhost-Token': token },
+      });
+      return r.ok;
+    } catch { return false; }
+  }
+
+  // ── App / map ────────────────────────────────────────────────
+  let map;
+  let selectedMarker;       // user-tapped destination (red pin)
+  let currentMarker;        // iPhone's current simulated position (blue dot)
+  let currentLatLng = null; // {lat,lng} of iPhone or null
+  let pendingLatLng = null;
+  let routePolyline = null; // active navigation route (drawn from /state.route_coords)
+  let walkCircle    = null; // active random-walk bounds (from /state.walk_*)
+  // Follow mode auto-pans the map to keep the iPhone dot centred. Turns
+  // off if the user manually pans / zooms; re-enables via recenterBtn.
+  let followMode = false;
+
+  function enterApp() {
+    document.getElementById('pin-screen').style.display = 'none';
+    document.getElementById('app-screen').classList.add('active');
+    initMap();
+    pollState();
+    setInterval(pollState, 3000);
+  }
+
+  function initMap() {
+    map = L.map('map', {
+      zoomControl: false,
+      attributionControl: false,
+    }).setView([25.0330, 121.5654], 14);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+    }).addTo(map);
+
+    map.on('click', (e) => {
+      pendingLatLng = e.latlng;
+      if (selectedMarker) selectedMarker.setLatLng(e.latlng);
+      else selectedMarker = L.marker(e.latlng, {
+        icon: L.divIcon({ className: '', html: '<div class="selected-pin"></div>',
+                          iconSize: [22, 22], iconAnchor: [11, 11] }),
+      }).addTo(map);
+      // Auto-open the action sheet on tap so the user knows what to do
+      // with their pick.
+      openActions();
+    });
+
+    // Manual pan/zoom turns off follow-mode so the map doesn't fight
+    // the user. Recenter button below re-enables it.
+    map.on('dragstart', () => setFollowMode(false));
+    map.on('zoomstart', (e) => {
+      // Programmatic zooms during follow-mode auto-pan have no
+      // sourceTarget — only treat as user interaction when the gesture
+      // came from a touch / wheel. Leaflet doesn't expose that directly,
+      // but we can check for a small flag we'll set during programmatic
+      // panning. For simplicity, just don't trigger follow-off on zoom.
+    });
+
+    // Recenter button: snap back to iPhone's current position and
+    // re-enable follow-mode so the dot stays centred as it moves.
+    const recenterBtn = document.getElementById('recenter-btn');
+    recenterBtn.addEventListener('click', () => {
+      if (currentLatLng) {
+        followMode = true;
+        recenterBtn.classList.add('following');
+        map.setView([currentLatLng.lat, currentLatLng.lng],
+                    Math.max(map.getZoom(), 16),
+                    { animate: true });
+      }
+    });
+  }
+
+  /** Toggle follow-mode and update the recenter button's visual. */
+  function setFollowMode(on) {
+    followMode = !!on;
+    const btn = document.getElementById('recenter-btn');
+    if (btn) btn.classList.toggle('following', followMode);
+  }
+
+  // ── State polling ─────────────────────────────────────────────
+  async function api(path, opts = {}) {
+    const r = await fetch(path, {
+      ...opts,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-LociiGhost-Token': token,
+        ...(opts.headers || {}),
+      },
+    });
+    if (r.status === 401) {
+      // Token rotated server-side; bounce to PIN screen.
+      localStorage.removeItem(TOKEN_KEY);
+      token = '';
+      location.reload();
+      throw new Error('reauth');
+    }
+    if (!r.ok) {
+      // Pull FastAPI's `detail` if present so callers can show a
+      // human-readable hint (e.g. our "no_origin" navigate guard).
+      let detail = '';
+      try {
+        const body = await r.json();
+        detail = body.detail || '';
+      } catch {}
+      const e = new Error(detail
+        ? `http_${r.status}: ${detail}`
+        : `http_${r.status}`);
+      e.status = r.status;
+      e.detail = detail;
+      throw e;
+    }
+    if (r.status === 204) return null;
+    return r.json();
+  }
+
+  async function pollState() {
+    try {
+      const s = await api('/api/phone/state');
+      renderStatus(s);
+    } catch (e) { /* swallow */ }
+  }
+
+  function renderStatus(s) {
+    const connected = (s.devices || []).find(d => d.connected);
+    const nameEl = document.getElementById('status-name');
+    const metaEl = document.getElementById('status-meta');
+    const recenterBtn = document.getElementById('recenter-btn');
+
+    if (connected) {
+      nameEl.textContent = connected.name;
+      const transport = (connected.transport || '').toUpperCase();
+      const modeBadge = connected.mode && connected.mode !== 'idle'
+        ? ` · <span class="pill">${connected.mode}</span>` : '';
+      metaEl.innerHTML = `iOS ${connected.ios_version} · ${transport}` +
+        '<span class="pill connected">connected</span>' + modeBadge;
+
+      // ── Live iPhone-position dot ─────────────────────────────
+      if (typeof connected.current_lat === 'number'
+          && typeof connected.current_lng === 'number') {
+        const ll = { lat: connected.current_lat, lng: connected.current_lng };
+        currentLatLng = ll;
+        if (currentMarker) currentMarker.setLatLng(ll);
+        else currentMarker = L.marker([ll.lat, ll.lng], {
+          icon: L.divIcon({ className: '', html: '<div class="current-pin"></div>',
+                            iconSize: [22, 22], iconAnchor: [11, 11] }),
+          interactive: false,
+          zIndexOffset: -100,
+        }).addTo(map);
+        recenterBtn.classList.add('show');
+        // Auto-pan if user asked to follow.
+        if (followMode) {
+          map.panTo([ll.lat, ll.lng], { animate: true, duration: 0.5 });
+        }
+      }
+
+      // ── Active navigation route polyline ────────────────────
+      if (Array.isArray(connected.route_coords) && connected.route_coords.length >= 2) {
+        if (routePolyline) {
+          routePolyline.setLatLngs(connected.route_coords);
+        } else {
+          routePolyline = L.polyline(connected.route_coords, {
+            color: '#0a84ff', weight: 5, opacity: 0.75,
+            lineJoin: 'round', lineCap: 'round',
+          }).addTo(map);
+          // First time we see a route, frame it AND turn on follow
+          // so the dot stays centred as it moves along the line.
+          map.fitBounds(routePolyline.getBounds(), { padding: [60, 60], maxZoom: 17 });
+          setFollowMode(true);
+        }
+      } else if (routePolyline) {
+        map.removeLayer(routePolyline);
+        routePolyline = null;
+      }
+
+      // ── Active random-walk circle ───────────────────────────
+      if (typeof connected.walk_center_lat === 'number'
+          && typeof connected.walk_center_lng === 'number'
+          && typeof connected.walk_radius_m === 'number') {
+        const wc = [connected.walk_center_lat, connected.walk_center_lng];
+        const wr = connected.walk_radius_m;
+        if (walkCircle) {
+          walkCircle.setLatLng(wc);
+          walkCircle.setRadius(wr);
+        } else {
+          walkCircle = L.circle(wc, {
+            radius: wr,
+            color: '#34c759', weight: 2,
+            fillColor: '#34c759', fillOpacity: 0.15,
+          }).addTo(map);
+          // Frame the circle on first sight + turn on follow.
+          map.fitBounds(walkCircle.getBounds(), { padding: [40, 40], maxZoom: 17 });
+          setFollowMode(true);
+        }
+      } else if (walkCircle) {
+        map.removeLayer(walkCircle);
+        walkCircle = null;
+      }
+    } else if ((s.devices || []).length > 0) {
+      const d = s.devices[0];
+      nameEl.textContent = d.name;
+      metaEl.textContent = `iOS ${d.ios_version} · ${t('no_device')}`;
+    } else {
+      nameEl.textContent = '—';
+      metaEl.textContent = t('no_device');
+    }
+  }
+
+  // ── FAB + actions ─────────────────────────────────────────────
+  const fab = document.getElementById('fab');
+  const actionsEl = document.getElementById('actions');
+  function openActions() { actionsEl.classList.add('open'); fab.style.display = 'none'; }
+  function closeActions() { actionsEl.classList.remove('open'); fab.style.display = ''; }
+  fab.addEventListener('click', openActions);
+  // Tapping anywhere outside an action button closes the strip too.
+  document.addEventListener('click', (e) => {
+    if (actionsEl.classList.contains('open')
+        && !actionsEl.contains(e.target)
+        && e.target !== fab
+        && !e.target.closest('.sheet-backdrop')) {
+      closeActions();
+    }
+  });
+
+  actionsEl.querySelectorAll('.btn').forEach(b => {
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const kind = b.dataset.kind;
+      handleAction(kind);
+      closeActions();
+    });
+  });
+
+  async function handleAction(kind) {
+    if (kind === 'restore')  return doRestore();
+    if (kind === 'stop')     return doStop();
+    if (kind === 'search')   return openSearch();
+    if (kind === 'coord')    return openCoord();
+    if (kind === 'joystick') return openJoystick();
+    if (kind === 'random')   return openRandom();
+    if (kind === 'teleport' || kind === 'navigate') {
+      if (!pendingLatLng) {
+        showToast(t('tap_map'));
+        return;
+      }
+      if (kind === 'teleport') return doTeleport(pendingLatLng.lat, pendingLatLng.lng);
+      if (kind === 'navigate') return openNavigate();
+    }
+  }
+
+  // ── Navigate sheet (travel-mode picker) ──────────────────────
+  let selectedProfile = 'driving';
+  function openNavigate() {
+    document.getElementById('nav-sheet').classList.add('open');
+    // Reset highlight to current selectedProfile.
+    document.querySelectorAll('.nav-mode').forEach(b => {
+      b.classList.toggle('active', b.dataset.profile === selectedProfile);
+    });
+  }
+  function closeNavigate() {
+    document.getElementById('nav-sheet').classList.remove('open');
+  }
+  document.querySelectorAll('.nav-mode').forEach(b => {
+    b.addEventListener('click', () => {
+      selectedProfile = b.dataset.profile;
+      document.querySelectorAll('.nav-mode').forEach(x =>
+        x.classList.toggle('active', x === b));
+    });
+  });
+  document.getElementById('nav-close').addEventListener('click', closeNavigate);
+  document.getElementById('nav-sheet').addEventListener('click', closeNavigate);
+  document.getElementById('nav-go').addEventListener('click', async () => {
+    if (!pendingLatLng) { showToast(t('tap_map')); return; }
+    closeNavigate();
+    await doNavigate(pendingLatLng.lat, pendingLatLng.lng, selectedProfile);
+  });
+
+  // ── Action implementations ────────────────────────────────────
+  async function doTeleport(lat, lng) {
+    try {
+      await api('/api/phone/teleport', {
+        method: 'POST',
+        body: JSON.stringify({ lat, lng }),
+      });
+      showToast(t('teleport_ok'));
+    } catch (e) { showToast(t('request_failed')); }
+  }
+  async function doNavigate(lat, lng, profile) {
+    try {
+      await api('/api/phone/navigate', {
+        method: 'POST',
+        body: JSON.stringify({ lat, lng, profile: profile || 'driving' }),
+      });
+      showToast(t('navigate_ok'));
+    } catch (e) {
+      // Server returns a friendly "no_origin" detail when the user
+      // hits Navigate before ever having teleported. Surface it.
+      const msg = (e && e.message) || '';
+      if (msg.indexOf('no_origin') >= 0) {
+        showToast(t('navigate_no_origin'));
+      } else {
+        showToast(t('request_failed'));
+      }
+    }
+  }
+  async function doRestore() {
+    try {
+      await api('/api/phone/restore', { method: 'POST', body: JSON.stringify({}) });
+      showToast(t('restore_ok'));
+    } catch (e) { showToast(t('request_failed')); }
+  }
+  async function doStop() {
+    try {
+      await api('/api/phone/stop', { method: 'POST', body: JSON.stringify({}) });
+      showToast(t('stop_ok'));
+    } catch (e) { showToast(t('request_failed')); }
+  }
+
+  // ── Search sheet ──────────────────────────────────────────────
+  const searchSheet = document.getElementById('search-sheet');
+  const searchInput = document.getElementById('search-input');
+  const searchResults = document.getElementById('search-results');
+  function openSearch() {
+    searchSheet.classList.add('open');
+    searchInput.value = '';
+    searchResults.innerHTML = '';
+    setTimeout(() => searchInput.focus(), 100);
+  }
+  function closeSearch() { searchSheet.classList.remove('open'); }
+  document.getElementById('search-close').addEventListener('click', closeSearch);
+  searchSheet.addEventListener('click', closeSearch);
+
+  let searchDebounce;
+  searchInput.addEventListener('input', () => {
+    clearTimeout(searchDebounce);
+    const q = searchInput.value.trim();
+    if (q.length < 2) { searchResults.innerHTML = ''; return; }
+    searchResults.innerHTML = `<li class="loading">${t('searching')}</li>`;
+    searchDebounce = setTimeout(async () => {
+      try {
+        const list = await api('/api/phone/geocode?q=' + encodeURIComponent(q));
+        if (!list.length) {
+          searchResults.innerHTML = `<li class="empty">${t('no_results')}</li>`;
+          return;
+        }
+        searchResults.innerHTML = '';
+        list.forEach(r => {
+          const li = document.createElement('li');
+          li.textContent = r.name;
+          li.addEventListener('click', () => {
+            pendingLatLng = { lat: r.lat, lng: r.lng };
+            if (selectedMarker) selectedMarker.setLatLng([r.lat, r.lng]);
+            else selectedMarker = L.marker([r.lat, r.lng], {
+              icon: L.divIcon({ className: '', html: '<div class="selected-pin"></div>',
+                                iconSize: [18, 18], iconAnchor: [9, 9] }),
+            }).addTo(map);
+            map.setView([r.lat, r.lng], 16);
+            closeSearch();
+          });
+          searchResults.appendChild(li);
+        });
+      } catch (e) {
+        searchResults.innerHTML = `<li class="empty">${t('request_failed')}</li>`;
+      }
+    }, 350);
+  });
+
+  // ── Coord sheet (single combined input) ──────────────────────
+  const coordSheet = document.getElementById('coord-sheet');
+  const coordInput = document.getElementById('coord-input');
+  function openCoord() {
+    coordSheet.classList.add('open');
+    coordInput.value = '';
+    setTimeout(() => coordInput.focus(), 80);
+  }
+  function closeCoord() { coordSheet.classList.remove('open'); }
+  document.getElementById('coord-close').addEventListener('click', closeCoord);
+  coordSheet.addEventListener('click', closeCoord);
+
+  /** Parse a free-form lat/lng paste. Accepts:
+      - "25.03361, 121.56444"
+      - "25.03361 121.56444"
+      - "25.03361°N, 121.56444°E"
+      - "(25.03361, 121.56444)"
+      - "lat: 25.03361, lng: 121.56444"
+    Returns { lat, lng } or null. Direction markers (N/S/E/W) flip
+    sign so a typed-in southern / western coord works.
+  */
+  function parseCoord(s) {
+    if (!s) return null;
+    const txt = String(s);
+    // Pull both signed decimals out, ignoring stray commas / parens /
+    // direction markers in between.
+    const m = txt.match(/(-?\d+(?:\.\d+)?)[^\d\-]*(-?\d+(?:\.\d+)?)/);
+    if (!m) return null;
+    let lat = parseFloat(m[1]);
+    let lng = parseFloat(m[2]);
+    // Direction markers — case-insensitive, look right after each number.
+    const after1 = txt.slice(txt.indexOf(m[1]) + m[1].length, txt.indexOf(m[2]));
+    const after2 = txt.slice(txt.indexOf(m[2]) + m[2].length);
+    if (/[Ss]/.test(after1)) lat = -Math.abs(lat);
+    if (/[Nn]/.test(after1)) lat =  Math.abs(lat);
+    if (/[Ww]/.test(after2)) lng = -Math.abs(lng);
+    if (/[Ee]/.test(after2)) lng =  Math.abs(lng);
+    if (!isFinite(lat) || !isFinite(lng)) return null;
+    if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+    return { lat, lng };
+  }
+
+  document.getElementById('coord-go').addEventListener('click', async () => {
+    const parsed = parseCoord(coordInput.value);
+    if (!parsed) {
+      showToast(t('invalid_coord'));
+      return;
+    }
+    const { lat, lng } = parsed;
+    pendingLatLng = { lat, lng };
+    if (selectedMarker) selectedMarker.setLatLng([lat, lng]);
+    else selectedMarker = L.marker([lat, lng], {
+      icon: L.divIcon({ className: '', html: '<div class="selected-pin"></div>',
+                        iconSize: [18, 18], iconAnchor: [9, 9] }),
+    }).addTo(map);
+    map.setView([lat, lng], 16);
+    closeCoord();
+    await doTeleport(lat, lng);
+  });
+  // Enter to submit.
+  coordInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('coord-go').click();
+  });
+
+  // ── Mode picker (shared between joystick + random walk overlays) ──
+  // Each mode caps a max speed (in m/s) appropriate to that profile.
+  // walk ~10 km/h, bike ~30 km/h, drive ~60 km/h. Random walk uses
+  // a min/max band derived from these.
+  const MODE_MAX_SPEED = {
+    walking: 2.8,    // ~10 km/h max when joystick fully extended
+    cycling: 8.3,    // ~30 km/h
+    driving: 16.7,   // ~60 km/h
+  };
+  const MODE_RANDOM_BAND = {
+    walking: { min: 0.8, max: 1.6 },     // brisk walking
+    cycling: { min: 3.0, max: 6.0 },     // casual cycling
+    driving: { min: 8.0, max: 14.0 },    // city driving
+  };
+  let joystickMode = 'driving';
+  let randomMode   = 'walking';
+
+  document.querySelectorAll('.mode-picker').forEach(group => {
+    const target = group.dataset.target;
+    group.querySelectorAll('.mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        group.querySelectorAll('.mode-btn').forEach(x =>
+          x.classList.toggle('active', x === btn));
+        if (target === 'joystick') joystickMode = btn.dataset.mode;
+        if (target === 'random')   randomMode   = btn.dataset.mode;
+      });
+    });
+  });
+
+  // ── Joystick floating overlay ────────────────────────────────
+  const joystickOverlay = document.getElementById('joystick-overlay');
+  const joystickPad     = document.getElementById('joystick-pad');
+  const joystickKnob    = document.getElementById('joystick-knob');
+  const joystickStatus  = document.getElementById('joystick-status');
+  let joystickStarted   = false;
+  let joystickLast      = { heading: 0, speed: 0 };
+
+  async function openJoystick() {
+    // Origin: prefer the iPhone's current simulated position so the
+    // user doesn't have to tap the map first. Falls back to the
+    // user's last tap, then to map centre.
+    const origin = currentLatLng || pendingLatLng || map.getCenter();
+    joystickOverlay.classList.add('open');
+    joystickStatus.textContent = t('joystick-idle');
+    try {
+      await api('/api/phone/joystick/start', {
+        method: 'POST',
+        body: JSON.stringify({ lat: origin.lat, lng: origin.lng }),
+      });
+      joystickStarted = true;
+      showToast(t('joystick-started'));
+    } catch (e) {
+      const detail = (e && e.detail) || '';
+      showToast(detail || t('request_failed'));
+      joystickOverlay.classList.remove('open');
+    }
+  }
+  function closeJoystick() {
+    joystickOverlay.classList.remove('open');
+    resetKnob();
+    joystickStarted = false;
+  }
+  document.getElementById('joystick-close').addEventListener('click', closeJoystick);
+  document.getElementById('joystick-stop').addEventListener('click', async () => {
+    try { await doStop(); } catch {}
+    closeJoystick();
+  });
+
+  function resetKnob() {
+    joystickKnob.style.transform = 'translate(-50%, -50%)';
+    joystickKnob.classList.remove('active');
+    if (joystickStarted) sendJoystickUpdate(0, 0);
+  }
+
+  // Touch / drag handling on the pad.
+  let dragId = null;
+  joystickPad.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    dragId = e.pointerId;
+    joystickPad.setPointerCapture(e.pointerId);
+    handleJoystickMove(e);
+  });
+  joystickPad.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== dragId) return;
+    handleJoystickMove(e);
+  });
+  joystickPad.addEventListener('pointerup', (e) => {
+    if (e.pointerId !== dragId) return;
+    dragId = null;
+    resetKnob();
+  });
+  joystickPad.addEventListener('pointercancel', (e) => {
+    if (e.pointerId !== dragId) return;
+    dragId = null;
+    resetKnob();
+  });
+
+  function handleJoystickMove(e) {
+    const rect = joystickPad.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    let dx = e.clientX - cx;
+    let dy = e.clientY - cy;
+    const maxR = rect.width / 2 - 28;     // knob radius headroom
+    const r = Math.hypot(dx, dy);
+    if (r > maxR) { dx *= maxR / r; dy *= maxR / r; }
+    joystickKnob.style.transform =
+      `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+    joystickKnob.classList.add('active');
+    // heading_deg: 0 = north, 90 = east. dy is screen-down so invert.
+    const headingRad = Math.atan2(dx, -dy);
+    let heading = headingRad * 180 / Math.PI;
+    if (heading < 0) heading += 360;
+    const cap = MODE_MAX_SPEED[joystickMode] || 2.8;
+    const speed = Math.min(r / maxR, 1) * cap;
+    joystickLast = { heading, speed };
+    joystickStatus.textContent = `${t('joystick-active')}  ${heading.toFixed(0)}°  ${(speed * 3.6).toFixed(1)} km/h`;
+    scheduleJoystickSend();
+  }
+
+  /** Throttle update sends to ~10 Hz so we don't flood the daemon. */
+  let pendingSend = false;
+  function scheduleJoystickSend() {
+    if (pendingSend) return;
+    pendingSend = true;
+    setTimeout(() => {
+      pendingSend = false;
+      sendJoystickUpdate(joystickLast.heading, joystickLast.speed);
+    }, 100);
+  }
+  async function sendJoystickUpdate(heading, speed) {
+    if (!joystickStarted) return;
+    try {
+      await api('/api/phone/joystick/update', {
+        method: 'POST',
+        body: JSON.stringify({ heading_deg: heading, speed_mps: speed }),
+      });
+    } catch { /* silent */ }
+  }
+
+  // ── Random walk overlay (non-blocking + live preview circle) ──
+  const randomOverlay  = document.getElementById('random-overlay');
+  const randomCenter   = document.getElementById('random-center');
+  const randomRadius   = document.getElementById('random-radius');
+  const randomRadiusValue = document.getElementById('random-radius-value');
+  let randomCircle = null;     // live Leaflet preview circle
+
+  function openRandom() {
+    // Default centre: iPhone current position > user's last tap.
+    if (!pendingLatLng && currentLatLng) {
+      pendingLatLng = currentLatLng;
+      if (selectedMarker) selectedMarker.setLatLng(currentLatLng);
+      else selectedMarker = L.marker(currentLatLng, {
+        icon: L.divIcon({ className: '', html: '<div class="selected-pin"></div>',
+                          iconSize: [22, 22], iconAnchor: [11, 11] }),
+      }).addTo(map);
+    }
+    randomOverlay.classList.add('open');
+    refreshRandomCenter();
+    drawRandomCircle();
+  }
+  function closeRandom() {
+    randomOverlay.classList.remove('open');
+    if (randomCircle) {
+      map.removeLayer(randomCircle);
+      randomCircle = null;
+    }
+  }
+  document.getElementById('random-close').addEventListener('click', closeRandom);
+
+  function refreshRandomCenter() {
+    if (pendingLatLng) {
+      randomCenter.classList.remove('empty');
+      randomCenter.textContent =
+        `${pendingLatLng.lat.toFixed(5)}, ${pendingLatLng.lng.toFixed(5)}`;
+    } else {
+      randomCenter.classList.add('empty');
+      randomCenter.textContent = t('random-no-center');
+    }
+  }
+  function drawRandomCircle() {
+    if (!pendingLatLng) {
+      if (randomCircle) { map.removeLayer(randomCircle); randomCircle = null; }
+      return;
+    }
+    const radius = parseFloat(randomRadius.value);
+    if (randomCircle) {
+      randomCircle.setLatLng([pendingLatLng.lat, pendingLatLng.lng]);
+      randomCircle.setRadius(radius);
+    } else {
+      randomCircle = L.circle([pendingLatLng.lat, pendingLatLng.lng], {
+        radius: radius,
+        color: '#0a84ff',
+        weight: 2,
+        fillColor: '#0a84ff',
+        fillOpacity: 0.18,
+      }).addTo(map);
+    }
+    // Try to keep the whole circle in view.
+    map.fitBounds(randomCircle.getBounds(), { padding: [40, 40], maxZoom: 17 });
+  }
+  randomRadius.addEventListener('input', () => {
+    randomRadiusValue.textContent = `${randomRadius.value} m`;
+    drawRandomCircle();
+  });
+  document.getElementById('random-go').addEventListener('click', async () => {
+    if (!pendingLatLng) {
+      showToast(t('random-no-center'));
+      return;
+    }
+    try {
+      const band = MODE_RANDOM_BAND[randomMode] || MODE_RANDOM_BAND.walking;
+      await api('/api/phone/random_walk', {
+        method: 'POST',
+        body: JSON.stringify({
+          center_lat: pendingLatLng.lat,
+          center_lng: pendingLatLng.lng,
+          radius_m: parseFloat(randomRadius.value),
+          min_speed_mps: band.min,
+          max_speed_mps: band.max,
+        }),
+      });
+      showToast(t('random-started'));
+      closeRandom();
+    } catch (e) {
+      const detail = (e && e.detail) || '';
+      showToast(detail || t('request_failed'));
+    }
+  });
+
+  // ── Toast helper ─────────────────────────────────────────────
+  const toast = document.getElementById('toast');
+  let toastTimer;
+  function showToast(msg) {
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
+  }
+
+  // ── Boot ─────────────────────────────────────────────────────
+  (async () => {
+    if (await tryExistingToken()) {
+      enterApp();
+    } else {
+      pinInput.focus();
+    }
+  })();
+})();
+</script>
+</body>
+</html>

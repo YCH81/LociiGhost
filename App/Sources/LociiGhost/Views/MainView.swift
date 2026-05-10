@@ -620,6 +620,7 @@ private struct SystemSection: View {
     @State private var showingDevModeSheet = false
 
     var body: some View {
+        @Bindable var state = state
         VStack(alignment: .leading, spacing: 8) {
             Text("System Functions")
                 .font(.subheadline.weight(.semibold))
@@ -651,6 +652,33 @@ private struct SystemSection: View {
                     DeveloperModeSheet(device: dev)
                         .environment(state)
                 }
+            }
+
+            Button {
+                state.openPhoneControlSheet()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "iphone.gen3.radiowaves.left.and.right.circle.fill")
+                        .foregroundStyle(.tint)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Phone Control…",
+                             comment: "Sidebar button — opens the LAN URL + PIN modal so a phone on the same WiFi can drive teleport / navigate / restore")
+                            .font(.body)
+                        Text("Drive LociiGhost from your phone over WiFi.",
+                             comment: "Subtitle for the Phone Control sidebar button")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .sheet(isPresented: $state.showPhoneControlSheet) {
+                PhoneControlSheet()
+                    .environment(state)
             }
         }
     }

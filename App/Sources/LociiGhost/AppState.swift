@@ -152,6 +152,17 @@ final class AppState {
     /// observable bindings paint the result.
     var wifiConnectSheet: WiFiConnectSheetTarget?
 
+    // MARK: - Phone control (Phase 5.2)
+    /// LAN URL + PIN for the daemon's phone-control HTTP server.
+    /// Populated by `fetchPhoneControlInfo()`; sheet renders these
+    /// for the user to type into their phone browser. The endpoint
+    /// is localhost-only on the daemon side, so this info is never
+    /// exposed to the LAN — only the desktop GUI can fetch it.
+    var phoneControlInfo: PhoneControlInfo?
+    var isLoadingPhoneInfo: Bool = false
+    /// Drives the phone-control sheet presentation.
+    var showPhoneControlSheet: Bool = false
+
     // MARK: - Movement modes (Phase 3)
     /// Latest snapshot from a `location.random_walk` session, populated
     /// from `event.position_update` / `event.state_changed` notifications.
@@ -440,6 +451,74 @@ final class AppState {
             // list is current next time the user clicks.
             Task { await self.discoverWiFi() }
         }
+    }
+
+    // MARK: - Phone control
+
+    /// Candidate ports we walk when looking for the daemon's phone-
+    /// control HTTP server. Must match `PORT_CANDIDATES` in
+    /// `Daemon/lociighostd/http_server.py` — the daemon picks the
+    /// first free one at startup, and this list is how we find
+    /// where it actually landed without a separate RPC roundtrip.
+    private static let phoneControlPorts: [Int] = [8779, 8780, 8781, 8788, 8789, 8800]
+
+    /// Fetch the LAN URL + 6-digit PIN from the daemon's phone-control
+    /// HTTP server. Walks the candidate-port list (the daemon may
+    /// have fallen back from 8779 to 8780 etc. if a port was busy)
+    /// and returns the first one that answers. The endpoint is
+    /// localhost-only on the daemon, so we hit `127.0.0.1` directly
+    /// over HTTP instead of going through our JSON-RPC socket.
+    func fetchPhoneControlInfo() async {
+        guard !isLoadingPhoneInfo else { return }
+        isLoadingPhoneInfo = true
+        defer { isLoadingPhoneInfo = false }
+        for port in Self.phoneControlPorts {
+            guard let url = URL(string: "http://127.0.0.1:\(port)/api/phone/info")
+            else { continue }
+            var req = URLRequest(url: url)
+            req.timeoutInterval = 1.5
+            do {
+                let (data, response) = try await URLSession.shared.data(for: req)
+                guard let http = response as? HTTPURLResponse, http.statusCode == 200
+                else { continue }
+                phoneControlInfo = try JSONDecoder().decode(PhoneControlInfo.self, from: data)
+                return
+            } catch {
+                continue
+            }
+        }
+        phoneControlInfo = nil
+        lastError = "Phone control HTTP server isn't reachable on any candidate port (\(Self.phoneControlPorts.map(String.init).joined(separator: ", ")))."
+    }
+
+    /// Generate a fresh PIN + token. Invalidates any phone tab that
+    /// was previously authed against the old token.
+    func rotatePhoneControlPIN() async {
+        // Use whichever port we already discovered — falls back to
+        // re-walking the candidate list if we don't have one cached.
+        let port: Int
+        if let info = phoneControlInfo { port = info.port }
+        else {
+            await fetchPhoneControlInfo()
+            guard let info = phoneControlInfo else { return }
+            port = info.port
+        }
+        guard let url = URL(string: "http://127.0.0.1:\(port)/api/phone/rotate") else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        do {
+            _ = try await URLSession.shared.data(for: req)
+            await fetchPhoneControlInfo()
+        } catch {
+            lastError = String(describing: error)
+        }
+    }
+
+    /// Open the phone-control sheet from anywhere in the UI. Auto-
+    /// fetches info on appear so the sheet always shows current state.
+    func openPhoneControlSheet() {
+        showPhoneControlSheet = true
+        Task { await fetchPhoneControlInfo() }
     }
 
     /// Ask the daemon to surface the Developer Mode toggle in iPhone Settings.
@@ -817,7 +896,7 @@ final class AppState {
     /// Bumped every time the daemon source breaks ABI or behaviour in
     /// a way that requires an in-place restart. Must match the
     /// `__version__` in `Daemon/lociighostd/__init__.py`.
-    static let expectedDaemonVersion = "1.0.1"
+    static let expectedDaemonVersion = "1.1.4"
 
     /// Pick the right starting coordinate for a new navigation. Order:
     /// 1. Currently simulated location (chain another route on top).
@@ -1095,6 +1174,17 @@ final class AppState {
 /// daemon found on the LAN. UDID is intentionally absent — we don't
 /// know which paired device is at this IP until `wifi.connect_ip`
 /// runs the pair-verify candidate sweep on the daemon side.
+/// Mirrors the daemon's `/api/phone/info` response. The PIN is
+/// regenerated on every daemon launch (and on demand via
+/// `rotatePhoneControlPIN`), so this struct is short-lived and not
+/// persisted across sessions.
+struct PhoneControlInfo: Codable, Hashable, Sendable {
+    let url: String
+    let pin: String
+    let lan_ip: String
+    let port: Int
+}
+
 struct WiFiCandidate: Codable, Identifiable, Hashable, Sendable {
     let ip: String
     let port: Int

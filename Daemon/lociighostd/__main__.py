@@ -113,6 +113,35 @@ async def _run(socket: str) -> int:
         name="wifi-health-check",
     )
 
+    # Phone-control HTTP server. Serves the mobile UI (`/phone`) and
+    # the matching `/api/phone/*` endpoints on port 8777, bound to all
+    # interfaces so a phone on the same WiFi can hit it. Auth is a
+    # 6-digit PIN (regenerated on every daemon launch + on demand) +
+    # a 32-hex token. Failures here don't take down the daemon — if
+    # the port is already taken or some other process owns 8777 we
+    # log it and continue without phone-control.
+    from .http_server import run_http_server
+    async def _http_supervisor() -> None:
+        try:
+            # Pass `server` so phone-side actions can broadcast the
+            # same RPC event types the desktop GUI subscribes to —
+            # otherwise a phone teleport / joystick / random-walk
+            # change wouldn't reflect in the desktop window in real
+            # time.
+            await run_http_server(manager, osrm, rpc_server=server)
+        except OSError as exc:
+            logging.getLogger("lociighostd").warning(
+                "phone-control HTTP server bind failed (%s); "
+                "phone control will be unavailable this session", exc,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logging.getLogger("lociighostd").exception(
+                "phone-control HTTP server crashed"
+            )
+    http_task = asyncio.create_task(_http_supervisor(), name="phone-http")
+
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, _request_shutdown)
@@ -130,6 +159,17 @@ async def _run(socket: str) -> int:
     health_task.cancel()
     try:
         await health_task
+    except (asyncio.CancelledError, Exception):
+        pass
+
+    # Same for the phone-control HTTP server — cancel and let
+    # uvicorn shut down its sockets cleanly. We've already given any
+    # in-flight phone request its chance to finish via the
+    # FIRST_COMPLETED wait above; if a request is still mid-flight
+    # at this point it gets a connection drop.
+    http_task.cancel()
+    try:
+        await http_task
     except (asyncio.CancelledError, Exception):
         pass
 
