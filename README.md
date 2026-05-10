@@ -86,13 +86,24 @@ swift run lociighostctl --socket /tmp/lw.sock shutdown
 
 ## Requirements
 
-- macOS 14 (Sonoma) or newer
-- Apple Silicon (M1/M2/M3/M4)
-- Python 3.13 (via Homebrew: `brew install python@3.13`)
-- Swift 6 (Command-Line Tools is enough for Phase 0; full Xcode needed
-  from Phase 1 onward for SwiftUI)
-- For Phase 4 (WiFi Tunnel): paid Apple Developer Program membership, so
-  the LaunchDaemon helper can be properly signed.
+- **macOS 14 (Sonoma) – macOS 26** — forward-compatible. Binary
+  `minos` is 14.0; tested through macOS 15 / Sequoia day-to-day.
+  Full compatibility matrix + verification commands in
+  [`docs/compatibility.md`](docs/compatibility.md).
+- **Apple Silicon (M1 / M2 / M3 / M4)** — Intel Macs are not
+  supported by design (the rewrite drops Electron / Rosetta exactly
+  to avoid that tax).
+- **Python 3.13** via Homebrew: `brew install python@3.13`.
+- **Swift 6** (Command-Line Tools enough for Phase 0; full Xcode
+  needed from Phase 1 onward for SwiftUI).
+- iOS **16 – 26** on the iPhone side. USB works on every
+  supported iOS; WiFi-only via the one-time **Pair for WiFi**
+  ritual (uses M-style RemotePairing, see Phase 4.5 in the
+  changelog).
+- Phase 4 WiFi tunnel: **no paid Developer Program membership
+  needed** — admin elevation goes through `osascript "do shell
+  script ... with administrator privileges"` instead of
+  `SMAppService` (one Touch ID prompt per Mac restart).
 
 ## License
 

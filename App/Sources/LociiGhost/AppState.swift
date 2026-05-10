@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import SwiftData
 import Observation
 import SwiftUI
 import LociiGhostCore
@@ -62,14 +63,24 @@ final class AppState {
     var previewIsStraightLine: Bool = false
     /// What the iPhone is currently *simulating* — i.e., where Maps and
     /// other apps on the phone think they are. nil means we are not
-    /// simulating; phone is reporting its real GPS.
-    var simulatedLocation: Coordinate?
+    /// simulating; phone is reporting its real GPS. Persisted via
+    /// `didSet` so a relaunch can repaint the blue dot before the
+    /// daemon's first state push lands.
+    var simulatedLocation: Coordinate? {
+        didSet { persistLastSimulated() }
+    }
 
     // MARK: - Navigation
     /// Travel profile + matching default speed for the next Navigate click.
-    var travelProfile: TravelProfile = .driving
+    /// `didSet` persists immediately so the user's last choice survives
+    /// a relaunch.
+    var travelProfile: TravelProfile = .driving {
+        didSet { persistRoutingPrefs() }
+    }
     /// Override speed in m/s. nil means "use the profile default".
-    var customSpeedMps: Double?
+    var customSpeedMps: Double? {
+        didSet { persistRoutingPrefs() }
+    }
     /// When true, the next Navigate skips OSRM and walks the iPhone
     /// straight-line between consecutive stops. Cannot be toggled mid-
     /// navigation — the route was already computed; if you want to
@@ -185,6 +196,73 @@ final class AppState {
     private var client: DaemonClient?
     private var eventTask: Task<Void, Never>?
     private var previewTask: Task<Void, Never>?
+
+    // MARK: - Persistence (Phase 5.2 — SwiftData)
+
+    /// SwiftData context, attached at app launch by LociiGhostApp.
+    /// nil before attach (early bootstrap calls just no-op the
+    /// persistence read/writes; the in-memory defaults still work).
+    private var modelContext: ModelContext?
+    private var preferences: AppPreferences?
+
+    /// Called from LociiGhostApp.task right before bootstrap so we
+    /// can hydrate AppState from disk before the daemon connects.
+    /// Idempotent — safe to call again on a hot reload.
+    func attachModelContext(_ ctx: ModelContext) {
+        modelContext = ctx
+        let prefs = AppPreferences.fetchOrCreate(ctx)
+        preferences = prefs
+        // Hydrate transient AppState fields from the persisted
+        // record so the UI repaints with the user's last choices
+        // before the daemon is even up.
+        if let raw = TravelProfile(rawValue: prefs.travelProfileRaw) {
+            travelProfile = raw
+        }
+        customSpeedMps = prefs.customSpeedMps
+        if let lat = prefs.lastSimulatedLat,
+           let lng = prefs.lastSimulatedLng {
+            simulatedLocation = Coordinate(lat: lat, lng: lng)
+        }
+    }
+
+    /// The last persisted map camera (or nil if we never saved one).
+    /// MapContainerView reads this on first appear so the map opens
+    /// where the user left it.
+    var savedMapCamera: (center: Coordinate, spanMeters: Double)? {
+        guard let p = preferences,
+              let lat = p.mapCenterLat,
+              let lng = p.mapCenterLng,
+              let span = p.mapSpanMeters
+        else { return nil }
+        return (Coordinate(lat: lat, lng: lng), span)
+    }
+
+    /// Called by MapContainerView when the user pans / zooms. Throttled
+    /// upstream so we don't write to disk on every pixel of movement.
+    func saveMapCamera(centerLat: Double, centerLng: Double, spanMeters: Double) {
+        guard let p = preferences else { return }
+        p.mapCenterLat = centerLat
+        p.mapCenterLng = centerLng
+        p.mapSpanMeters = spanMeters
+        try? modelContext?.save()
+    }
+
+    /// Persist whatever the SwiftUI state currently is. Called from
+    /// the property accessors that already mutate AppState — keeps
+    /// preference disk-state aligned without us scattering save calls
+    /// over every random place that touches travelProfile etc.
+    func persistRoutingPrefs() {
+        guard let p = preferences else { return }
+        p.travelProfileRaw = travelProfile.rawValue
+        p.customSpeedMps = customSpeedMps
+        try? modelContext?.save()
+    }
+    func persistLastSimulated() {
+        guard let p = preferences else { return }
+        p.lastSimulatedLat = simulatedLocation?.lat
+        p.lastSimulatedLng = simulatedLocation?.lng
+        try? modelContext?.save()
+    }
 
     // MARK: - Bootstrap
 
@@ -896,7 +974,7 @@ final class AppState {
     /// Bumped every time the daemon source breaks ABI or behaviour in
     /// a way that requires an in-place restart. Must match the
     /// `__version__` in `Daemon/lociighostd/__init__.py`.
-    static let expectedDaemonVersion = "1.1.4"
+    static let expectedDaemonVersion = "1.2.0"
 
     /// Pick the right starting coordinate for a new navigation. Order:
     /// 1. Currently simulated location (chain another route on top).

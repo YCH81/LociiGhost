@@ -31,11 +31,25 @@ struct MapContainerView: NSViewRepresentable {
         map.showsZoomControls = true
         map.showsScale = true
         map.isRotateEnabled = false
-        map.region = MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: 25.0330, longitude: 121.5654),
-            latitudinalMeters: 4_000,
-            longitudinalMeters: 4_000
-        )
+        // Restore the user's last visible region from SwiftData so the
+        // map opens where they left it instead of jumping back to
+        // Taipei every relaunch. The fallback (if no prefs row yet,
+        // typically first launch only) is the original Taipei view.
+        if let saved = state.savedMapCamera {
+            map.region = MKCoordinateRegion(
+                center: CLLocationCoordinate2D(
+                    latitude: saved.center.lat, longitude: saved.center.lng
+                ),
+                latitudinalMeters: saved.spanMeters * 2,
+                longitudinalMeters: saved.spanMeters * 2
+            )
+        } else {
+            map.region = MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 25.0330, longitude: 121.5654),
+                latitudinalMeters: 4_000,
+                longitudinalMeters: 4_000
+            )
+        }
 
         let osm = MKTileOverlay(urlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png")
         osm.canReplaceMapContent = true
@@ -395,6 +409,33 @@ struct MapContainerView: NSViewRepresentable {
         }
 
         // MARK: MKMapViewDelegate
+
+        /// Throttle handle for `regionDidChange` saves — we don't want
+        /// to write the SwiftData store on every pixel of the user's
+        /// pan, but we DO want the latest region to land within ~half
+        /// a second of them stopping moving. The Task is cancelled
+        /// and replaced on every region change; only the last one's
+        /// timer ever fires the save.
+        private var saveCameraTask: Task<Void, Never>?
+
+        func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
+            saveCameraTask?.cancel()
+            // Capture the region NOW (not in the deferred task) so we
+            // persist what the map looks like at the end of the
+            // user's interaction, not whatever it has drifted to half
+            // a second later.
+            let center = mapView.region.center
+            let span = mapView.region.span.latitudeDelta * 111_000  // ° → m
+            saveCameraTask = Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(500))
+                if Task.isCancelled { return }
+                self?.state.saveMapCamera(
+                    centerLat: center.latitude,
+                    centerLng: center.longitude,
+                    spanMeters: span / 2,           // store half-span
+                )
+            }
+        }
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let tile = overlay as? MKTileOverlay {
