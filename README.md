@@ -8,7 +8,7 @@
 <p>
   <a href="https://ko-fi.com/jflociighost"><img alt="在 Ko-fi 上支持 YCH81 aka Jeff Hu" src="https://img.shields.io/badge/Ko--fi-Support-FF5E5B?style=flat-square&logo=kofi&logoColor=white"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/License-MIT-2d3748?style=flat-square"></a>
-  <a href="https://github.com/YCH81/LociiGhost/releases"><img alt="Latest version" src="https://img.shields.io/badge/version-v1.9.4-7fa389?style=flat-square"></a>
+  <a href="https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing"><img alt="Download (Google Drive)" src="https://img.shields.io/badge/download-DMG-7fa389?style=flat-square&logo=googledrive&logoColor=white"></a>
 </p>
 
 > **iPhone GPS 模擬工具** —— Apple Silicon 原生 macOS app，從 LocWarp（keezxc1223, MIT）概念與部分參照後完整 Swift 重寫。

@@ -158,6 +158,25 @@
     border: none;
   }
   .line-button:active { transform: translateY(1px); }
+  .download-button {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 12px 26px;
+    background: var(--sage);
+    color: white !important;
+    border-radius: 8px;
+    border: none;
+    font-weight: 600;
+    font-size: 16px;
+    letter-spacing: 0.01em;
+    transition: background 0.15s, transform 0.05s;
+  }
+  .download-button:hover {
+    background: var(--sage-dark);
+    color: white !important;
+    border: none;
+  }
+  .download-button:active { transform: translateY(1px); }
   code {
     background: rgba(0,0,0,0.05);
     padding: 1px 6px;
@@ -202,10 +221,14 @@
   <h2>第一次使用？</h2>
   <p>👉 <strong><a href="user-guide.html">完整使用者手冊</a></strong> —— 從安裝、第一次啟動、連 iPhone、跑出第一條路線，到六種移動模式與疑難排解，一步一步帶你走完。</p>
 
-  <h2>目前如何取得</h2>
-  <p>暫時僅提供原始碼。從 GitHub clone 後自行 build：</p>
-  <p><a href="https://github.com/YCH81/LociiGhost">github.com/YCH81/LociiGhost</a>
-     —— 詳細 build 步驟見 repo 內的 <code>README.md</code>。</p>
+  <h2>下載</h2>
+  <p>從 Google Drive 下載最新版本（DMG，已 Apple 簽名 + notarize）：</p>
+  <p><a href="https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing"
+        target="_blank" rel="noopener"
+        class="download-button">下載 LociiGhost (DMG)</a></p>
+  <p class="meta">雙擊 DMG → 拖 LociiGhost.app 到 Applications → 完成。
+     開發者若想自行 clone build，原始碼公開於
+     <a href="https://github.com/YCH81/LociiGhost">github.com/YCH81/LociiGhost</a>。</p>
 
   <section class="card disclaimer-card">
     <h2>免責聲明</h2>

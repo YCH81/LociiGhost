@@ -158,6 +158,25 @@
     border: none;
   }
   .line-button:active { transform: translateY(1px); }
+  .download-button {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 12px 26px;
+    background: var(--sage);
+    color: white !important;
+    border-radius: 8px;
+    border: none;
+    font-weight: 600;
+    font-size: 16px;
+    letter-spacing: 0.01em;
+    transition: background 0.15s, transform 0.05s;
+  }
+  .download-button:hover {
+    background: var(--sage-dark);
+    color: white !important;
+    border: none;
+  }
+  .download-button:active { transform: translateY(1px); }
   code {
     background: rgba(0,0,0,0.05);
     padding: 1px 6px;
@@ -205,10 +224,16 @@
   <h2>New here?</h2>
   <p>👉 <strong><a href="user-guide.en.html">Full user guide</a></strong> — install, first launch, connecting your iPhone, running your first route, the six movement modes, and troubleshooting. Step by step.</p>
 
-  <h2>How to get it (for now)</h2>
-  <p>Source only at the moment. Clone from GitHub and build locally:</p>
-  <p><a href="https://github.com/YCH81/LociiGhost">github.com/YCH81/LociiGhost</a>
-     — full build steps in the repo <code>README.en.md</code>.</p>
+  <h2>Download</h2>
+  <p>Get the latest build from Google Drive (DMG, Apple-signed and
+     notarised):</p>
+  <p><a href="https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing"
+        target="_blank" rel="noopener"
+        class="download-button">Download LociiGhost (DMG)</a></p>
+  <p class="meta">Double-click the DMG → drag LociiGhost.app to
+     Applications → done. Source code is on
+     <a href="https://github.com/YCH81/LociiGhost">github.com/YCH81/LociiGhost</a>
+     if you want to clone and build it yourself.</p>
 
   <section class="card disclaimer-card">
     <h2>Disclaimer</h2>
