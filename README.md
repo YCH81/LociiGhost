@@ -25,6 +25,12 @@
 
 [![在 Ko-fi 上支持 YCH81 aka Jeff Hu](https://img.shields.io/badge/在%20Ko--fi%20上支持%20YCH81%20aka%20Jeff%20Hu-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/jflociighost)
 
+## 下載
+
+- **最新版本**：v1.10.0
+- **發布日期**：2026-05-13
+- **下載連結**：[Google Drive 下載資料夾](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) —— DMG 已通過 Apple Developer ID 簽名 + Apple notarize，雙擊即可開啟，不會被 Gatekeeper 擋下
+
 ## 第一次使用？
 
 👉 **完整使用者手冊：[docs/user-guide.md](docs/user-guide.md)** —— 從安裝、第一次啟動、連 iPhone、跑出第一條路線，到六種移動模式與疑難排解，一步一步帶你走完。
