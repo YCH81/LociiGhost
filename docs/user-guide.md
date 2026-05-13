@@ -5,7 +5,7 @@
   <a href="user-guide.en.md"><img alt="English" src="https://img.shields.io/badge/English-gray?style=flat-square"></a>
 </p>
 
-> 給第一次使用 LociiGhost 的人。從下載安裝開始，一步一步走到能跑出第一條路線。
+> 給第一次使用 LociiGhost 的人。從下載安裝開始。
 
 ## 目錄
 
