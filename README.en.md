@@ -218,42 +218,33 @@ Terms of Service or platform policies.
 
 ### 2. Account Ban and Third-Party Service Risk
 
-LociiGhost talks to Apple's DVT / RemoteServices protocols via
-[pymobiledevice3](https://github.com/doronz88/pymobiledevice3) to drive
-LocationSimulation and feed simulated GPS to the iPhone. If you use
-this tool with location-based games (e.g. Pokémon GO, Ingress, Pikmin
-Bloom, Monster Hunter Now and other Niantic titles) or with social,
-check-in, or logistics apps, **you may violate that platform's Terms
-of Service, which can result in account warnings, restrictions, bans,
-or permanent termination, and the loss of accumulated in-game items,
-progress, or stored credit**. The author bears **no responsibility**
-for any account loss, virtual property damage, or downstream disputes
+This tool modifies the iPhone's GPS simulation state, which may
+violate the Terms of Service of certain apps, games, or
+location-based games. Use at your own risk; account bans, progress
+loss, and in-game-asset confiscation are possible, and the author
+bears no responsibility for any such outcomes.
+
+Use of this tool may violate the Terms of Service of third-party
+platforms, resulting in account warnings, restrictions, bans, or
+permanent termination, and the loss of accumulated in-game items,
+progress, or stored credit. The author bears no responsibility for
+any account loss, virtual-property damage, or downstream disputes
 arising from the use of this tool.
 
 ### 3. System and Hardware Risk
 
-WiFi mode requires administrator privileges (elevated via `osascript`)
-to create a `utun` virtual network interface and negotiate the RSD
-(Remote Service Discovery) channel with the iOS device. The code has
+This project requires administrator privileges to run. The code has
 been internally tested, but the author cannot guarantee stable
 operation across every macOS version, Apple Silicon model, or network
-environment. Common potential issues include:
-
-- Conflicts with VPN software, third-party firewalls, or network
-  virtualisation tools (Little Snitch, Tailscale, ProtonVPN, etc.)
-  causing tunnel setup to fail or temporarily disrupting macOS
-  networking.
-- Residual `utun` interfaces left behind by abnormal termination,
-  which may require a Mac restart to fully clean up.
-- WiFi link drops requiring manual retry or daemon restart.
+environment.
 
 Users should assess these risks themselves and bear any resulting
 consequences. This project only manipulates the temporary network
 interface it creates and its own configuration files (located in
 `~/Library/Application Support/LociiGhost/` and
-`~/Library/Caches/LociiGhost/`); **it does NOT modify any user data
-on the iOS device, nor does it alter macOS kernel files or existing
-device-pairing records**.
+`~/Library/Caches/LociiGhost/`); it does not modify any user data on
+the iOS device, nor does it alter macOS kernel files or existing
+device-pairing records.
 
 ### 4. Map Data Accuracy
 
@@ -294,15 +285,8 @@ or contributors.
 
 ### 7. No Warranty
 
-This software is distributed under the **MIT License** and is provided
+This software is distributed under the MIT License and is provided
 "AS IS", without warranty of any kind, express or implied, including
 but not limited to warranties of merchantability, fitness for a
 particular purpose, and non-infringement. Full legal terms are in
 [`LICENSE`](LICENSE).
-
----
-
-**By downloading, installing, or running this software you confirm
-that you have fully read and agree to all of the above disclaimer
-terms. If you do not agree, stop using and remove this software
-immediately.**
