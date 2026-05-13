@@ -184,7 +184,3 @@ LICENSE 檔案依 MIT License 條款保留了兩份 copyright notice（LociiGhos
 Copyright (c) 2026 YCH81 (Jeff Hu)
 Copyright (c) 2026 keezxc1223 (LocWarp upstream)
 ```
-
-如果你要 fork（衍生）或重新散佈 LociiGhost（不論是否修改），只需要保留
-[`LICENSE`](LICENSE) 檔案。其他用途 —— 商用、再授權、改名重新發佈 —— MIT
-都允許。
