@@ -5,7 +5,7 @@
   <a href="user-guide.en.md"><img alt="English" src="https://img.shields.io/badge/English-active-2d3748?style=flat-square"></a>
 </p>
 
-> For first-time LociiGhost users. From download to running your first route, step by step.
+> For first-time LociiGhost users. Starting from install.
 
 ## Table of Contents
 
@@ -58,7 +58,7 @@ LociiGhost is a macOS app that replaces your iPhone's GPS location with any plac
 > - **Permanent loss of game progress**
 > - **Device ID blacklisting**
 >
-> LociiGhost itself is a neutral developer/testing tool, but how you use it is on you. **All consequences are your responsibility.** Full disclaimer in [Section 12 Appendix](#12-appendix).
+> LociiGhost is a neutral, academic developer/testing tool. **All consequences of use are your own responsibility.** Full disclaimer in [Section 12 Appendix](#12-appendix).
 
 ---
 
@@ -117,6 +117,7 @@ When LociiGhost opens, the window looks roughly like this:
 └─────────────────────────────────────────────────────────┘
    ↑ Sidebar
 ```
+<img width="1553" height="951" alt="LociiGhost main window screenshot" src="https://github.com/user-attachments/assets/89933321-019f-43fc-9abe-c19cee2aef82" />
 
 ### The Four Areas
 
