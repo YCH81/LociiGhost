@@ -15,10 +15,17 @@ import CoreLocation
 ///
 /// Multi-waypoint handling: MKDirections only routes between ONE
 /// origin and ONE destination per request. For N waypoints we issue
-/// N-1 sequential `calculate()` calls between consecutive pairs and
-/// stitch the polylines (dropping the duplicate junction point
-/// between adjacent legs so the playback doesn't "stutter" at every
-/// stop).
+/// N-1 sequential `calculate()` calls and **chain** them: each leg's
+/// origin is the previous leg's polyline END (an Apple-snapped road
+/// coordinate), NOT the user's original click. This is critical —
+/// the naive "always use user's original click as origin/destination"
+/// approach creates a ~10-100 m discontinuity at every intermediate
+/// waypoint because MapKit snaps the same lat/lng to *different* road
+/// positions depending on whether it's serving as a destination
+/// (north-bound carriageway, say) versus an origin (south-bound
+/// carriageway across the median). Chained polylines share their
+/// endpoint by construction, so the stitched line is geometrically
+/// continuous and the playback doesn't trace boxes around each stop.
 ///
 /// Cycling profile: Apple's transport types are
 /// `automobile` / `walking` / `transit` — there is no `bicycle`.
@@ -84,22 +91,29 @@ enum MapKitRouter {
         var totalDistance: Double = 0
         var totalDuration: Double = 0
 
+        // Chain: each leg's origin is the previous leg's polyline END
+        // (an Apple-snapped road coordinate), not the user's original
+        // click. See type-level docs for why this matters.
+        var currentOrigin = waypoints[0]
+
         for legIdx in 0..<(waypoints.count - 1) {
-            let a = waypoints[legIdx]
-            let b = waypoints[legIdx + 1]
+            let destination = waypoints[legIdx + 1]
             let route: MKRoute
             do {
-                route = try await legRoute(from: a, to: b, transport: transport)
+                route = try await legRoute(
+                    from: currentOrigin,
+                    to: destination,
+                    transport: transport,
+                )
             } catch {
                 throw RouterError.legFailed(legIndex: legIdx, underlying: error)
             }
 
             let legCoords = polylineCoordinates(route.polyline)
-            // Drop the duplicate junction point: the last point of
-            // the previous leg is the same place as the first point
-            // of this leg, since legs share their boundary waypoint.
-            // Without this drop the playback "double-ticks" at every
-            // intermediate stop.
+            // Drop the duplicate junction point: this leg's first
+            // coord is the same place as the previous leg's last
+            // coord (we passed it in as `currentOrigin`), so without
+            // a drop the playback would double-tick at every stop.
             if stitched.isEmpty {
                 stitched.append(contentsOf: legCoords)
             } else if !legCoords.isEmpty {
@@ -107,6 +121,12 @@ enum MapKitRouter {
             }
             totalDistance += route.distance
             totalDuration += route.expectedTravelTime
+
+            // The NEXT leg starts from where this leg actually ended
+            // (MapKit's road-snapped destination), not from the user's
+            // raw click. That's what keeps consecutive polylines glued
+            // together with no jitter.
+            currentOrigin = legCoords.last ?? destination
         }
 
         return ResolvedRoute(
