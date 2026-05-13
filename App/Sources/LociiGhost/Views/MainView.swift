@@ -19,6 +19,18 @@ struct MainView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             Sidebar()
+                // Lock the sidebar column at ≥280pt. Without this,
+                // NavigationSplitView lets the user drag the splitter
+                // narrower than the Sidebar's internal `.frame(minWidth:)`
+                // can stop, which char-wraps device names like
+                // "iPhone (Wi-Fi)" into vertical fragments.
+                // min 280 covers "iPhone (Wi-Fi)" without truncating;
+                // max 310 keeps the main pane ≥ ~1000pt at the current
+                // window minWidth (1320) so TopStatusBar never overflows.
+                // Widening past 310 isn't useful — sidebar content is
+                // already laid out for ~280-300pt; extra width just
+                // steals from the map.
+                .navigationSplitViewColumnWidth(min: 280, ideal: 295, max: 310)
         } detail: {
             VStack(spacing: 0) {
                 AppHeaderBar(appLanguage: $appLanguage)
@@ -1303,7 +1315,10 @@ private struct DeviceRow: View {
                     .foregroundStyle(device.connected ? .green : .secondary)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
-                        Text(device.name).font(.body)
+                        Text(device.name)
+                            .font(.body)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                         if isLikelyOffline {
                             // After health-check disconnects an
                             // unreachable WiFi device, the entry sticks
@@ -1318,6 +1333,8 @@ private struct DeviceRow: View {
                                  comment: "Capsule badge on a device row whose iPhone is offline")
                                 .font(.caption2.weight(.medium))
                                 .foregroundStyle(.white)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 1)
                                 .background(Color.gray, in: .capsule)
