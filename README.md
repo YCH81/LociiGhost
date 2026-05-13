@@ -3,6 +3,10 @@
 > **iPhone GPS 模擬工具** —— Apple Silicon 原生 macOS app，從 LocWarp（keezxc1223, MIT）概念與部分參照後完整 Swift 重寫。
 >
 > **iPhone GPS spoofing tool** — Apple-Silicon-native macOS app, a complete Swift rewrite informed by LocWarp's concept and partial code reference (keezxc1223, MIT).
+>
+> **上游：[keezxc1223/locwarp](https://github.com/keezxc1223/locwarp)（MIT）**——本專案為完整重寫的獨立 repo，非 GitHub-fork。
+>
+> **Upstream: [keezxc1223/locwarp](https://github.com/keezxc1223/locwarp) (MIT)** — this is a standalone repo holding a complete rewrite, not a GitHub-fork.
 
 A from-scratch, Apple-Silicon-only iOS location simulation tool inspired by
 [LocWarp](https://github.com/keezxc1223/locwarp) (by keezxc1223, MIT-licensed),
