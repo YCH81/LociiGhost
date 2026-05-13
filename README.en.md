@@ -67,6 +67,18 @@ if you're in Taiwan.
 
 Full commit history: [git log](https://github.com/YCH81/LociiGhost/commits/main)
 
+## Contact / Community
+
+Join the LINE channels for release announcements and to chat with other
+users:
+
+[![LINE Official Account](https://img.shields.io/badge/LINE-Official%20Account-06C755?style=for-the-badge&logo=line&logoColor=white)](https://line.me/R/ti/p/%40382ydavk)
+[![LINE Community](https://img.shields.io/badge/LINE-Community-06C755?style=for-the-badge&logo=line&logoColor=white)](https://line.me/ti/g2/-x9IldV0HMk-4Ydc-U93UnvOnUPbJ1En3z9XIg)
+
+- LINE Official Account ID: `@382ydavk`
+- LINE Community: "LociiGhost Mac/iOS 飛人" (primarily Traditional Chinese)
+- Technical bug reports and feature requests: [GitHub Issues](https://github.com/YCH81/LociiGhost/issues)
+
 ## Why
 
 The existing macOS port (`M-0.2.99.5`) is functional but architecturally a

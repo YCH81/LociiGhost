@@ -52,6 +52,17 @@
 
 完整 commit 歷史：[git log](https://github.com/YCH81/LociiGhost/commits/main)
 
+## 聯絡 ／ 社群
+
+歡迎加入 LINE 官方頻道與社群，第一時間收到釋出通知、跟其他使用者交流：
+
+[![LINE 官方帳號](https://img.shields.io/badge/LINE-加官方帳號-06C755?style=for-the-badge&logo=line&logoColor=white)](https://line.me/R/ti/p/%40382ydavk)
+[![LINE 社群](https://img.shields.io/badge/LINE-加社群-06C755?style=for-the-badge&logo=line&logoColor=white)](https://line.me/ti/g2/-x9IldV0HMk-4Ydc-U93UnvOnUPbJ1En3z9XIg)
+
+- LINE 官方帳號 ID：`@382ydavk`
+- LINE 社群名稱：「LociiGhost Mac/iOS 飛人」
+- 技術 bug 報告、feature request：[GitHub Issues](https://github.com/YCH81/LociiGhost/issues)
+
 ## 動機
 
 現有的 macOS 版（`M-0.2.99.5`）功能完整，但架構上是直接從 Windows 搬過來的：
