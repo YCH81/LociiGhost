@@ -139,6 +139,8 @@ struct TopStatusBar: View {
                 Image(systemName: symbol)
                 Text(titleKey)
                     .font(.callout.weight(.medium))
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
@@ -208,6 +210,8 @@ struct TopStatusBar: View {
                         geocoderFallback: state.simulatedGeoContext?.localisedCountryName,
                     ))
                         .font(.callout.weight(.medium))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
             },
             help: LocalizedStringKey("Country of the simulated location"),
@@ -224,6 +228,8 @@ struct TopStatusBar: View {
                         Image(systemName: w.condition.symbol)
                             .foregroundStyle(weatherColor(w.condition))
                         Text(String(format: "%.0f°C", w.temperatureC))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                 } else {
                     HStack(spacing: 5) {
@@ -231,6 +237,8 @@ struct TopStatusBar: View {
                             .foregroundStyle(.tertiary)
                         Text("—")
                             .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                 }
             },
@@ -261,6 +269,8 @@ struct TopStatusBar: View {
             if let c = displayedCoord {
                 Text(String(format: "%.5f, %.5f", c.lat, c.lng))
                     .textSelection(.enabled)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
                 Button {
                     copyCoord(c)
                 } label: {
@@ -324,6 +334,8 @@ struct TopStatusBar: View {
                             .foregroundStyle(.secondary)
                             .font(.caption)
                         Text(formattedNow(in: TimeZone.current))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                     if showRemote, let tz {
                         HStack(spacing: 5) {
@@ -331,9 +343,13 @@ struct TopStatusBar: View {
                                 .foregroundStyle(.green)
                                 .font(.caption)
                             Text(formattedNow(in: tz))
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
                             Text(tz.abbreviation() ?? tz.identifier)
                                 .foregroundStyle(.tertiary)
                                 .font(.caption)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
                         }
                     }
                 }
