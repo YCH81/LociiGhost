@@ -33,10 +33,19 @@ mkdir -p "$OUT/Contents/MacOS" "$OUT/Contents/Resources"
 cp "$BIN" "$OUT/Contents/MacOS/LociiGhost"
 chmod +x "$OUT/Contents/MacOS/LociiGhost"
 
-# SwiftPM's resource bundle has to live next to the executable so that
-# Bundle.module resolves at runtime.
+# SwiftPM's resource bundle. The auto-generated `Bundle.module`
+# accessor searches `Bundle.main.resourceURL` first (which on a
+# packaged .app is `Contents/Resources/`), so the bundle MUST live
+# there. The old comment in this script claimed "next to the
+# executable" (Contents/MacOS/) and the older script copied it
+# accordingly — both wrong. On real end-user installs that older
+# layout meant `Bundle.module`'s fatalError fired the moment any
+# `String(localized: …, bundle: .module, …)` ran (e.g.
+# `DeviceVM.developerModeLabel` on every iPhone row), crashing the
+# app on launch. The .app worked in dev (`swift run`) only because
+# SwiftPM's debug-mode lookup falls back to the build directory.
 if [[ -d "$RESOURCE_BUNDLE" ]]; then
-    cp -R "$RESOURCE_BUNDLE" "$OUT/Contents/MacOS/"
+    cp -R "$RESOURCE_BUNDLE" "$OUT/Contents/Resources/"
 fi
 
 # Copy *.lproj directories from the SOURCE tree (not the SwiftPM-
@@ -114,7 +123,7 @@ cat >"$OUT/Contents/Info.plist" <<'PLIST'
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.10.2</string>
+    <string>1.10.3</string>
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>NSHumanReadableCopyright</key>
@@ -209,10 +218,10 @@ if [[ -n "$SIGN_IDENTITY" ]]; then
     # outer .app wrapper. codesign rejects nested-already-signed
     # contents otherwise, and notarisation rejects unsigned
     # nested binaries.
-    if [[ -d "$OUT/Contents/MacOS/LociiGhost_LociiGhost.bundle" ]]; then
+    if [[ -d "$OUT/Contents/Resources/LociiGhost_LociiGhost.bundle" ]]; then
         codesign --force --options runtime --timestamp \
             --sign "$SIGN_IDENTITY" \
-            "$OUT/Contents/MacOS/LociiGhost_LociiGhost.bundle"
+            "$OUT/Contents/Resources/LociiGhost_LociiGhost.bundle"
     fi
 
     # Bundled PyInstaller daemon at Contents/Resources/lociighostd/.
