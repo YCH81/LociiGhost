@@ -41,6 +41,15 @@ sleep 0.3
 LOG="$HOME/Library/Logs/LociiGhost/lociighostd-sudo.log"
 mkdir -p "$(dirname "$LOG")"
 
+# Past sudo-launched daemons can leave the log file (and sometimes
+# the parent dir) owned by root. The redirect `>"$LOG"` on the next
+# nohup line is set up by the user shell, NOT by sudo — so if the
+# file is root-owned the shell can't truncate it and the launch
+# fails with "Permission denied". Reclaim ownership while we still
+# have a cached sudo from the `sudo -v` above. -R covers both the
+# dir and the file in one shot; safe to run repeatedly.
+sudo chown -R "$(whoami)" "$(dirname "$LOG")"
+
 echo "==> launching daemon as root in the background"
 echo "    socket: $SOCKET"
 echo "    log:    $LOG"
