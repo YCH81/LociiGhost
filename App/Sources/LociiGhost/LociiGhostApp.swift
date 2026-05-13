@@ -119,7 +119,17 @@ struct LociiGhostApp: App {
                 // `.borderedProminent` Button, ProgressView) adopt
                 // it automatically.
                 .tint(appState.appearanceMode.tint)
-                .frame(minWidth: 900, minHeight: 600)
+                // minWidth 1320 / minHeight 640: empirically the smallest
+                // size where the TopStatusBar (4 left buttons + 4 right
+                // chips) and the sidebar (260pt) can both render every
+                // element without clipping. Smaller than this and either
+                // the rightmost chip overflows or the sidebar footer
+                // buttons get cropped. SwiftUI clip behaviour is ugly
+                // (we already lineLimit(1) the chip text so it won't
+                // char-wrap, but the chip itself can still go off
+                // screen), so the cleaner UX is to refuse the bad state
+                // at the window-resize boundary.
+                .frame(minWidth: 1320, minHeight: 640)
                 .task {
                     AppDelegate.sharedAppState = appState
                     appState.attachModelContext(modelContainer.mainContext)
