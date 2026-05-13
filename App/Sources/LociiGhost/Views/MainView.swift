@@ -330,6 +330,7 @@ private struct Sidebar: View {
         // bottom bar) off-screen. A scrollview keeps the sidebar
         // bounded to its column's height and lets the user scroll
         // through their bookmarks instead.
+        VStack(spacing: 0) {
         ScrollView(.vertical, showsIndicators: true) {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
@@ -448,6 +449,17 @@ private struct Sidebar: View {
                 .padding(.vertical, 10)
         }
         }
+        .frame(maxHeight: .infinity)
+
+        // Fixed support/community footer. Sits OUTSIDE the ScrollView so
+        // it stays glued to the sidebar bottom regardless of how much the
+        // user scrolls or how many bookmarks they expand. By design, this
+        // footer is compile-time only — no Settings toggle, no JSON, no
+        // way to disable from the UI. See LICENSE "Brand & Support
+        // Channels" carve-out for the policy reasoning.
+        Divider()
+        SidebarSupportFooter()
+        }
         .frame(minWidth: 260)
         // Sheet attached at the sidebar root so it presents above the
         // whole UI, not inside a small device row. AppState owns the
@@ -505,6 +517,65 @@ private struct Sidebar: View {
         }
     }
 
+}
+
+/// Pinned support / community footer that sits at the very bottom of
+/// the sidebar — below System Functions, glued there regardless of how
+/// far the user scrolls or how many bookmarks they expand. Two buttons:
+/// Ko-fi (coral) for donation, LINE community (green) for chat.
+///
+/// **Policy note**: this footer is compile-time only. No Settings
+/// toggle, no JSON, no `if` switch. That's intentional — the carve-out
+/// in `LICENSE` ("Brand & Support Channels") reserves the author's
+/// donation / contact channels outside the MIT grant, and removing
+/// this footer in a fork requires editing the Swift source directly,
+/// which forks should do *to substitute their own channels*, not to
+/// strip the original's.
+private struct SidebarSupportFooter: View {
+    var body: some View {
+        VStack(spacing: 8) {
+            Link(destination: URL(string: "https://ko-fi.com/jflociighost")!) {
+                HStack(spacing: 6) {
+                    Image(systemName: "cup.and.saucer.fill")
+                    Text("Support on Ko-fi",
+                         comment: "Sidebar footer — Ko-fi donation button")
+                        .lineLimit(1)
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 7)
+                .background(
+                    Color(red: 1.0, green: 0.369, blue: 0.357),
+                    in: .rect(cornerRadius: 6)
+                )
+            }
+            .buttonStyle(.plain)
+            .help(LocalizedStringKey("Support on Ko-fi"))
+
+            Link(destination: URL(string: "https://line.me/ti/g2/-x9IldV0HMk-4Ydc-U93UnvOnUPbJ1En3z9XIg")!) {
+                HStack(spacing: 6) {
+                    Image(systemName: "person.2.fill")
+                    Text("Join LINE community",
+                         comment: "Sidebar footer — LINE community group link")
+                        .lineLimit(1)
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 7)
+                .background(
+                    Color(red: 0.024, green: 0.780, blue: 0.333),
+                    in: .rect(cornerRadius: 6)
+                )
+            }
+            .buttonStyle(.plain)
+            .help(LocalizedStringKey("Join LINE community"))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 12)
+        .background(.regularMaterial)
+    }
 }
 
 /// Sidebar section for the M-style WiFi-only flow: a one-shot "Pair

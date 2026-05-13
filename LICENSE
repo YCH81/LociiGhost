@@ -39,3 +39,35 @@ The LocWarp copyright notice above is preserved per the MIT License terms
 on the upstream project. Any LocWarp-derived portions in this codebase
 continue to be governed by the upstream MIT License; the same terms apply
 to LociiGhost as a whole.
+
+----------------------------------------------------------------------
+
+Brand & Support Channels (reserved, NOT covered by MIT)
+
+The following identity and channel assets are reserved to
+YCH81 (Jeff Hu) personally and are NOT covered by the MIT License
+above. They are NOT part of the "Software" granted under that license.
+
+  - The name "LociiGhost" and any visually-confusingly-similar variant.
+  - The LociiGhost icon set (paper-plane / sage palette).
+  - The author's personal donation channel: Ko-fi at
+    https://ko-fi.com/jflociighost
+  - The author's personal contact channels: LINE Official Account
+    @382ydavk and the LINE community group "LociiGhost Mac/iOS 飛人".
+
+If you fork, modify, or redistribute LociiGhost in any form, you MUST:
+
+  1. Rename your fork (do not call it "LociiGhost" or any name a
+     reasonable user would confuse with LociiGhost), and use a
+     different icon set.
+  2. Remove or replace every reference to the author's personal
+     donation / contact channels listed above. Substituting your
+     own donation / contact channels is fine; passing the originals
+     off as your own, or leaving them in place to funnel support
+     intended for YCH81 to a third party, is not.
+
+This brand carve-out is independent of the MIT grant: the source
+code itself remains MIT-licensed and freely modifiable. What is
+reserved is the project's *identity* and the author's *personal
+funnels*, both of which the MIT License does not (and is not designed
+to) cover.
