@@ -1955,10 +1955,36 @@ final class AppState {
             }
             // v1.9.1: engine + (optional) api_key go through with every
             // request. The daemon ignores them unless they tell it
-            // something different than its current OSRM-demo default,
-            // so older clients keep working.
+            // something different than its current default, so older
+            // clients keep working.
             let engine = routingEngine
             let effectiveStraightLine = useStraightLine || engine == .straightLine
+
+            // v1.10: when the user picks MapKit, resolve the polyline here on
+            // the Mac (MKDirections isn't reachable from the Python daemon)
+            // and ship the pre-resolved coords as `polyline`. The daemon
+            // detects `polyline` and skips its own engine dispatch — it just
+            // plays the supplied coords. Other engines (OSRM, Google, straight
+            // line) still route inside the daemon via `stops` like before.
+            var polylineParam: [AnyCodable]? = nil
+            if engine == .mapKit && !effectiveStraightLine {
+                do {
+                    let resolved = try await MapKitRouter.resolve(
+                        waypoints: waypoints,
+                        profile: profile.rawValue,
+                    )
+                    polylineParam = resolved.coordinates.map { c in
+                        AnyCodable([
+                            "lat": AnyCodable(c.lat),
+                            "lng": AnyCodable(c.lng),
+                        ])
+                    }
+                } catch {
+                    lastError = "Apple Maps routing failed: \(error.localizedDescription)"
+                    return
+                }
+            }
+
             var navParams: [String: AnyCodable] = [
                 "udid":           AnyCodable(udid),
                 "stops":          AnyCodable(stopsParam),
@@ -1968,6 +1994,9 @@ final class AppState {
                 "laps":           AnyCodable(max(1, routeLaps)),
                 "engine":         AnyCodable(engine.rawValue),
             ]
+            if let polylineParam {
+                navParams["polyline"] = AnyCodable(polylineParam)
+            }
             if engine == .google, let key = googleGeocodeAPIKey {
                 navParams["engine_api_key"] = AnyCodable(key)
             }

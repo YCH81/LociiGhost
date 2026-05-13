@@ -271,6 +271,13 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
         # mode regardless of the explicit straight_line flag above.
         engine: str = "osrm_demo",
         engine_api_key: str | None = None,
+        # v1.10: Mac-side MapKit pre-resolves the route and ships the
+        # whole polyline. When present, we skip our own engine dispatch
+        # entirely and treat these coords as the authoritative route —
+        # MKDirections lives on the Apple SDK side and the Python daemon
+        # can't call it, so the Mac has to do that work and hand us the
+        # result. Each entry is {"lat": float, "lng": float}.
+        polyline: list[dict[str, float]] | None = None,
     ) -> dict[str, Any]:
         if speed_mps is None:
             speed_mps = SPEED_PRESETS.get(profile, SPEED_PRESETS["driving"])
@@ -312,6 +319,37 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
         if laps > 1 and waypoints[0] != waypoints[-1]:
             waypoints = waypoints + [waypoints[0]]
 
+        # v1.10 Mac-resolved polyline: when the Mac has already done
+        # the routing (MapKit path), it sends us the final polyline
+        # directly. Skip every engine here — the supplied coords are
+        # the route. Distance is recomputed from geometry; duration
+        # gets re-derived from speed_mps further down so the UI ETA
+        # tracks the SpeedPicker exactly the same way it does for
+        # daemon-resolved routes.
+        if polyline is not None:
+            mac_coords: list[tuple[float, float]] = []
+            for p in polyline:
+                lat = float(p["lat"])
+                lng = float(p["lng"])
+                _validate_coord(lat, lng)
+                mac_coords.append((lat, lng))
+            if len(mac_coords) < 2:
+                raise errors.RpcError(
+                    code=errors.PYMD3_ERROR,
+                    message="polyline must have at least 2 points",
+                )
+            base_route = Route(
+                coordinates=mac_coords,
+                distance_m=route_length_m(mac_coords),
+                duration_s=0.0,                # recomputed below from speed_mps
+                profile=profile,
+            )
+            laps = max(1, int(laps))
+            # Skip the engine dispatch fork below.
+            goto_after_routing = True
+        else:
+            goto_after_routing = False
+
         # v1.9.1 engine dispatch. `straight_line=True` always wins
         # over engine — if either the explicit flag or
         # engine=="straight_line" is set, we skip network routing.
@@ -319,7 +357,9 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
         # the user-supplied API key. Everything else falls back to
         # the daemon's shared OsrmClient.
         effective_straight = straight_line or engine == "straight_line"
-        if effective_straight:
+        if goto_after_routing:
+            pass    # base_route already built from Mac-supplied polyline
+        elif effective_straight:
             base_route = _straight_line_route(waypoints, speed_mps, profile)
         elif engine == "google":
             if not engine_api_key:

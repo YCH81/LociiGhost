@@ -67,15 +67,16 @@ final class AppPreferences {
     /// SwiftData; the user pastes their own key.
     var googleGeocodeAPIKey: String?
 
-    // ── v1.9.1: Routing engine picker ───────────────────────────
+    // ── v1.9.1: Routing engine picker (default changed to MapKit in v1.10) ─
     /// Which routing backend to use when planning navigation routes.
     /// Stored as the raw string of `RoutingEngine` so SwiftData's
-    /// schema stays primitive. Defaults to "osrm_demo" — the public
-    /// router.project-osrm.org server, the original behaviour.
-    /// Switching to "google" requires `googleGeocodeAPIKey` to be
-    /// set with a key that also has Directions API enabled.
-    /// "straight_line" skips routing entirely.
-    var routingEngineRaw: String = "osrm_demo"
+    /// schema stays primitive. Defaults to "mapkit" — Apple MapKit
+    /// resolved on the Mac side (no API key, no external rate limit,
+    /// Apple-maintained map data). Other options: "osrm_demo" (the
+    /// previous v1.9 default; kept for true bike-network routes),
+    /// "google" (requires `googleGeocodeAPIKey` with Directions API
+    /// enabled), or "straight_line" (no routing).
+    var routingEngineRaw: String = "mapkit"
 
     // ── v1.9.4: Appearance mode (brand vs system tint) ──────────
     /// Raw string of `AppearanceMode`. "system" (default) lets every
