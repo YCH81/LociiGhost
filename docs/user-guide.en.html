@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LociiGhost User Guide</title>
+<meta name="description" content="LociiGhost User Guide — install, first launch, connecting your iPhone, and running your first route.">
+<style>
+  :root {
+    --bg: #f5f4ee;
+    --ink: #2d3748;
+    --sage: #7fa389;
+    --sage-dark: #5f836a;
+    --muted: #6b7280;
+    --hairline: #d4d4c8;
+    --card-bg: #ffffff;
+    --warn-bg: rgba(255, 240, 220, 0.55);
+    --warn-border: rgba(212, 142, 64, 0.35);
+    --warn-ink: #b76e2c;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font: 16px/1.7 -apple-system, BlinkMacSystemFont, "Helvetica Neue",
+          "PingFang TC", "Heiti TC", "Microsoft JhengHei", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  .container {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 56px 24px 96px;
+    position: relative;
+  }
+  .lang-switcher {
+    position: absolute;
+    top: 24px;
+    right: 24px;
+    font-size: 13px;
+  }
+  .lang-switcher a {
+    color: var(--muted);
+    border: none;
+    padding: 4px 10px;
+    border-radius: 6px;
+    margin-left: 2px;
+  }
+  .lang-switcher a.active {
+    color: var(--ink);
+    background: rgba(127,163,137,0.18);
+    font-weight: 600;
+    border: none;
+  }
+  .lang-switcher a:hover {
+    color: var(--ink);
+    border: none;
+  }
+  .breadcrumb {
+    font-size: 13px;
+    color: var(--muted);
+    margin: 0 0 24px;
+  }
+  .breadcrumb a {
+    color: var(--muted);
+    border-bottom-color: rgba(0,0,0,0.15);
+  }
+  .breadcrumb a:hover { color: var(--ink); }
+  header { margin-bottom: 32px; }
+  h1 {
+    margin: 0 0 10px;
+    font-size: 38px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .tagline {
+    color: var(--muted);
+    margin: 0;
+    font-size: 16px;
+  }
+  h2 {
+    margin: 56px 0 12px;
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    scroll-margin-top: 16px;
+  }
+  h3 {
+    margin: 32px 0 10px;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--sage-dark);
+    scroll-margin-top: 16px;
+  }
+  h4 {
+    margin: 22px 0 8px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  p { margin: 10px 0; }
+  ol, ul { padding-left: 22px; }
+  li { margin: 4px 0; }
+  a {
+    color: var(--sage-dark);
+    text-decoration: none;
+    border-bottom: 1px solid rgba(127,163,137,0.4);
+    transition: border-color 0.15s, color 0.15s;
+  }
+  a:hover {
+    color: var(--ink);
+    border-bottom-color: var(--ink);
+  }
+  code {
+    background: rgba(0,0,0,0.05);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font: 13px/1.4 "SF Mono", Menlo, Consolas, monospace;
+  }
+  pre {
+    background: #fbfbf6;
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    font: 12.5px/1.55 "SF Mono", Menlo, Consolas, monospace;
+    color: #44423a;
+  }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  blockquote {
+    margin: 14px 0;
+    padding: 12px 18px;
+    background: rgba(127,163,137,0.08);
+    border-left: 3px solid var(--sage);
+    border-radius: 0 8px 8px 0;
+    color: #404756;
+    font-size: 15px;
+  }
+  blockquote.warn {
+    background: var(--warn-bg);
+    border-left-color: var(--warn-border);
+  }
+  blockquote.warn strong { color: var(--warn-ink); }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0;
+    font-size: 14.5px;
+  }
+  th, td {
+    border: 1px solid var(--hairline);
+    padding: 9px 12px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background: rgba(127,163,137,0.10);
+    font-weight: 600;
+  }
+  tr:nth-child(even) td { background: rgba(0,0,0,0.012); }
+  hr {
+    border: none;
+    border-top: 1px solid var(--hairline);
+    margin: 48px 0;
+  }
+  .toc {
+    background: var(--card-bg);
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+    padding: 20px 26px;
+    margin: 0 0 40px;
+  }
+  .toc h2 {
+    margin: 0 0 12px;
+    font-size: 15px;
+    color: var(--sage-dark);
+    font-weight: 600;
+    scroll-margin-top: 0;
+  }
+  .toc ol {
+    margin: 0;
+    padding-left: 22px;
+    font-size: 14.5px;
+    columns: 2;
+    column-gap: 24px;
+  }
+  .toc li { break-inside: avoid; margin: 3px 0; }
+  .attribution {
+    margin-top: 64px;
+    padding-top: 24px;
+    border-top: 1px solid var(--hairline);
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.8;
+  }
+  .attribution a { color: var(--muted); border-bottom-color: rgba(0,0,0,0.15); }
+  @media (max-width: 600px) {
+    .toc ol { columns: 1; }
+    h1 { font-size: 30px; }
+    h2 { font-size: 21px; }
+    .container { padding: 48px 20px 80px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <nav class="lang-switcher">
+    <a href="user-guide.html">繁體中文</a>
+    <a href="user-guide.en.html" class="active">English</a>
+  </nav>
+
+  <p class="breadcrumb"><a href="index.en.html">← Back to LociiGhost home</a></p>
+
+  <header>
+    <h1>LociiGhost User Guide</h1>
+    <p class="tagline">For first-time LociiGhost users. From download to running your first route, step by step.</p>
+  </header>
+
+  <nav class="toc">
+    <h2>Table of Contents</h2>
+    <ol>
+      <li><a href="#sec-1">What is LociiGhost</a></li>
+      <li><a href="#sec-2">Before You Start</a></li>
+      <li><a href="#sec-3">First-Time Install</a></li>
+      <li><a href="#sec-4">First Launch: Interface Tour</a></li>
+      <li><a href="#sec-5">Connecting Your iPhone (First Time)</a></li>
+      <li><a href="#sec-6">Run Your First Route</a></li>
+      <li><a href="#sec-7">The Six Movement Modes</a></li>
+      <li><a href="#sec-8">Routes and Bookmarks</a></li>
+      <li><a href="#sec-9">Advanced: Control the Mac from Your Phone</a></li>
+      <li><a href="#sec-10">Speed and Routing Engines</a></li>
+      <li><a href="#sec-11">Troubleshooting</a></li>
+      <li><a href="#sec-12">Appendix</a></li>
+    </ol>
+  </nav>
+
+  <section>
+    <h2 id="sec-1">1. What is LociiGhost</h2>
+    <p>LociiGhost is a macOS app that replaces your iPhone's GPS location with any place you pick on a map. Choose a location on your Mac, and your iPhone instantly believes it's there — every location-aware app on the iPhone (Maps, Fitness, social apps, games…) will see the new location.</p>
+    <h4>What it's for</h4>
+    <ul>
+      <li>App developers testing location features without physically traveling</li>
+      <li>Testing delivery / rideshare / map app behavior</li>
+      <li>Personal map exploration, GIS research</li>
+      <li>Previewing what a given place looks like on an iPhone</li>
+    </ul>
+    <h4>What it's <em>not</em> for</h4>
+    <ul>
+      <li>Anything that violates an app's Terms of Service (e.g. certain location-based games). This may <strong>get your account permanently banned</strong>. See <a href="#sec-2">Section 2 warning</a>.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2 id="sec-2">2. Before You Start</h2>
+    <h3>Hardware</h3>
+    <ul>
+      <li><strong>Mac</strong>: Apple Silicon (M1 / M2 / M3 / M4). <strong>Intel Macs are not supported</strong> — by design, not a bug.</li>
+      <li><strong>iPhone</strong>: Any iPhone that can connect to your Mac via USB. iOS 17+ requires enabling Developer Mode (covered in Section 5.2).</li>
+    </ul>
+    <h3>System</h3>
+    <ul>
+      <li><strong>macOS</strong>: 14 Sonoma or later. See <a href="https://github.com/YCH81/LociiGhost/blob/main/docs/compatibility.md">compatibility.md</a> for the full compatibility matrix.</li>
+    </ul>
+    <h3>Important Warning (please read in full)</h3>
+    <blockquote class="warn">
+      <p><strong>Using LociiGhost may violate certain apps' Terms of Service.</strong></p>
+      <p>Spoofing location on some apps — particularly location-based games, attendance systems, rideshare platforms — can trigger server-side detection and lead to:</p>
+      <ul>
+        <li><strong>Permanent account bans</strong></li>
+        <li><strong>Permanent loss of game progress</strong></li>
+        <li><strong>Device ID blacklisting</strong></li>
+      </ul>
+      <p>LociiGhost itself is a neutral developer/testing tool, but how you use it is on you. <strong>All consequences are your responsibility.</strong> Full disclaimer in <a href="#sec-12">Section 12 Appendix</a>.</p>
+    </blockquote>
+  </section>
+
+  <section>
+    <h2 id="sec-3">3. First-Time Install</h2>
+    <h3>Download</h3>
+    <p>Go to the GitHub Releases page and grab the latest DMG:</p>
+    <p>👉 <strong><a href="https://github.com/YCH81/LociiGhost/releases">https://github.com/YCH81/LociiGhost/releases</a></strong></p>
+    <p>Click the most recent version (e.g. <code>LociiGhost-v1.10.0.dmg</code>) to download.</p>
+    <h3>Install</h3>
+    <ol>
+      <li>Double-click the downloaded <code>.dmg</code> — a Finder window opens</li>
+      <li>Drag <strong>LociiGhost.app</strong> to the <strong>Applications</strong> folder</li>
+      <li>Open LociiGhost from Applications</li>
+    </ol>
+    <h3>Possible First-Launch Warning</h3>
+    <p>The first time you open it, macOS may show:</p>
+    <blockquote><strong>"LociiGhost can't be opened" — the developer can't be verified</strong></blockquote>
+    <p>If you see this:</p>
+    <ol>
+      <li>In Finder, navigate to Applications</li>
+      <li><strong>Control + Click</strong> (or right-click) LociiGhost</li>
+      <li>Choose <strong>Open</strong></li>
+      <li>The dialog now shows an <strong>Open</strong> button — click it</li>
+      <li>Won't bother you again</li>
+    </ol>
+    <blockquote>v1.10.0+ is fully notarized by Apple, so this warning typically doesn't appear. If it does, follow the steps above once.</blockquote>
+  </section>
+
+  <section>
+    <h2 id="sec-4">4. First Launch: Interface Tour</h2>
+    <p>When LociiGhost opens, the window looks roughly like this:</p>
+<pre>┌─────────────────────────────────────────────────────────┐
+│  ⬤ Auth status  [Search]    🌐 EN/中文   ⚙️ Settings    │ ← Top bar
+├──────────────┬──────────────────────────────────────────┤
+│              │                                          │
+│  📱 Devices  │                                          │
+│  ─────       │           🗺️  Map area                   │
+│  📍 Routes   │      (Apple Maps, shows your location)   │
+│  ⭐ Bookmarks│                                          │
+│  🎮 Movement │                                          │
+│              │                                          │
+│  ─────       │                                          │
+│  ☕ Support  │                                          │
+│              │                                          │
+├──────────────┴──────────────────────────────────────────┤
+│  🚗 Car  🚲 Bike  🚶 Walk    Speed: [━━━━●━━━] 50 km/h  │ ← Bottom bar
+└─────────────────────────────────────────────────────────┘
+   ↑ Sidebar</pre>
+    <h3>The Four Areas</h3>
+    <table>
+      <thead><tr><th>Area</th><th>What you do here</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Top bar</strong></td><td>See auth status (green = OK, red = needs auth), search places, switch language, open Settings</td></tr>
+        <tr><td><strong>Sidebar</strong></td><td>See connected iPhones, saved routes/bookmarks, pick movement modes</td></tr>
+        <tr><td><strong>Map area</strong></td><td>Click to pick a destination, preview routes, see the iPhone's current location</td></tr>
+        <tr><td><strong>Bottom bar</strong></td><td>Pick a travel mode, drag the speed slider (also works during playback)</td></tr>
+      </tbody>
+    </table>
+    <h3>Two Things to Do First</h3>
+    <h4>1. Confirm the language</h4>
+    <p>Click ⚙️ Settings (top-right) or press <code>⌘ + ,</code>, find <strong>Language</strong>, and switch between <strong>English / 繁體中文</strong> on the fly — no restart needed.</p>
+    <h4>2. Allow Mac location access (auto-prompted)</h4>
+    <p>On first launch, macOS asks "LociiGhost would like to use your location" — click <strong>Allow</strong>. This is just so the map can center on where you are. No location data ever leaves your Mac.</p>
+  </section>
+
+  <section>
+    <h2 id="sec-5">5. Connecting Your iPhone (First Time)</h2>
+    <p>For your first connection, <strong>strongly recommend USB</strong>. WiFi connection requires pairing once via USB first.</p>
+    <h3>5.1 USB Connection (do this first)</h3>
+    <ol>
+      <li>Plug your iPhone into the Mac with a USB cable</li>
+      <li>The iPhone shows a dialog: <strong>"Trust This Computer?"</strong></li>
+      <li>Tap <strong>Trust</strong> on the iPhone and enter your iPhone passcode</li>
+      <li>After a few seconds, your iPhone appears in LociiGhost's sidebar (with a USB badge)</li>
+    </ol>
+    <p>If the iPhone doesn't appear, see <a href="#sec-11">Section 11 Troubleshooting</a>.</p>
+    <h3>5.2 Enable Developer Mode</h3>
+    <p>Apple requires Developer Mode to be turned on on the iPhone for location simulation to work.</p>
+    <p><strong>On the iPhone:</strong></p>
+    <ol>
+      <li>Settings → Privacy &amp; Security</li>
+      <li>Scroll to the bottom and find <strong>Developer Mode</strong></li>
+      <li>Toggle it on</li>
+      <li>The iPhone asks to restart — do it</li>
+      <li>After reboot, confirm the prompt and enter your passcode</li>
+    </ol>
+    <blockquote>Don't see Developer Mode? It only appears after the iPhone has been recognized by a Mac running developer tools. Complete Section 5.1 USB connection first with LociiGhost open, then go back to iPhone Settings.</blockquote>
+    <p>LociiGhost has a shortcut button to take you there: click <strong>Enable Developer Mode…</strong> next to your device in the sidebar.</p>
+    <h3>5.3 Authenticate LociiGhost (one Touch ID)</h3>
+    <p>The first time you connect an iOS 17+ device, the top of LociiGhost shows a red banner:</p>
+    <blockquote><strong>"Authentication required"</strong> — click the <strong>Authenticate</strong> button on the right</blockquote>
+    <p>After clicking:</p>
+    <ol>
+      <li>macOS shows a Touch ID prompt</li>
+      <li>Press your fingerprint (or enter your Mac password)</li>
+      <li>The banner disappears, auth status turns green</li>
+    </ol>
+    <p><strong>This is needed once per Mac restart</strong>, not per app launch. Reopening the app doesn't require re-authentication.</p>
+    <blockquote>Why authenticate? LociiGhost needs Mac-level permission to talk to your iPhone — a requirement Apple added in iOS 17.</blockquote>
+    <h3>5.4 Switching to WiFi Later (no cable)</h3>
+    <p>Once USB works, you can pair for WiFi so future connections don't need a cable.</p>
+    <p>How: in the sidebar, next to your device, open the menu and pick <strong>Pair for WiFi</strong>. Follow the prompts (you'll see the "Trust This Computer" dialog twice). After that, you can connect over WiFi with no cable.</p>
+    <p>Full WiFi setup guide → <strong><a href="https://github.com/YCH81/LociiGhost/blob/main/docs/wifi-setup.md">wifi-setup.md</a></strong></p>
+  </section>
+
+  <section>
+    <h2 id="sec-6">6. Run Your First Route</h2>
+    <h3>Fastest Check: Teleport to a Place</h3>
+    <ol>
+      <li><strong>Find a place on the map</strong> (e.g. Tokyo Station, Times Square)
+        <ul>
+          <li>Drag/zoom the map to find it</li>
+          <li>Or use the search bar at the top</li>
+        </ul>
+      </li>
+      <li><strong>Click that spot on the map</strong>
+        <ul>
+          <li>A blue pin drops</li>
+          <li>A floating panel offers <strong>Teleport / Navigate</strong></li>
+        </ul>
+      </li>
+      <li><strong>Click Teleport</strong></li>
+      <li><strong>Pick up your iPhone</strong>, open the Maps app</li>
+      <li>The iPhone's location <strong>jumps to where you picked</strong></li>
+    </ol>
+    <blockquote>P.S. If you use the <strong>Restore</strong> function: ⏱️ iPhone GPS recalibration takes <strong>30 seconds to 2 minutes</strong>. If you still see the old location at first, wait a bit.</blockquote>
+    <h3>Next: Simulate Moving</h3>
+    <p>Teleport jumps instantly — it doesn't simulate travel. To simulate actually moving from your current location to a destination:</p>
+    <ol>
+      <li>Repeat steps 1–2 above to pick a destination</li>
+      <li>In the floating panel, click <strong>Navigate</strong></li>
+      <li>In the bottom bar, pick a travel mode: <strong>🚗 Car / 🚲 Bike / 🚶 Walk</strong></li>
+      <li>Drag the <strong>Speed</strong> slider to set your desired km/h</li>
+      <li>Click <strong>Start</strong></li>
+      <li>Watch the iPhone marker move along the route on the map</li>
+    </ol>
+    <p>During playback you can drag the speed slider — speed changes instantly and the ETA recalculates.</p>
+  </section>
+
+  <section>
+    <h2 id="sec-7">7. The Six Movement Modes</h2>
+    <p>Open the <strong>Movement Modes</strong> section in the sidebar and you'll see:</p>
+    <table>
+      <thead><tr><th>Mode</th><th>Purpose</th><th>Best for</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Teleport</strong></td><td>Jump iPhone to a single point</td><td>Most common, fastest validation</td></tr>
+        <tr><td><strong>Navigate</strong></td><td>Plan a route and simulate travel at speed</td><td>Testing navigation / delivery / rideshare apps</td></tr>
+        <tr><td><strong>Route Loop</strong></td><td>Repeat the same route N times</td><td>Long-running tests, patrol simulation</td></tr>
+        <tr><td><strong>Multi-stop</strong></td><td>Visit multiple waypoints, pause at each</td><td>Commute simulation, multi-drop delivery</td></tr>
+        <tr><td><strong>Random</strong></td><td>Wander randomly within a radius</td><td>Simulating "active in this area"</td></tr>
+        <tr><td><strong>Joystick</strong></td><td>Manual control with arrow keys or on-screen joystick</td><td>Interactive testing</td></tr>
+      </tbody>
+    </table>
+    <p>Plus one game-specific mode:</p>
+    <ul><li><strong>Gold Ditto</strong> — for players, mimics a specific movement pattern. Most users won't need this.</li></ul>
+    <h3>How Each Mode Works</h3>
+    <p><strong>Teleport</strong> — already shown in Section 6. Click map, click Teleport. Done.</p>
+    <p><strong>Navigate</strong> — also shown in Section 6. You can also add intermediate stops: click point 1 on the map, then click point 2, and LociiGhost will chain them into a route.</p>
+    <p><strong>Route Loop</strong> — in multi-stop mode or with an imported route, set the <strong>Laps</strong> count (1–99) to repeat.</p>
+    <p><strong>Multi-stop</strong> — click <strong>Multi-stop</strong> in the sidebar to enter the mode. Click waypoints on the map in order. Each waypoint can have a configurable dwell time. Click Start and the iPhone visits each in sequence, pausing at each.</p>
+    <p><strong>Random</strong> — click <strong>Random</strong> in the sidebar. Configure radius and number of steps. Click Start and the iPhone wanders within the radius.</p>
+    <p><strong>Joystick</strong> — click <strong>Joystick</strong> in the sidebar to activate. Then use arrow keys, or the on-screen joystick, to push the iPhone around in real time. Great for testing apps that react to motion.</p>
+  </section>
+
+  <section>
+    <h2 id="sec-8">8. Routes and Bookmarks</h2>
+    <p>LociiGhost organizes saved places into two categories: <strong>Bookmarks</strong> (single points) and <strong>Routes</strong> (paths).</p>
+    <h3>Bookmarks: One-Click Jumps</h3>
+    <p><strong>Add a bookmark:</strong></p>
+    <ol>
+      <li><strong>Control + Click</strong> (or right-click) anywhere on the map</li>
+      <li>Choose <strong>Save as bookmark…</strong></li>
+      <li>Name it, click Save</li>
+    </ol>
+    <p><strong>Use a bookmark:</strong></p>
+    <ul>
+      <li>The <strong>Bookmarks</strong> section in the sidebar lists all of them</li>
+      <li>Click the <strong>Teleport here</strong> button next to any bookmark to jump there</li>
+    </ul>
+    <p><strong>Bulk import:</strong> If you've exported bookmarks as JSON from LocWarp or another tool, paste them all at once: Bookmarks section menu → <strong>Import bookmarks from JSON</strong> → paste your JSON.</p>
+    <h3>Routes: Save Full Paths for Replay</h3>
+    <p><strong>Import a GPX route:</strong></p>
+    <ol>
+      <li>Menu bar: <strong>File ▸ Import GPX…</strong> (or <code>⌘O</code>)</li>
+      <li>Pick a <code>.gpx</code> file</li>
+      <li>The route appears in the sidebar's <strong>Routes</strong> section</li>
+    </ol>
+    <p><strong>Export the current route:</strong></p>
+    <ol>
+      <li>With a route planned, menu bar: <strong>File ▸ Export current route as GPX…</strong> (or <code>⌘E</code>)</li>
+      <li>Save the <code>.gpx</code> — share it or replay later</li>
+    </ol>
+    <p><strong>Replay a route:</strong> In the sidebar's <strong>Routes</strong> section, click any route. A confirmation appears: "Teleport to the start and navigate through N points?" — confirm to play.</p>
+    <p><strong>Save multi-stops as a route:</strong> After arranging stops in multi-stop mode, click <strong>Save as new route</strong> to persist the trip for later replay.</p>
+  </section>
+
+  <section>
+    <h2 id="sec-9">9. Advanced: Control the Mac from Your Phone</h2>
+    <p>Want to change locations without being at your Mac? LociiGhost has a phone-side web UI — open it in Safari on your iPhone and drive the Mac from there.</p>
+    <h3>Setup</h3>
+    <p><strong>On the Mac:</strong></p>
+    <ol>
+      <li>In the sidebar, click <strong>Phone Control</strong></li>
+      <li>The window shows:
+        <ul>
+          <li>A URL like <code>http://111.168.2.5:8779/phone</code></li>
+          <li>A 6-digit PIN</li>
+        </ul>
+      </li>
+    </ol>
+    <p><strong>On the iPhone:</strong></p>
+    <ol start="3">
+      <li>Make sure the iPhone is on the <strong>same Wi-Fi</strong> as the Mac</li>
+      <li>Open Safari, type the URL</li>
+      <li>Enter the PIN</li>
+      <li>You're in the phone control UI</li>
+    </ol>
+    <h3>What the Phone Can Do</h3>
+    <ul>
+      <li>Search for a place → Teleport or Navigate</li>
+      <li>One-tap teleport from bookmarks</li>
+      <li>Adjust speed in real time</li>
+      <li>Start / pause / stop active routes</li>
+    </ul>
+    <h3>Security Notes</h3>
+    <ul>
+      <li><strong>The PIN regenerates every time the daemon restarts</strong>, including after a Mac restart. Come back to LociiGhost to see the new PIN.</li>
+      <li>Want to kick all paired phones immediately? Click <strong>Regenerate PIN</strong>.</li>
+      <li>Multiple phones can connect, but only one can drive the currently-selected iPhone at a time.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2 id="sec-10">10. Speed and Routing Engines</h2>
+    <h3>Speed Slider</h3>
+    <p>The <strong>Speed</strong> slider in the bottom bar goes from 0 to 200+ km/h. <strong>You can drag it while moving</strong> — speed updates instantly and the ETA recalculates.</p>
+    <h3>Laps</h3>
+    <p>To loop a route, set <strong>Laps</strong> in the route playback panel (up to 20).</p>
+    <h3>Routing Engines (Which Map Service Plans Your Route)</h3>
+    <p>In Navigate mode, LociiGhost plans a route automatically. Pick the engine in ⚙️ Settings → <strong>Routing engine</strong>:</p>
+    <table>
+      <thead><tr><th>Engine</th><th>Pros</th><th>Best for</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Apple Maps</strong> (default)</td><td>No setup, great Taiwan data, native integration</td><td>Most situations</td></tr>
+        <tr><td><strong>OSRM public demo</strong></td><td>Free, true bike-network paths</td><td>Realistic bike routes when speed isn't critical</td></tr>
+        <tr><td><strong>Google Directions</strong></td><td>High-quality globally</td><td>If you have your own Google API key</td></tr>
+        <tr><td><strong>Straight line</strong></td><td>No road snapping, direct point-to-point</td><td>Indoor / off-road / quick testing</td></tr>
+      </tbody>
+    </table>
+    <p>Stick with the default (Apple Maps) unless you have a reason to change it.</p>
+  </section>
+
+  <section>
+    <h2 id="sec-11">11. Troubleshooting</h2>
+    <h3>Install</h3>
+    <p><strong>Q: Got "developer cannot be verified" on first launch?</strong><br>
+    A: Control + Click (right-click) → <strong>Open</strong>. One-time fix, see <a href="#sec-3">Section 3</a>.</p>
+    <p><strong>Q: I have an Intel Mac, can I use this?</strong><br>
+    A: No. LociiGhost only supports Apple Silicon (M1/M2/M3/M4).</p>
+    <h3>Connection</h3>
+    <p><strong>Q: My iPhone never shows up in the sidebar.</strong><br>
+    A: Check in order:</p>
+    <ol>
+      <li>Is the USB cable working? Try a different one.</li>
+      <li>Did you tap <strong>Trust This Computer</strong> on the iPhone? If not, unplug and replug.</li>
+      <li>iOS 17+ — is Developer Mode on? (Section 5.2)</li>
+      <li>Try restarting LociiGhost.</li>
+    </ol>
+    <p><strong>Q: The top bar is stuck on red "Authentication required".</strong><br>
+    A: Click <strong>Authenticate</strong>, complete Touch ID. Required once per Mac restart for iOS 17+ devices.</p>
+    <p><strong>Q: WiFi connection won't work.</strong><br>
+    A: Make sure the iPhone and Mac are on the <strong>same Wi-Fi</strong>. Public Wi-Fi (cafés, hotels) often blocks peer-to-peer traffic — fall back to USB, or use iPhone Personal Hotspot to the Mac (always works). Full WiFi guide: <a href="https://github.com/YCH81/LociiGhost/blob/main/docs/wifi-setup.md">wifi-setup.md</a>.</p>
+    <h3>Usage</h3>
+    <p><strong>Q: I clicked Teleport but the iPhone's location hasn't changed.</strong><br>
+    A: Wait 30 seconds to 2 minutes. iPhone GPS recalibration takes time. Not a bug.</p>
+    <p><strong>Q: My route stopped halfway through.</strong><br>
+    A: Usually the iPhone's screen has been locked too long. Wake the iPhone — the connection auto-restores. If not, go to LociiGhost and check auth status; re-authenticate if needed.</p>
+    <p><strong>Q: How do I fully stop simulation and have the iPhone return to its real location?</strong><br>
+    A: Press Stop in LociiGhost to end simulation, or press the Restore button — restoration typically takes 30 seconds to 2 minutes. For a hard reset: restart the iPhone — that clears all simulation state.</p>
+    <p><strong>Q: Can I control multiple iPhones at once?</strong><br>
+    A: Yes. Connect both — they appear separately in the sidebar. Click to switch between them. Each iPhone has its own route, bookmarks, and state; switching never loses anything.</p>
+    <p><strong>Q: Does my location get sent to Apple, Google, or anyone?</strong><br>
+    A: No. LociiGhost runs entirely on your Mac and never uploads location data.</p>
+    <h3>Advanced</h3>
+    <p><strong>Q: Will I get banned in Pokémon GO / Pikmin / other games?</strong><br>
+    A: Possibly. See <a href="#sec-2">Section 2 warning</a>. <strong>You assume the risk.</strong></p>
+    <p><strong>Q: Does LociiGhost work with Android phones?</strong><br>
+    A: No, iPhone only.</p>
+  </section>
+
+  <section>
+    <h2 id="sec-12">12. Appendix</h2>
+    <h3>Keyboard Shortcuts</h3>
+    <table>
+      <thead><tr><th>Shortcut</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td><code>⌘ ,</code></td><td>Open Settings</td></tr>
+        <tr><td><code>⌘ O</code></td><td>Import GPX</td></tr>
+        <tr><td><code>⌘ E</code></td><td>Export current route as GPX</td></tr>
+        <tr><td><code>⌘ Q</code></td><td>Quit LociiGhost</td></tr>
+        <tr><td>Arrow keys ↑↓←→</td><td>Move iPhone in Joystick mode</td></tr>
+      </tbody>
+    </table>
+    <blockquote>The red X in the window title is <strong>close window</strong>, not quit — standard Mac behavior. To fully quit, press <code>⌘ Q</code>.</blockquote>
+    <h3>Full Disclaimer</h3>
+    <ol>
+      <li><strong>Lawful use only.</strong> LociiGhost provides location simulation. Use it within the laws of your jurisdiction and the terms of service of any target app.</li>
+      <li><strong>Account ban risk.</strong> Location spoofing may violate the ToS of certain apps (location-based games, attendance, rideshare, etc.) and may result in permanent account bans and loss of progress.</li>
+      <li><strong>System risk.</strong> Despite best-effort compatibility work, location simulation depends on iOS developer interfaces, which may misbehave on some iOS versions. Restarting the iPhone typically clears any issue.</li>
+      <li><strong>Map accuracy.</strong> Route planning relies on third-party map services (Apple, OSRM, Google) and may be inaccurate.</li>
+      <li><strong>Support scope.</strong> This is a personal project. No guarantee of uninterrupted service or future compatibility.</li>
+      <li><strong>User responsibility.</strong> Any consequences of using this tool — including account loss, data loss, and third-party legal issues — are entirely your responsibility.</li>
+      <li><strong>No warranty.</strong> The software is provided "as is," with no warranties of any kind, express or implied.</li>
+    </ol>
+    <h3>Support the Author</h3>
+    <p>If LociiGhost is useful to you, consider buying the developer a coffee:</p>
+    <ul><li>☕ <strong>Ko-fi</strong>: <a href="https://ko-fi.com/jflociighost" target="_blank" rel="noopener">ko-fi.com/jflociighost</a></li></ul>
+    <h3>Join the Community</h3>
+    <ul>
+      <li>📢 <strong>LINE Official Account</strong>: <a href="https://line.me/R/ti/p/%40382ydavk" target="_blank" rel="noopener">@382ydavk</a></li>
+      <li>👥 <strong>LINE Community</strong>: "LociiGhost Mac/iOS 飛人" → <a href="https://line.me/ti/g2/-x9IldV0HMk-4Ydc-U93UnvOnUPbJ1En3z9XIg" target="_blank" rel="noopener">join link</a></li>
+    </ul>
+    <p>Bug reports and feature requests are welcome in either channel.</p>
+    <h3>Credits</h3>
+    <p>LociiGhost is a complete Swift rewrite, but its concept and parts of the approach are inspired by <a href="https://github.com/keezxc1223/locwarp" target="_blank" rel="noopener">keezxc1223/locwarp</a> (MIT). Big thanks to the upstream project.</p>
+  </section>
+
+  <div class="attribution">
+    LociiGhost © 2026 YCH81 (Jeff Hu) · MIT License
+  </div>
+
+</div>
+</body>
+</html>
