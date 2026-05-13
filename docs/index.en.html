@@ -80,6 +80,20 @@
     margin: 16px 0;
   }
   .card h2 { margin-top: 0; color: var(--sage-dark); font-size: 17px; }
+  .disclaimer-card {
+    background: rgba(255, 240, 220, 0.55);
+    border-color: rgba(212, 142, 64, 0.35);
+  }
+  .disclaimer-card h2 { color: #b76e2c; }
+  .disclaimer-card ul {
+    margin: 8px 0 0;
+    padding-left: 20px;
+  }
+  .disclaimer-card li {
+    margin: 6px 0;
+    font-size: 14px;
+    line-height: 1.6;
+  }
   .version-line {
     display: flex;
     align-items: baseline;
@@ -192,6 +206,30 @@
   <p>Source only at the moment. Clone from GitHub and build locally:</p>
   <p><a href="https://github.com/YCH81/LociiGhost">github.com/YCH81/LociiGhost</a>
      — full build steps in the repo <code>README.en.md</code>.</p>
+
+  <section class="card disclaimer-card">
+    <h2>Disclaimer</h2>
+    <ul>
+      <li>This tool modifies iPhone GPS simulation state and may violate
+          the Terms of Service of certain apps and games — particularly
+          Niantic titles like Pokémon GO and Pikmin Bloom.
+          <strong>Use at your own risk</strong>; account bans, progress
+          loss, or in-game asset confiscation are possible, and the
+          author bears no responsibility for any such outcomes.</li>
+      <li>Only validated on the developer's own setup (macOS 15+ on
+          Apple Silicon, iPhone 16 Pro Max / iOS 18.7–26.4); other
+          combinations are not guaranteed to work.</li>
+      <li>Maintained in the author's spare time; no support guarantees,
+          no SLA — features and compatibility depend on author's
+          available time.</li>
+      <li>Comply with local laws. This tool must not be used for fraud,
+          harassment, unlawful circumvention of geographical
+          restrictions, or any purpose that causes harm to third parties.</li>
+      <li>MIT-licensed, provided "AS IS" without warranty of any kind —
+          full legal terms in
+          <a href="https://github.com/YCH81/LociiGhost/blob/main/LICENSE">LICENSE</a>.</li>
+    </ul>
+  </section>
 
   <h2>Support the author</h2>
   <p>If LociiGhost is useful to you, buy me a coffee — or a bubble tea,
