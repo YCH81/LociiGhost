@@ -227,29 +227,101 @@ commercial use, sublicensing, rebranding — is allowed by MIT.
 
 ## Disclaimer
 
-LociiGhost is an independently-maintained open source tool, provided
-for **research, development testing, and personal map exploration**
-within legal use. Before using it, please understand:
+### 1. Lawful Use Only
 
-1. **Use at your own risk**: This tool modifies iPhone GPS simulation
-   state, which may violate the Terms of Service of some apps or games
-   — particularly Niantic titles like Pokémon GO and Pikmin Bloom and
-   other location-based games — potentially resulting in **account
-   bans, progress loss, or confiscation of in-game assets**. The
-   author bears no responsibility for any such losses.
-2. **Only validated on the developer's own test setup** (macOS 15+ on
-   Apple Silicon, iPhone 16 Pro Max / iOS 18.7–26.4). Other device /
-   iOS / macOS combinations are not guaranteed to work.
-3. **No support guarantees**: This project is maintained in the
-   author's spare time; no SLA, no support desk. Bug fixes,
-   compatibility with new iOS releases, and new features all depend
-   on the author's available time and energy.
-4. **Comply with local laws**: Use according to the laws applicable
-   where you are. This tool must NOT be used for fraud, harassment,
-   circumventing geographical restrictions for unlawful purposes, or
-   any use that causes harm to third parties.
-5. **MIT-licensed, NO warranty**: The software is provided "AS IS"
-   without warranty of any kind, express or implied. Full legal terms
-   in [`LICENSE`](LICENSE).
+This project was developed for use in GIS research, mobile app
+development testing, location-service prototyping, personal map
+exploration, and related technical exploration. Do not use this tool
+for any unlawful purpose, or for any conduct that violates third-party
+Terms of Service or platform policies.
 
-If you don't accept these terms, please do not use this tool.
+### 2. Account Ban and Third-Party Service Risk
+
+LociiGhost talks to Apple's DVT / RemoteServices protocols via
+[pymobiledevice3](https://github.com/doronz88/pymobiledevice3) to drive
+LocationSimulation and feed simulated GPS to the iPhone. If you use
+this tool with location-based games (e.g. Pokémon GO, Ingress, Pikmin
+Bloom, Monster Hunter Now and other Niantic titles) or with social,
+check-in, or logistics apps, **you may violate that platform's Terms
+of Service, which can result in account warnings, restrictions, bans,
+or permanent termination, and the loss of accumulated in-game items,
+progress, or stored credit**. The author bears **no responsibility**
+for any account loss, virtual property damage, or downstream disputes
+arising from the use of this tool.
+
+### 3. System and Hardware Risk
+
+WiFi mode requires administrator privileges (elevated via `osascript`)
+to create a `utun` virtual network interface and negotiate the RSD
+(Remote Service Discovery) channel with the iOS device. The code has
+been internally tested, but the author cannot guarantee stable
+operation across every macOS version, Apple Silicon model, or network
+environment. Common potential issues include:
+
+- Conflicts with VPN software, third-party firewalls, or network
+  virtualisation tools (Little Snitch, Tailscale, ProtonVPN, etc.)
+  causing tunnel setup to fail or temporarily disrupting macOS
+  networking.
+- Residual `utun` interfaces left behind by abnormal termination,
+  which may require a Mac restart to fully clean up.
+- WiFi link drops requiring manual retry or daemon restart.
+
+Users should assess these risks themselves and bear any resulting
+consequences. This project only manipulates the temporary network
+interface it creates and its own configuration files (located in
+`~/Library/Application Support/LociiGhost/` and
+`~/Library/Caches/LociiGhost/`); **it does NOT modify any user data
+on the iOS device, nor does it alter macOS kernel files or existing
+device-pairing records**.
+
+### 4. Map Data Accuracy
+
+Map rendering uses Apple MapKit (native basemap); route planning uses
+the OSRM public demo (default) or Google Routes API (opt-in, requires
+your own API key); geocoding optionally uses Google Geocoding API. The
+coordinates, paths, and addresses shown on the map are **for reference
+only**. The author does not guarantee their completeness, currency,
+accuracy, or exact correspondence to real-world geography. Before
+running a teleport, navigation, or random-walk based on address search
+or route planning, users should verify that the displayed map matches
+their expectations.
+
+### 5. Test Environment and Support Scope
+
+The software is **only validated on the developer's own test setup** —
+macOS 15+ on Apple Silicon, iPhone 16 Pro Max / iOS 18.7–26.4. Other
+device / iOS / macOS combinations are not guaranteed to work.
+
+The project is maintained in the author's spare time; **no SLA, no
+support desk**. Bug fixes, compatibility with new iOS releases, and
+new features all depend on the author's available time and energy.
+
+### 6. User Responsibility and Legal Compliance
+
+Users are responsible for complying with the laws applicable where
+they are, including but not limited to Taiwan's Personal Data
+Protection Act, the Copyright Act, the Computer-Processed Personal
+Data Protection Act, and equivalent international statutes. This tool
+**must NOT** be used for fraud, harassment, unlawful circumvention of
+geographical restrictions, or any purpose that causes harm to third
+parties.
+
+Any legal disputes, civil liability, or criminal liability arising
+from misuse, mistaken use, or unlawful use of this tool are **borne
+solely by the user**, and have no relation to the project's developer
+or contributors.
+
+### 7. No Warranty
+
+This software is distributed under the **MIT License** and is provided
+"AS IS", without warranty of any kind, express or implied, including
+but not limited to warranties of merchantability, fitness for a
+particular purpose, and non-infringement. Full legal terms are in
+[`LICENSE`](LICENSE).
+
+---
+
+**By downloading, installing, or running this software you confirm
+that you have fully read and agree to all of the above disclaimer
+terms. If you do not agree, stop using and remove this software
+immediately.**
