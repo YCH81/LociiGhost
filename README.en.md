@@ -27,6 +27,10 @@ if you're in Taiwan.
 
 [![Support YCH81 (aka Jeff Hu) on Ko-fi](https://img.shields.io/badge/Support%20YCH81%20%28aka%20Jeff%20Hu%29%20on%20Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/jflociighost)
 
+## New here?
+
+👉 **Full user guide: [docs/user-guide.en.md](docs/user-guide.en.md)** — install, first launch, connecting your iPhone, running your first route, the six movement modes, and troubleshooting. Step by step.
+
 ## Features
 
 - **Six movement modes** — Teleport, Navigate, Route Loop, Multi-Stop,
