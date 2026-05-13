@@ -131,28 +131,62 @@ echo "==> applying Finder layout via AppleScript"
 # right-hand `file "..."` resolves to a Finder file object that
 # evaluates equal to the property's current value before assignment.
 # POSIX file via the actual mounted path avoids the ambiguity.
+#
+# Generous `delay` calls scattered through the block — Finder commits
+# window state (bounds, view options, icon positions) to .DS_Store
+# asynchronously, and on macOS Sonoma+ the previous tight script
+# (delay 1 after update) routinely lost the bounds setting: the DMG
+# opened at whatever size Finder felt like, ignoring the 540×380 we
+# asked for. Structuring with `tell container window` blocks and
+# multi-second delays after each significant write reliably gets
+# the layout into .DS_Store before unmount.
 BG_POSIX="$MOUNT_DIR/.dmg-bg/bg.png"
 osascript <<APPLESCRIPT
 tell application "Finder"
     tell disk "LociiGhost"
         open
-        set current view of container window to icon view
-        set toolbar visible of container window to false
-        set statusbar visible of container window to false
-        set the bounds of container window to {400, 100, 940, 480}
-        set viewOptions to icon view options of container window
-        set arrangement of viewOptions to not arranged
-        set icon size of viewOptions to 128
+        delay 2
+        tell container window
+            set toolbar visible to false
+            set statusbar visible to false
+            set current view to icon view
+            set the bounds to {400, 100, 940, 480}
+        end tell
+        delay 2
+        set viewOptions to the icon view options of container window
+        tell viewOptions
+            set arrangement to not arranged
+            set icon size to 128
+        end tell
         set background picture of viewOptions to (POSIX file "$BG_POSIX") as alias
+        delay 1
         set position of item "LociiGhost.app" of container window to {140, 140}
         set position of item "Applications" of container window to {400, 140}
-        update without registering applications
         delay 1
+        update without registering applications
+        delay 5
+        close
+        delay 2
+        -- Second open/close cycle. macOS Finder routinely "forgets"
+        -- the bounds from the first pass — opening, re-asserting,
+        -- and closing the window a second time forces the
+        -- .DS_Store record onto disk reliably.
+        open
+        delay 2
+        tell container window
+            set toolbar visible to false
+            set statusbar visible to false
+            set current view to icon view
+            set the bounds to {400, 100, 940, 480}
+        end tell
+        delay 2
+        update without registering applications
+        delay 5
         close
     end tell
 end tell
 APPLESCRIPT
-sleep 2
+sleep 3
 sync
 
 echo "==> unmounting"
