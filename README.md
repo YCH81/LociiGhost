@@ -43,16 +43,12 @@
 
 **v1.9.4**（2026-05）
 
-- 多手機獨立控制：兩支手機可獨立操作兩台 iPhone（per-tab token + per-session
-  `controlling_udid`）
+- 多手機獨立控制：單支 iPhone 的手機操控頁面可控制其他已經連線的 iPhone
+  （per-tab token + per-session `controlling_udid`）
 - per-device 路線持久化：切換 iPhone 不會洗掉各台的路線狀態
 - OSRM `NoRoute` 自動 fallback：bike/foot 找不到路時改用 car 重試
 - ETA 重算機制：跟著 SpeedPicker 走，UI 時間 = 實際播放時間
 - Restore 後跳藍色提示，說明 iPhone GPS 重新定位需要 30 秒到 2 分鐘
-- 預設 UI 主題改為 system appearance（沿用 macOS 系統 accent color；
-  Sage 品牌色仍可在 Settings → Appearance 手動切換）
-- 雙語 README + Pages 官網 + Ko-fi 支持入口
-- Apple Developer ID 三段式簽名腳手架（含 entitlements、notarize 流程）
 
 完整 commit 歷史：[git log](https://github.com/YCH81/LociiGhost/commits/main)
 

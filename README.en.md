@@ -53,20 +53,17 @@ if you're in Taiwan.
 
 **v1.9.4** (May 2026)
 
-- Multi-phone independent control — per-tab tokens and per-session
-  `controlling_udid` let two phones drive two iPhones simultaneously.
-- Per-device persistence — sidebar switches no longer wipe state.
+- Multi-phone control — the web control page on one iPhone can drive
+  any other iPhone connected to the Mac (per-tab tokens and per-session
+  `controlling_udid` keep concurrent sessions independent).
+- Per-device route persistence — switching the active iPhone in the
+  sidebar no longer wipes each device's route state.
 - OSRM `NoRoute` auto-fallback — bike/foot retries as car when a
   waypoint pair has no path in the chosen profile.
-- ETA recomputation — UI time tracks the SpeedPicker, not the
-  engine's assumed profile speed.
+- ETA recomputation — UI time tracks the SpeedPicker, so what you see
+  matches what playback actually takes.
 - Restore now shows a blue info toast explaining the 30 s–2 min
   iPhone GPS re-acquisition delay.
-- Default appearance flipped to **System** so fresh installs look
-  Mac-native; sage brand tint is opt-in in Settings → Appearance.
-- Bilingual README + bilingual Pages site + Ko-fi support entry.
-- Apple Developer ID 3-stage signing scaffolding (entitlements,
-  notarization flow) — release builds blocked on cert approval.
 
 Full commit history: [git log](https://github.com/YCH81/LociiGhost/commits/main)
 
