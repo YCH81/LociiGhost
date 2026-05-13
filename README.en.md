@@ -117,6 +117,15 @@ swift run lociighostctl --socket /tmp/lw.sock shutdown
   administrator privileges"` instead of `SMAppService` (one Touch ID
   prompt per Mac restart).
 
+## Support
+
+If LociiGhost is useful to you, you can buy me a coffee on Ko-fi — no
+platform cut, one-off (no subscription required), the most direct way to
+keep me maintaining the project, fixing bugs, and tracking new iOS
+releases.
+
+[![Support YCH81 (aka Jeff Hu) on Ko-fi](https://img.shields.io/badge/Support%20YCH81%20%28aka%20Jeff%20Hu%29%20on%20Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/jflociighost)
+
 ## Attribution
 
 LociiGhost is a complete native-Swift rewrite of
