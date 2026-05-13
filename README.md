@@ -24,9 +24,6 @@ overhead —— 對於一個要常駐背景的工具來說，形狀不對。
 - **相同的產品概念。** 六種移動模式、雙裝置同步、GPX 匯入、書籤、ETA、即時
   切換速度。
 
-完整計畫（含驅動多數實作決策的散熱／功耗分析）見
-[`/Users/ych/.claude/plans/lociighost-copy-0-mac-m-keen-harbor.md`](../../.claude/plans/lociighost-copy-0-mac-m-keen-harbor.md)。
-
 ## Repo 結構
 
 ```
@@ -38,6 +35,11 @@ LociiGhost/
 ```
 
 ## Phase 0 狀態（已完成）
+
+> **注意**：本節為 v0.1.0 早期 scaffolding 紀錄。目前已走到 v1.9.4
+> （Phase 0–5 + distribution phase 皆完成），含多手機獨立控制、per-device
+> 路線、Apple Silicon 原生 daemon 打包、Developer ID 簽名腳手架。最新進度
+> 請看 [git log](https://github.com/YCH81/LociiGhost/commits/main)。
 
 Scaffolding 與端對端 RPC round-trip 驗證完成。
 
