@@ -21,8 +21,7 @@
 
 ## 支持作者
 
-如果 LociiGhost 對你有幫助，歡迎透過 Ko-fi 贊助 —— 沒有抽成、單筆即送、
-不需訂閱。是支持我繼續維護、修 bug、追 iOS 新版的最直接方式。
+如果 LociiGhost 對你有幫助，想支持開發者，歡迎贊助我一杯咖啡一杯手搖杯。
 
 [![在 Ko-fi 上支持 YCH81 aka Jeff Hu](https://img.shields.io/badge/在%20Ko--fi%20上支持%20YCH81%20aka%20Jeff%20Hu-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/jflociighost)
 
