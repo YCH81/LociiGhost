@@ -51,6 +51,36 @@ if you're in Taiwan.
 
 ## What's new
 
+**v1.10.0** (May 2026)
+
+- **Apple MapKit added as a routing engine**, now the default. Four
+  options total: MapKit / OSRM Public Demo / Google Directions /
+  Straight line. MapKit needs no API key, integrates natively, and
+  has excellent Taiwan-area data; cycling uses driving geometry while
+  the SpeedPicker drives actual playback pace.
+- **Chained leg stitching** kills the small "box detour" artefacts at
+  multi-stop waypoints — each leg's origin is the previous leg's
+  polyline END (an Apple-snapped road coordinate), so consecutive
+  polylines share an endpoint by construction.
+- **Pinned support footer at the bottom of the sidebar** (Ko-fi +
+  LINE community buttons) that doesn't scroll with the rest of the
+  sidebar content.
+- **Red X is now standard Mac behaviour**: closing the last window
+  hides it; the app stays in the Dock; Cmd-Q is what actually quits.
+- TopStatusBar no longer char-wraps in narrow windows; window minimum
+  raised to 1320×640 and sidebar locked at 280–310 pt.
+- Simulated-iPhone pin always floats above the route polyline
+  (z-priority fix).
+- LICENSE gains a **Brand & Support Channels carve-out**: the name
+  "LociiGhost", the icon, Ko-fi, and LINE channels are reserved to
+  the author personally and not covered by MIT.
+- Bilingual **GitHub Pages site**
+  ([ych81.github.io/LociiGhost](https://ych81.github.io/LociiGhost/)),
+  Ko-fi tip jar, LINE Official Account (`@382ydavk`) and community.
+- Seven-section **Disclaimer**: lawful use, account-ban risk, system
+  risk, map-data accuracy, support scope, user responsibility, no
+  warranty.
+
 **v1.9.4** (May 2026)
 
 - Multi-phone control — the web control page on one iPhone can drive

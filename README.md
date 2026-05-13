@@ -41,6 +41,27 @@
 
 ## 最新更新
 
+**v1.10.0**（2026-05）
+
+- **Apple MapKit 加入為路徑引擎**，並設為預設（4 個選項：MapKit ／
+  OSRM ／ Google Directions ／直線）。MapKit 不用 API key、原生整合、
+  台灣地圖品質佳；cycling 模式以汽車幾何規劃、SpeedPicker 控制實際速度。
+- 多段路線採 **chain stitch** 策略消除中繼點繞圈：每段 leg 的起點 =
+  前一段 polyline 的終點，避免 MapKit 對同一 waypoint 在「終點 / 起點」
+  角色 snap 到不同道路導致的方框 artefact。
+- Sidebar 底部新增**固定支持作者區**（Ko-fi + LINE 社群按鈕），不隨內容
+  滾動移動。
+- 紅色 X 改為**標準 Mac 行為**：關視窗 ≠ 退出，Cmd+Q 才真的退出。
+- TopStatusBar 在窄視窗時**不再字串 char-wrap**；視窗最小寬度鎖在
+  1320×640，sidebar 鎖在 280–310 pt。
+- iPhone 模擬位置 marker 永遠**浮在路線之上**（z-priority fix）。
+- LICENSE 新增 **Brand & Support Channels carve-out**：「LociiGhost」名稱、
+  icon、Ko-fi、LINE 個人保留，不在 MIT 範圍。
+- 兩語**官方 Pages 網站**（[ych81.github.io/LociiGhost](https://ych81.github.io/LociiGhost/)）、
+  Ko-fi 贊助連結、LINE 官方帳號（`@382ydavk`）/ 社群（「LociiGhost Mac/iOS 飛人」）。
+- 完整 7 段**免責聲明**（合法用途、帳號封禁、系統風險、地圖準確性、
+  支援範圍、使用者責任、無擔保）。
+
 **v1.9.4**（2026-05）
 
 - 多手機獨立控制：單支 iPhone 的手機操控頁面可控制其他已經連線的 iPhone
