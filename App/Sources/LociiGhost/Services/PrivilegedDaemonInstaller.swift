@@ -58,8 +58,18 @@ enum PrivilegedDaemonInstaller {
 
     private struct Layout {
         let home: URL
-        let projectDir: URL
-        let venvPython: URL
+        /// Direct path to the daemon executable that the bootstrap
+        /// script will exec under sudo. For bundled .app installs
+        /// this is the PyInstaller binary inside Contents/Resources/;
+        /// for dev builds without that bundle it falls back to the
+        /// staged venv's Python interpreter and we prepend
+        /// `-m lociighostd` as an argument.
+        let daemonExecutable: URL
+        let daemonArguments: [String]
+        /// When the daemon is the staged-venv Python, we need to
+        /// inject PYTHONPATH for the import to resolve. nil when
+        /// running the standalone PyInstaller binary.
+        let pythonPath: String?
         let logFile: URL
         let socketDir: URL
         let socketPath: String
@@ -69,24 +79,49 @@ enum PrivilegedDaemonInstaller {
 
     private static func resolveLayout() throws -> Layout {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        // We deliberately point at the *staged* tree under
-        // `~/Library/Application Support/`, not the developer source
-        // under `~/Documents/`. macOS 15+'s TCC blocks even root from
-        // reading ~/Documents without an explicit Full Disk Access
-        // grant, which would defeat the whole "no terminal needed" UX.
-        let projectDir = DaemonStaging.stagedRoot.deletingLastPathComponent()
-        let venvPython = DaemonStaging.stagedPython
-        guard FileManager.default.fileExists(atPath: venvPython.path) else {
-            throw InstallError.daemonNotFound(venvPython)
+
+        // Prefer the bundled PyInstaller binary inside the .app —
+        // works for end users who downloaded the DMG, has no
+        // dependency on Python being installed system-wide, and root
+        // can read /Applications/LociiGhost.app/Contents/Resources/
+        // without any TCC dance (unlike ~/Documents which macOS 15+
+        // hides from root by default).
+        let bundledDaemon: URL? = Bundle.main.resourceURL?
+            .appending(path: "lociighostd")
+            .appending(path: "lociighostd")
+
+        let daemonExecutable: URL
+        let daemonArguments: [String]
+        let pythonPath: String?
+        if let bundled = bundledDaemon,
+           FileManager.default.isExecutableFile(atPath: bundled.path) {
+            daemonExecutable = bundled
+            daemonArguments = []
+            pythonPath = nil
+        } else {
+            // Dev-mode fallback: staged Python venv copy. macOS 15+'s
+            // TCC blocks even root from reading ~/Documents without
+            // an explicit Full Disk Access grant, so we always go
+            // through DaemonStaging.stagedRoot, never directly at the
+            // source under ~/Documents/.
+            let stagedPython = DaemonStaging.stagedPython
+            guard FileManager.default.fileExists(atPath: stagedPython.path) else {
+                throw InstallError.daemonNotFound(stagedPython)
+            }
+            daemonExecutable = stagedPython
+            daemonArguments = ["-m", "lociighostd"]
+            pythonPath = DaemonStaging.stagedRoot.path
         }
+
         let logDir = home.appending(path: "Library/Logs/LociiGhost",
                                     directoryHint: .isDirectory)
         let socketDir = home.appending(path: "Library/Application Support/LociiGhost",
                                        directoryHint: .isDirectory)
         return Layout(
             home: home,
-            projectDir: projectDir,
-            venvPython: venvPython,
+            daemonExecutable: daemonExecutable,
+            daemonArguments: daemonArguments,
+            pythonPath: pythonPath,
             logFile: logDir.appending(path: "lociighostd-sudo.log"),
             socketDir: socketDir,
             socketPath: LociiGhostPaths.socketPath,
@@ -104,68 +139,73 @@ enum PrivilegedDaemonInstaller {
             "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
         }
 
+        // Build the env-var prefix + command line. The bundled
+        // PyInstaller binary doesn't need PYTHONPATH; the dev-mode
+        // Python interpreter does. Building both branches here keeps
+        // the heredoc itself agnostic.
+        let envLine: String
+        if let pythonPath = layout.pythonPath {
+            envLine = "PYTHONPATH=" + q(pythonPath) + " \\\n            "
+        } else {
+            envLine = ""
+        }
+        let daemonArgs = layout.daemonArguments
+            .map { q($0) }
+            .joined(separator: " ")
+        let daemonCmd = daemonArgs.isEmpty
+            ? q(layout.daemonExecutable.path)
+            : q(layout.daemonExecutable.path) + " " + daemonArgs
+        // pkill matchers need to find the running daemon regardless of
+        // which launch path produced it. The bundled PyInstaller path
+        // shows up in `ps` with its absolute /Applications/.../lociighostd
+        // command line; the dev-mode Python path shows up as
+        // `<...>/Python -m lociighostd`. Match on either basename so
+        // either launch leaves no zombies.
+        let pkillPattern = "lociighostd"
+
         // Bootstrap script. Heavily traced — every step logs to the
         // sudo daemon log file (`logFile`) before doing the work, so
         // when something goes wrong the log itself tells us which step
         // failed instead of leaving an empty file behind.
-        //
-        // We split daemon launch into two stages:
-        // 1. Inner script `bootstrap-inner.sh` does the actual work
-        //    (env vars + nohup + redirects).
-        // 2. Outer script execs the inner one detached via `setsid` if
-        //    available, falling back to `nohup`. setsid is preferable
-        //    under osascript because it creates a brand-new session
-        //    not tied to the pty osascript opened.
         let body = """
         #!/bin/bash
         LOG=\(q(layout.logFile.path))
         log() { printf '[%s] %s\\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$LOG" 2>/dev/null || true; }
         log "===== privileged install start ====="
         log "uid=$(id -u) euid=$(id -un) home=$HOME"
+        log "daemon: \(layout.daemonExecutable.path)"
         mkdir -p \(q(layout.socketDir.path)) \(q(layout.logFile.deletingLastPathComponent().path)) || log "mkdir failed: $?"
         log "killing any prior lociighostd..."
-        # The daemon is invoked as `<...>/Python -m lociighostd` — note
-        # the CAPITAL P on Homebrew's binary name. Earlier versions of
-        # this script tried to match `'python -m lociighostd'` (lowercase)
-        # and silently caught nothing, so every Authenticate cycle
-        # leaked an entire daemon process (3+ root daemons routinely
-        # alive after a single Mac session). Match on `-m lociighostd`
-        # which is invariant across binary capitalisation.
-        #
-        # We also have to kill user-mode daemons that DaemonLifecycle
-        # spawned. The bare `pkill -f` here runs as root and matches
-        # processes regardless of owner, so the second variant with
-        # `-u USER_UID` is redundant — but cheap, and it self-documents
-        # that we explicitly want to clear the original user's daemons
-        # too. USER_UID is baked in at script-generation time because
-        # osascript-with-admin-privileges doesn't reliably pass SUDO_UID
-        # through.
+        # Match on the basename `lociighostd` — covers both the
+        # bundled PyInstaller binary (whose argv[0] ends in
+        # /lociighostd) and the Python dev-mode invocation (which
+        # shows up as `Python -m lociighostd` in ps -f, matching via
+        # the `-m` substring).
         # First TERM (graceful), short pause, then KILL.
-        pkill -TERM -f '\\-m lociighostd' >>"$LOG" 2>&1 \\
+        pkill -TERM -f '\(pkillPattern)' >>"$LOG" 2>&1 \\
           || log "no daemons matched TERM (root)"
-        pkill -TERM -u \(layout.uid) -f '\\-m lociighostd' >>"$LOG" 2>&1 \\
+        pkill -TERM -u \(layout.uid) -f '\(pkillPattern)' >>"$LOG" 2>&1 \\
           || log "no daemons matched TERM (uid=\(layout.uid))"
         sleep 0.5
-        pkill -KILL -f '\\-m lociighostd' >>"$LOG" 2>&1 \\
+        pkill -KILL -f '\(pkillPattern)' >>"$LOG" 2>&1 \\
           || log "no daemons matched KILL (root)"
-        pkill -KILL -u \(layout.uid) -f '\\-m lociighostd' >>"$LOG" 2>&1 \\
+        pkill -KILL -u \(layout.uid) -f '\(pkillPattern)' >>"$LOG" 2>&1 \\
           || log "no daemons matched KILL (uid=\(layout.uid))"
         sleep 0.2
-        log "post-kill survivors: $(pgrep -fl '\\-m lociighostd' || echo none)"
+        log "post-kill survivors: $(pgrep -fl '\(pkillPattern)' || echo none)"
         log "removing stale socket..."
         rm -f \(q(layout.socketPath)) >>"$LOG" 2>&1 || true
         log "spawning daemon..."
-        # Daemonize via a child shell that exec()s python with stdin
-        # redirected to /dev/null. Backgrounding from a *fresh* shell
-        # means osascript sees a zero-exit-status parent and our daemon
-        # is no longer attached to the osascript pty.
+        # Daemonize via a child shell that exec()s the daemon with
+        # stdin redirected to /dev/null. Backgrounding from a *fresh*
+        # shell means osascript sees a zero-exit-status parent and our
+        # daemon is no longer attached to the osascript pty.
         (
           exec </dev/null
           HOME=\(q(layout.home.path)) \\
             SUDO_UID=\(layout.uid) \\
             SUDO_GID=\(layout.gid) \\
-            PYTHONPATH=\(q(layout.projectDir.appending(path: "Daemon").path)) \\
-            \(q(layout.venvPython.path)) -m lociighostd >>"$LOG" 2>&1 &
+            \(envLine)\(daemonCmd) >>"$LOG" 2>&1 &
           disown
         )
         log "spawn returned $?; sleeping 0.4s"

@@ -64,6 +64,29 @@ if [[ ! -f "$ICNS_SRC" ]]; then
 fi
 cp "$ICNS_SRC" "$OUT/Contents/Resources/AppIcon.icns"
 
+# Bundled daemon. The PyInstaller `--onedir` output at
+# `Daemon/dist/lociighostd/` is a complete self-contained Python
+# runtime + lociighostd entry point. We copy the whole directory into
+# `.app/Contents/Resources/lociighostd/` so end users who download
+# the DMG have a working daemon without needing to clone the repo
+# or have Python installed. DaemonLifecycle + PrivilegedDaemonInstaller
+# look here first, falling back to the dev-mode staged venv only when
+# the bundle isn't present (which happens when building from source
+# without first running build-daemon.sh).
+DAEMON_DIST="$ROOT/Daemon/dist/lociighostd"
+if [[ -d "$DAEMON_DIST" ]]; then
+    echo "==> bundling daemon: $DAEMON_DIST → Contents/Resources/lociighostd/"
+    ditto --norsrc --noextattr --noacl \
+        "$DAEMON_DIST" \
+        "$OUT/Contents/Resources/lociighostd"
+    chmod +x "$OUT/Contents/Resources/lociighostd/lociighostd"
+else
+    echo "==> WARNING: daemon dist not found at $DAEMON_DIST" >&2
+    echo "    Run Scripts/build-daemon.sh first if you want a self-contained" >&2
+    echo "    .app. Without this, end users will hit \"Daemon source not found\"" >&2
+    echo "    because the app falls back to dev-mode staging from ~/Documents." >&2
+fi
+
 cat >"$OUT/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -91,7 +114,7 @@ cat >"$OUT/Contents/Info.plist" <<'PLIST'
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.10.0</string>
+    <string>1.10.1</string>
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>NSHumanReadableCopyright</key>
@@ -190,6 +213,41 @@ if [[ -n "$SIGN_IDENTITY" ]]; then
         codesign --force --options runtime --timestamp \
             --sign "$SIGN_IDENTITY" \
             "$OUT/Contents/MacOS/LociiGhost_LociiGhost.bundle"
+    fi
+
+    # Bundled PyInstaller daemon at Contents/Resources/lociighostd/.
+    # PyInstaller's --onedir layout has the lociighostd executable
+    # alongside _internal/ containing ~100 dylibs, Python C
+    # extensions, and an embedded Python.framework whose main
+    # binary file has no extension. Notary requires every Mach-O
+    # file to be signed with hardened runtime + a secure timestamp;
+    # --deep alone doesn't recurse into flat folders, and an
+    # extension-based `find` misses extensionless framework binaries.
+    # Use `file` to detect Mach-O regardless of name, sign each in
+    # one pass, then sign the daemon's framework wrappers and the
+    # main executable last so their seal covers everything below.
+    if [[ -d "$OUT/Contents/Resources/lociighostd" ]]; then
+        echo "==> signing every Mach-O inside Contents/Resources/lociighostd/"
+        find "$OUT/Contents/Resources/lociighostd" -type f -print0 \
+        | while IFS= read -r -d '' f; do
+            if file -b "$f" | grep -q "Mach-O"; then
+                codesign --force --options runtime --timestamp \
+                    --sign "$SIGN_IDENTITY" "$f" 2>&1 | grep -v "replacing existing signature" || true
+            fi
+        done
+        # Re-seal the embedded Python.framework wrapper (its
+        # Versions/Current symlink + outer bundle ID) after the
+        # inner binary has its signature.
+        for fw in "$OUT/Contents/Resources/lociighostd/_internal"/*.framework; do
+            if [[ -d "$fw" ]]; then
+                codesign --force --options runtime --timestamp \
+                    --sign "$SIGN_IDENTITY" "$fw"
+            fi
+        done
+        echo "==> signing daemon main binary (top-level)"
+        codesign --force --options runtime --timestamp \
+            --sign "$SIGN_IDENTITY" \
+            "$OUT/Contents/Resources/lociighostd/lociighostd"
     fi
 
     codesign --force --options runtime --timestamp \

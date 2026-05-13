@@ -142,10 +142,21 @@ final class DaemonLifecycle {
     }
 
     private func resolveExecutable() throws -> Resolved {
-        // 1. Bundled native binary (PyInstaller output).
-        if let bundled = Bundle.module.url(forResource: "lociighostd", withExtension: nil),
-           FileManager.default.isExecutableFile(atPath: bundled.path(percentEncoded: false)) {
-            return Resolved(url: bundled, arguments: [], pythonPathOverride: nil)
+        // 1. Bundled PyInstaller daemon shipped inside the .app at
+        //    Contents/Resources/lociighostd/lociighostd. This is the
+        //    end-user path: anyone who downloads the DMG gets a
+        //    self-contained daemon binary that doesn't need Python or
+        //    a venv anywhere on disk. We check Bundle.main (the actual
+        //    .app bundle) since the daemon dir is copied there by
+        //    package-app.sh — it lives outside SwiftPM's
+        //    Bundle.module resource bundle.
+        if let resources = Bundle.main.resourceURL {
+            let bundled = resources
+                .appending(path: "lociighostd")
+                .appending(path: "lociighostd")
+            if FileManager.default.isExecutableFile(atPath: bundled.path(percentEncoded: false)) {
+                return Resolved(url: bundled, arguments: [], pythonPathOverride: nil)
+            }
         }
 
         // 2. Staged dev venv at `~/Library/Application Support/.../runtime`.
@@ -153,6 +164,9 @@ final class DaemonLifecycle {
         //    so we never run the daemon directly from there. The staging
         //    step (DaemonStaging.ensureStaged) keeps a current copy in
         //    Application Support; root scripts can read that fine.
+        //    Only reachable when the bundled daemon above isn't present
+        //    — i.e. dev builds where package-app.sh wasn't given a
+        //    Daemon/dist/ to bundle.
         let stagedPython = DaemonStaging.stagedPython
         let stagedSrc = DaemonStaging.stagedRoot
         if FileManager.default.isExecutableFile(atPath: stagedPython.path(percentEncoded: false)) {

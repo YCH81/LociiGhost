@@ -29,8 +29,8 @@ if you're in Taiwan.
 
 ## Download
 
-- **Latest version**: v1.10.0
-- **Release date**: 2026-05-13
+- **Latest version**: v1.10.1
+- **Release date**: 2026-05-14
 - **Download**: [Google Drive folder](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) — DMG is Apple-Developer-ID-signed and notarised, so it opens with a double-click without the Gatekeeper warning.
 
 ## New here?
@@ -60,6 +60,18 @@ if you're in Taiwan.
   under 200 MB.
 
 ## What's new
+
+**v1.10.1** (2026-05-14)
+
+- **Fix: end users couldn't actually launch the v1.10.0 .app.** That
+  build assumed the user had `~/Documents/LociiGhost/Daemon/` (a dev-
+  mode source + venv tree) on disk; anyone who just downloaded the
+  DMG hit "Daemon source not found". v1.10.1 bundles the entire
+  94 MB PyInstaller daemon binary into the .app at
+  `Contents/Resources/lociighostd/`, so users without Python or the
+  cloned repo can double-click and go.
+- DMG download size therefore grows from 4.7 MB to 44 MB (carries
+  the embedded Python runtime + every dependency).
 
 **v1.10.0** (May 2026)
 

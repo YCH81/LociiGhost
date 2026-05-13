@@ -1,5 +1,5 @@
 {
-  "version": "1.10.0",
+  "version": "1.10.1",
   "url": "https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing",
-  "notes": "v1.10.0 — Apple MapKit routing (新預設)、Sidebar 固定支持作者區、標準 Mac X 關視窗行為、自適應 UI、LICENSE 品牌條款。點擊到 Google Drive 下載最新 DMG。"
+  "notes": "v1.10.1 — 修正 v1.10.0 一般使用者下載後無法啟動的 bug。Daemon binary 現已內含於 .app（94 MB），不再需要本機有原始碼。"
 }
