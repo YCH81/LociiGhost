@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LociiGhost — iPhone GPS 模擬工具</title>
+<meta name="description" content="iPhone GPS 模擬工具 —— Apple Silicon 原生 macOS app，從 LocWarp（keezxc1223, MIT）概念與部分參照後完整 Swift 重寫。">
+<style>
+  :root {
+    --bg: #f5f4ee;
+    --ink: #2d3748;
+    --sage: #7fa389;
+    --sage-dark: #5f836a;
+    --muted: #6b7280;
+    --hairline: #d4d4c8;
+    --card-bg: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font: 16px/1.7 -apple-system, BlinkMacSystemFont, "Helvetica Neue",
+          "PingFang TC", "Heiti TC", "Microsoft JhengHei", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  .container {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 64px 24px 96px;
+  }
+  header { margin-bottom: 40px; }
+  h1 {
+    margin: 0 0 10px;
+    font-size: 40px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .tagline {
+    color: var(--muted);
+    margin: 0;
+    font-size: 17px;
+  }
+  h2 {
+    margin: 40px 0 12px;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  p { margin: 8px 0; }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+    padding: 22px 26px;
+    margin: 16px 0;
+  }
+  .card h2 { margin-top: 0; color: var(--sage-dark); font-size: 17px; }
+  .version-line {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin: 0 0 8px;
+  }
+  .version-line strong { font-size: 22px; font-weight: 700; }
+  .status-pill {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: rgba(127,163,137,0.15);
+    color: var(--sage-dark);
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .meta { color: var(--muted); font-size: 14px; margin-top: 12px; }
+  a {
+    color: var(--sage-dark);
+    text-decoration: none;
+    border-bottom: 1px solid rgba(127,163,137,0.4);
+    transition: border-color 0.15s, color 0.15s;
+  }
+  a:hover {
+    color: var(--ink);
+    border-bottom-color: var(--ink);
+  }
+  code {
+    background: rgba(0,0,0,0.05);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font: 13px/1.4 "SF Mono", Menlo, Consolas, monospace;
+  }
+  .attribution {
+    margin-top: 56px;
+    padding-top: 24px;
+    border-top: 1px solid var(--hairline);
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.8;
+  }
+  .attribution a { color: var(--muted); border-bottom-color: rgba(0,0,0,0.15); }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>LociiGhost</h1>
+    <p class="tagline">iPhone GPS 模擬工具 —— Apple Silicon 原生 macOS app。</p>
+  </header>
+
+  <section class="card">
+    <div class="version-line">
+      <strong>v1.9.4</strong>
+      <span class="status-pill">準備發佈中</span>
+    </div>
+    <p>核心功能完成：多手機獨立控制、per-device 路線記憶、雙裝置同步、
+       SwiftData 持久化、繁中／英雙語、六種移動模式、GPX 匯入、書籤。</p>
+    <p class="meta">公開的可下載二進位等候 Apple Developer ID 證書與
+       notarization 程序完成後釋出，避免使用者打開 .app 時被 Gatekeeper 擋下。</p>
+  </section>
+
+  <h2>目前如何取得</h2>
+  <p>暫時僅提供原始碼。從 GitHub clone 後自行 build：</p>
+  <p><a href="https://github.com/YCH81/LociiGhost">github.com/YCH81/LociiGhost</a>
+     —— 詳細 build 步驟見 repo 內的 <code>README.md</code>。</p>
+
+  <h2>支持作者</h2>
+  <p>抖內 / 贊助管道籌備中，稍後補上。</p>
+
+  <h2>聯絡</h2>
+  <p>Bug 回報、使用問題、合作詢問請走 GitHub Issues：
+     <a href="https://github.com/YCH81/LociiGhost/issues">Issues 頁面</a>。</p>
+
+  <div class="attribution">
+    本專案為 <a href="https://github.com/keezxc1223/locwarp">keezxc1223/locwarp</a>
+    （MIT）概念與部分參照後的完整 Swift 重寫，為獨立 repo（非 GitHub-fork）。
+    <br>
+    LociiGhost © 2026 YCH81 (Jeff Hu) · MIT License
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,5 @@
+{
+  "version": "1.9.4",
+  "url": "https://ych81.github.io/LociiGhost/",
+  "notes": "v1.9.4 — Apple Developer ID 證書到位前不發佈二進位。當前可從原始碼自行 build；詳情見 LociiGhost 官網。"
+}
