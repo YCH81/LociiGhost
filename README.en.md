@@ -20,6 +20,58 @@ A from-scratch, Apple-Silicon-only iOS location simulation tool inspired by
 but rebuilt as a native macOS application — not a port of the cross-platform
 Electron version.
 
+## Support
+
+If LociiGhost is useful to you, you can buy me a coffee on Ko-fi — no
+platform cut, one-off (no subscription required), the most direct way to
+keep me maintaining the project, fixing bugs, and tracking new iOS
+releases.
+
+[![Support YCH81 (aka Jeff Hu) on Ko-fi](https://img.shields.io/badge/Support%20YCH81%20%28aka%20Jeff%20Hu%29%20on%20Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/jflociighost)
+
+## Features
+
+- **Six movement modes** — Teleport, Navigate, Route Loop, Multi-Stop,
+  Random Walk, Joystick.
+- **Two phones, two iPhones at once** — Each phone can independently
+  drive its own iPhone; sessions don't step on each other.
+- **Per-device route memory** — Each iPhone keeps its own route,
+  waypoints, and destination across sidebar switches.
+- **Phone-as-remote-control web UI** — PIN-authenticated mobile page;
+  drive the Mac side from an iPhone in your pocket.
+- **GPX / bookmark import** — GPX tracks, LocWarp-format bookmark JSON,
+  and bulk paste are all supported.
+- **Hot speed swap** — Drag the SpeedPicker mid-playback; no re-routing.
+- **Accurate ETA** — Recomputed from SpeedPicker so the time the UI
+  shows matches the actual playback time.
+- **Multiple routing engines** — OSRM public demo (default), Google
+  Routes API (opt-in), or straight-line.
+- **Live language switching** — UI flips between zh-Hant and English
+  without restart.
+- **Apple-Silicon-native** — 0% idle CPU, no Chromium overhead, bundle
+  under 200 MB.
+
+## What's new
+
+**v1.9.4** (May 2026)
+
+- Multi-phone independent control — per-tab tokens and per-session
+  `controlling_udid` let two phones drive two iPhones simultaneously.
+- Per-device persistence — sidebar switches no longer wipe state.
+- OSRM `NoRoute` auto-fallback — bike/foot retries as car when a
+  waypoint pair has no path in the chosen profile.
+- ETA recomputation — UI time tracks the SpeedPicker, not the
+  engine's assumed profile speed.
+- Restore now shows a blue info toast explaining the 30 s–2 min
+  iPhone GPS re-acquisition delay.
+- Default appearance flipped to **System** so fresh installs look
+  Mac-native; sage brand tint is opt-in in Settings → Appearance.
+- Bilingual README + bilingual Pages site + Ko-fi support entry.
+- Apple Developer ID 3-stage signing scaffolding (entitlements,
+  notarization flow) — release builds blocked on cert approval.
+
+Full commit history: [git log](https://github.com/YCH81/LociiGhost/commits/main)
+
 ## Why
 
 The existing macOS port (`M-0.2.99.5`) is functional but architecturally a
@@ -122,15 +174,6 @@ swift run lociighostctl --socket /tmp/lw.sock shutdown
   admin elevation goes through `osascript "do shell script ... with
   administrator privileges"` instead of `SMAppService` (one Touch ID
   prompt per Mac restart).
-
-## Support
-
-If LociiGhost is useful to you, you can buy me a coffee on Ko-fi — no
-platform cut, one-off (no subscription required), the most direct way to
-keep me maintaining the project, fixing bugs, and tracking new iOS
-releases.
-
-[![Support YCH81 (aka Jeff Hu) on Ko-fi](https://img.shields.io/badge/Support%20YCH81%20%28aka%20Jeff%20Hu%29%20on%20Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/jflociighost)
 
 ## Attribution
 

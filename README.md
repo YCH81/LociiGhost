@@ -19,6 +19,44 @@
 [LocWarp](https://github.com/keezxc1223/locwarp)（keezxc1223 著、MIT 授權）為
 靈感，但重建為原生 macOS app —— 不是跨平台 Electron 版本的移植。
 
+## 支持作者
+
+如果 LociiGhost 對你有幫助，歡迎透過 Ko-fi 贊助 —— 沒有抽成、單筆即送、
+不需訂閱。是支持我繼續維護、修 bug、追 iOS 新版的最直接方式。
+
+[![在 Ko-fi 上支持 YCH81 aka Jeff Hu](https://img.shields.io/badge/在%20Ko--fi%20上支持%20YCH81%20aka%20Jeff%20Hu-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/jflociighost)
+
+## 主要功能
+
+- **六種移動模式** —— 跳點、導航、路線循環、多點停留、隨機漫步、搖桿
+- **雙手機同時控制** —— 兩支手機可獨立操作兩台不同 iPhone，互不干擾
+- **per-device 路線記憶** —— 每台 iPhone 的路線／途經點／目的地各自保留，
+  切換側邊欄不會洗掉狀態
+- **手機端遠端控制** —— PIN 認證的手機網頁介面，可在 iPhone 上遙控 Mac
+- **GPX ／ 書籤匯入** —— 支援 GPX 路線、LocWarp 格式書籤 JSON、批次貼上
+- **即時切換速度** —— 播放中可動態調整移動速度，無須重新規劃路徑
+- **準確 ETA** —— 隨 SpeedPicker 即時重算，UI 顯示時間 = 實際播放時間
+- **多路由引擎** —— OSRM 公開 demo（預設）／ Google Routes API（可選）／ 直線
+- **繁中／英雙語** —— UI 可即時切換語言，無須重啟
+- **Apple Silicon 原生** —— 閒置 CPU 0%、無 Chromium 開銷、Bundle < 200 MB
+
+## 最新更新
+
+**v1.9.4**（2026-05）
+
+- 多手機獨立控制：兩支手機可獨立操作兩台 iPhone（per-tab token + per-session
+  `controlling_udid`）
+- per-device 路線持久化：切換 iPhone 不會洗掉各台的路線狀態
+- OSRM `NoRoute` 自動 fallback：bike/foot 找不到路時改用 car 重試
+- ETA 重算機制：跟著 SpeedPicker 走，UI 時間 = 實際播放時間
+- Restore 後跳藍色提示，說明 iPhone GPS 重新定位需要 30 秒到 2 分鐘
+- 預設 UI 主題改為 system appearance（沿用 macOS 系統 accent color；
+  Sage 品牌色仍可在 Settings → Appearance 手動切換）
+- 雙語 README + Pages 官網 + Ko-fi 支持入口
+- Apple Developer ID 三段式簽名腳手架（含 entitlements、notarize 流程）
+
+完整 commit 歷史：[git log](https://github.com/YCH81/LociiGhost/commits/main)
+
 ## 動機
 
 現有的 macOS 版（`M-0.2.99.5`）功能完整，但架構上是直接從 Windows 搬過來的：
@@ -116,13 +154,6 @@ swift run lociighostctl --socket /tmp/lw.sock shutdown
 - Phase 4 WiFi tunnel：**不需要付費 Developer Program 會員** —— 管理員權限走
   `osascript "do shell script ... with administrator privileges"` 而不是
   `SMAppService`（每次 Mac 重啟需要一次 Touch ID 提示）。
-
-## 支持作者
-
-如果 LociiGhost 對你有幫助，歡迎透過 Ko-fi 贊助 —— 沒有抽成、單筆即送、
-不需訂閱。是支持我繼續維護、修 bug、追 iOS 新版的最直接方式。
-
-[![在 Ko-fi 上支持 YCH81 aka Jeff Hu](https://img.shields.io/badge/在%20Ko--fi%20上支持%20YCH81%20aka%20Jeff%20Hu-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/jflociighost)
 
 ## 歸屬
 
