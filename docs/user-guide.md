@@ -117,6 +117,7 @@ LociiGhost 是一款 macOS app，它能把你 iPhone 的 GPS 位置「換成你�
 └─────────────────────────────────────────────────────────┘
    ↑ 側邊欄
 ```
+<img width="1553" height="951" alt="image" src="https://github.com/user-attachments/assets/89933321-019f-43fc-9abe-c19cee2aef82" />
 
 ### 四個區塊
 
