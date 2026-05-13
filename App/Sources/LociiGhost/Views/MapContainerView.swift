@@ -737,6 +737,18 @@ struct MapContainerView: NSViewRepresentable {
                                            accessibilityDescription: nil)
                 }
                 v.canShowCallout = true
+                // The simulated-iPhone pin sits on TOP of the route
+                // polyline — the user always needs to see where their
+                // device currently is, especially during playback when
+                // pin and orange route line share the same coordinate.
+                //
+                // `displayPriority = .required` keeps the marker out
+                // of MapKit's collision-collapse pool (otherwise nearby
+                // stop pins can hide it).
+                // `zPriority = .max` pulls it above all other
+                // annotations in the layer-Z stacking order.
+                v.displayPriority = .required
+                v.zPriority = .max
                 return v
 
             case let stop as StopAnnotation:
