@@ -235,23 +235,18 @@ if [[ -n "$SIGN_IDENTITY" ]]; then
         spctl --assess --type execute --verbose "$OUT" 2>&1 \
             | sed 's/^/    /' || true
 
-        # Keep the .zip alongside the .app — power users / CI scripts
-        # often prefer the smaller zip download over the DMG. We also
-        # rename it to be version-stamped so multiple releases can
-        # coexist in dist/ without overwriting each other.
-        APP_VERSION="$(plutil -extract CFBundleShortVersionString raw \
-            "$OUT/Contents/Info.plist")"
-        VERSIONED_ZIP="$ROOT/dist/LociiGhost-v${APP_VERSION}.zip"
-        mv "$ZIP" "$VERSIONED_ZIP"
+        # The .zip was only needed as a transport for notarytool
+        # submit (Apple won't notarise a bare .app). Now that the
+        # ticket is stapled to the .app, the zip is dead weight —
+        # delete it. Release artefact is the DMG produced below.
+        rm -f "$ZIP"
         echo "==> notarised + stapled — ready for distribution"
-        echo "==> zip:  $VERSIONED_ZIP"
 
-        # Chain into make-dmg.sh so a release build always produces
-        # both flavours: zip for the technical crowd, DMG for the
-        # "drag-to-Applications" mainstream UX. The DMG gets its own
-        # notarisation pass; the .app inside is already stapled so
-        # Gatekeeper accepts the .app whether the user copies it
-        # from the mounted volume or extracts it via Archive Utility.
+        # Build the .dmg. This is the single distributable artefact
+        # for end users: drag-to-Applications UX, signed + notarised
+        # + stapled in its own right. make-dmg.sh runs the whole
+        # build/sign/notarise/staple under /tmp and moves the
+        # finished .dmg into dist/ at the end.
         "$ROOT/Scripts/make-dmg.sh" "$OUT"
     else
         echo "==> signed with Developer ID, but no notary profile set"
