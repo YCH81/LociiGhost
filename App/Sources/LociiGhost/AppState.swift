@@ -2307,7 +2307,7 @@ final class AppState {
     /// Bumped every time the daemon source breaks ABI or behaviour in
     /// a way that requires an in-place restart. Must match the
     /// `__version__` in `Daemon/lociighostd/__init__.py`.
-    static let expectedDaemonVersion = "1.10.3"
+    static let expectedDaemonVersion = "1.10.5"
 
     // MARK: - Update check (v1.5)
 
@@ -2880,20 +2880,23 @@ struct DeviceVM: Codable, Identifiable, Hashable, Sendable {
 
     /// Short label for the device's dev-mode state. Tri-state because an
     /// unpaired/untrusted device can return nil even when dev mode is on.
-    /// Uses `String(localized:bundle:)` so the label tracks the user's
-    /// language picker — the bundle reference is necessary because
-    /// Bundle.module isn't visible from extensions in the LociiGhost
-    /// executable target without going through .module explicitly.
+    /// Uses Bundle.main (the default for `String(localized:)`); the
+    /// .lproj files are copied to `.app/Contents/Resources/` by
+    /// package-app.sh, where Bundle.main finds them. Do NOT route
+    /// these strings through the SwiftPM-generated module bundle —
+    /// see the comment block in Scripts/package-app.sh for why the
+    /// executable-target accessor crashes the packaged app on any
+    /// machine other than the developer's own.
     var developerModeLabel: String {
         switch developer_mode {
         case .some(true):
-            return String(localized: "Dev Mode: ON", bundle: .module,
+            return String(localized: "Dev Mode: ON",
                           comment: "Device chip label — Developer Mode is enabled")
         case .some(false):
-            return String(localized: "Dev Mode: OFF", bundle: .module,
+            return String(localized: "Dev Mode: OFF",
                           comment: "Device chip label — Developer Mode is disabled")
         case .none:
-            return String(localized: "Dev Mode: unknown", bundle: .module,
+            return String(localized: "Dev Mode: unknown",
                           comment: "Device chip label — couldn't query Developer Mode state")
         }
     }
@@ -3015,13 +3018,13 @@ enum TravelProfile: String, CaseIterable, Identifiable, Sendable {
     var label: String {
         switch self {
         case .walking:
-            return String(localized: "Walking", bundle: .module,
+            return String(localized: "Walking",
                           comment: "Travel profile name")
         case .cycling:
-            return String(localized: "Cycling", bundle: .module,
+            return String(localized: "Cycling",
                           comment: "Travel profile name")
         case .driving:
-            return String(localized: "Driving", bundle: .module,
+            return String(localized: "Driving",
                           comment: "Travel profile name")
         }
     }

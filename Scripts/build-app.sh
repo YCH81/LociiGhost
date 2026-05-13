@@ -17,6 +17,23 @@ fi
 
 cd "$APP_DIR"
 
+# Guard: never let `bundle: .module` reach a packaged build.
+# SwiftPM's executable-target accessor hardcodes the developer's
+# absolute `.build/` path as its only fallback, so any
+# `String(localized: …, bundle: .module, …)` crashes the .app on
+# launch on every machine except this one (and even on this one if
+# the source tree moves). The fix is to drop `bundle: .module`
+# everywhere — `Bundle.main` finds the .lproj files that
+# package-app.sh copies into Contents/Resources/. See the long
+# comment block at the top of Scripts/package-app.sh for the full
+# story.
+if grep -rn "bundle: \.module" Sources/LociiGhost --include="*.swift" 2>/dev/null; then
+    echo "❌ bundle: .module is not allowed in this project — it crashes the packaged .app on launch." >&2
+    echo "   Use String(localized: \"…\") without a bundle argument." >&2
+    echo "   See Scripts/package-app.sh comment block for why." >&2
+    exit 1
+fi
+
 CONFIG=${CONFIG:-release}
 echo "==> swift build --configuration $CONFIG"
 swift build --configuration "$CONFIG"

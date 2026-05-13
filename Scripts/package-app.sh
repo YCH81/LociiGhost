@@ -17,6 +17,18 @@ BIN_DIR="$APP_DIR/.build/$BUILD_SUBDIR"
 BIN="$BIN_DIR/LociiGhost"
 RESOURCE_BUNDLE="$BIN_DIR/LociiGhost_LociiGhost.bundle"
 
+# Guard: never let `bundle: .module` reach a packaged build. See the
+# comment block further down (around the SwiftPM resource bundle
+# copy) for the full diagnosis. tl;dr: SwiftPM's executable-target
+# accessor only checks the .app root + a hardcoded developer
+# `.build/` path, so any `String(localized: …, bundle: .module, …)`
+# crashes the .app on launch on every machine except the dev's own.
+if grep -rn "bundle: \.module" "$APP_DIR/Sources/LociiGhost" --include="*.swift" 2>/dev/null; then
+    echo "❌ bundle: .module is not allowed in this project — it crashes the packaged .app on launch." >&2
+    echo "   Use String(localized: \"…\") without a bundle argument." >&2
+    exit 1
+fi
+
 # Always invoke `swift build` so source edits actually make it into the
 # packaged app. The earlier `[[ ! -x "$BIN" ]]` gate silently reused the
 # previous SwiftPM artifact whenever the binary already existed -- so
@@ -33,17 +45,38 @@ mkdir -p "$OUT/Contents/MacOS" "$OUT/Contents/Resources"
 cp "$BIN" "$OUT/Contents/MacOS/LociiGhost"
 chmod +x "$OUT/Contents/MacOS/LociiGhost"
 
-# SwiftPM's resource bundle. The auto-generated `Bundle.module`
-# accessor searches `Bundle.main.resourceURL` first (which on a
-# packaged .app is `Contents/Resources/`), so the bundle MUST live
-# there. The old comment in this script claimed "next to the
-# executable" (Contents/MacOS/) and the older script copied it
-# accordingly — both wrong. On real end-user installs that older
-# layout meant `Bundle.module`'s fatalError fired the moment any
-# `String(localized: …, bundle: .module, …)` ran (e.g.
-# `DeviceVM.developerModeLabel` on every iPhone row), crashing the
-# app on launch. The .app worked in dev (`swift run`) only because
-# SwiftPM's debug-mode lookup falls back to the build directory.
+# SwiftPM's auto-generated `Bundle.module` accessor (look in
+# .build/.../DerivedSources/resource_bundle_accessor.swift to
+# confirm) is unusable for packaged-.app distribution:
+#
+#   let mainPath = Bundle.main.bundleURL
+#       .appendingPathComponent("LociiGhost_LociiGhost.bundle").path
+#   let buildPath = "/Users/<dev>/.../App/.build/.../release/
+#                    LociiGhost_LociiGhost.bundle"
+#
+# `Bundle.main.bundleURL` on a packaged .app is the .app itself
+# (so it looks at `.app/LociiGhost_LociiGhost.bundle`, NOT
+# `.app/Contents/Resources/LociiGhost_LociiGhost.bundle`); the
+# `buildPath` fallback hardcodes the developer's local SwiftPM
+# directory at compile time. End-user machines have neither
+# location, so `Bundle.module`'s `fatalError` fires on first
+# access — which is what crashed v1.10.0 / v1.10.1 / v1.10.2 /
+# v1.10.3 on every machine except the developer's own.
+#
+# The fix is upstream of this script: the source guard above
+# (`grep -rn "bundle: \.module"`) refuses to package any build
+# that still routes a `String(localized:)` through `.module`.
+# Without those callsites, the `static let module` lazy initialiser
+# never runs and its `fatalError` becomes dead code regardless of
+# where the bundle physically lives.
+#
+# We still copy the bundle into `Contents/Resources/` because
+# Bundle.main's default localisation lookup uses
+# `Contents/Resources/`-and-friends, and we still want SwiftUI
+# `Text("...")` (which goes through Bundle.main, not Bundle.module)
+# to find any future bundled assets. That's also the Apple-canonical
+# location, so codesign doesn't complain about unsealed contents at
+# the .app root.
 if [[ -d "$RESOURCE_BUNDLE" ]]; then
     cp -R "$RESOURCE_BUNDLE" "$OUT/Contents/Resources/"
 fi
@@ -123,7 +156,7 @@ cat >"$OUT/Contents/Info.plist" <<'PLIST'
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.10.3</string>
+    <string>1.10.5</string>
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>NSHumanReadableCopyright</key>

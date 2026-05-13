@@ -29,9 +29,9 @@ if you're in Taiwan.
 
 ## Download
 
-- **Latest version**: v1.10.2
+- **Latest version**: v1.10.5
 - **Release date**: 2026-05-14
-- **Download**: [Google Drive folder](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) — DMG is Apple-Developer-ID-signed and notarised, so it opens with a double-click without the Gatekeeper warning.
+- **Download**: [Google Drive folder](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) — DMG is Apple-Developer-ID-signed and notarised, so it opens with a double-click without the Gatekeeper warning. **Use the DMG, not a zip**: extracting a signed .app into an iCloud-synced folder (Documents, Desktop) lets the File Provider attach extra xattrs that break the signature and show "LociiGhost is damaged".
 
 ## New here?
 
@@ -61,17 +61,56 @@ if you're in Taiwan.
 
 ## What's new
 
-**v1.10.2** (2026-05-14)
+**v1.10.5** (2026-05-14)
 
-- **Fix: end users couldn't actually launch the v1.10.0 .app.** That
-  build assumed the user had `~/Documents/LociiGhost/Daemon/` (a dev-
-  mode source + venv tree) on disk; anyone who just downloaded the
-  DMG hit "Daemon source not found". v1.10.2 bundles the entire
-  94 MB PyInstaller daemon binary into the .app at
+- **Fixes the v1.10.4 "Could not locate lociighostd" error** — the app
+  launched cleanly but the daemon never spawned, so no iPhone discovery
+  and no playback. Root cause: Swift Foundation's
+  `URL.appending(path:)` on a `Bundle.main.resourceURL` (itself a
+  relative URL with a base) produces another base+relative URL, and the
+  modern `URL.path(percentEncoded:)` API *does not resolve relative
+  URLs against their base* — it returns only the relative segment. So
+  `resolveExecutable()` saw `"Contents/Resources/lociighostd/lociighostd"`
+  with no `/Applications/LociiGhost.app/` prefix, `isExecutableFile`
+  returned false, and the lifecycle threw `daemonNotFound` despite the
+  binary sitting right there. Fix: insert `.absoluteURL` between
+  `.appending(path:)` and `.path(percentEncoded:)` so the base
+  collapses into the path.
+- Same `.absoluteURL` fix applied to `DaemonStaging.hasBundledDaemon`
+  for consistency (it previously used the deprecated `.path` getter,
+  which happens to resolve correctly — so the two callsites had been
+  silently disagreeing about the same path).
+
+**v1.10.4** (2026-05-14, superseded — upgrade to v1.10.5)
+
+- **Actually fixes the v1.10.0 launch crash on end-user machines.**
+  v1.10.1–v1.10.3 each fixed one layer and revealed the next. Root
+  cause: SwiftPM's auto-generated `Bundle.module` accessor looks for
+  the resource bundle at a path that doesn't exist on a packaged
+  .app, so the first `String(localized: …, bundle: .module, …)` call
+  (`DeviceVM.developerModeLabel` during initial sidebar render) hit
+  `fatalError`. Fix: dropped the `bundle: .module` argument from every
+  callsite (`String(localized:)` falls back to `Bundle.main`, which
+  finds the canonical `Contents/Resources/en.lproj/` etc. correctly)
+  and added a grep guard to `package-app.sh` so the pattern can't
+  silently come back.
+- Side-note clarification: extracting a signed .app zip into an iCloud-
+  synced folder lets File Provider stamp xattrs onto the bundle and
+  Gatekeeper reports "damaged". Use the **DMG** — mount it under
+  `/Volumes/`, drag to `/Applications`, both outside iCloud's reach.
+- But v1.10.4 still had the daemon-path resolution bug; you must
+  upgrade to v1.10.5 to actually use the app.
+
+**v1.10.2** (2026-05-14, superseded — upgrade to v1.10.5)
+
+- Bundled the entire 94 MB PyInstaller daemon binary into the .app at
   `Contents/Resources/lociighostd/`, so users without Python or the
   cloned repo can double-click and go.
 - DMG download size therefore grows from 4.7 MB to 44 MB (carries
   the embedded Python runtime + every dependency).
+- But v1.10.2 still crashed on launch (Bundle.module bug); upgrade to
+  v1.10.5 — the first build that actually launches AND connects to the
+  daemon.
 
 **v1.10.0** (May 2026)
 

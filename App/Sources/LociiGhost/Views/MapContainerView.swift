@@ -579,7 +579,6 @@ struct MapContainerView: NSViewRepresentable {
                 // glyph + colour for the same reason.
                 pin.title = state.isVirtualMapSelected
                     ? String(localized: "You",
-                             bundle: .module,
                              comment: "Map pin label in browse-only Map mode — \"you are here\"")
                     : "iPhone (simulated)"
                 pin.subtitle = String(format: "%.5f, %.5f", sim.lat, sim.lng)

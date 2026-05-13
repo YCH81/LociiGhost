@@ -150,10 +150,33 @@ final class DaemonLifecycle {
         //    .app bundle) since the daemon dir is copied there by
         //    package-app.sh — it lives outside SwiftPM's
         //    Bundle.module resource bundle.
+        //
+        // `.absoluteURL` is load-bearing here: `Bundle.main.resourceURL`
+        // is returned as a relative URL with a base
+        // (`Contents/Resources/` relative to `file:///Applications/
+        // LociiGhost.app/`). Chaining `.appending(path:)` on it produces
+        // another relative URL. The modern `URL.path(percentEncoded:)`
+        // API *does not resolve relative URLs against their base* — it
+        // returns only the relative segment (e.g.
+        // `"Contents/Resources/lociighostd/lociighostd"` with no
+        // `/Applications/LociiGhost.app/` prefix). `FileManager.
+        // isExecutableFile(atPath:)` then resolves that against `cwd`,
+        // finds nothing, returns false, and we incorrectly fall through
+        // to the staged-venv branch. The fall-through was the actual
+        // shipped bug in v1.10.4 — daemon binary visibly present in the
+        // .app, but the app reports "Could not locate lociighostd".
+        // `.absoluteURL` collapses the base+relative URL into a single
+        // absolute URL, so `.path(percentEncoded: false)` returns the
+        // full POSIX path and `isExecutableFile` answers correctly.
+        // (The deprecated `.path` getter happens to resolve too, which
+        // is why `DaemonStaging.hasBundledDaemon` worked while this
+        // function broke — same paths, different APIs, different
+        // outcomes. Fixed in both places for consistency.)
         if let resources = Bundle.main.resourceURL {
             let bundled = resources
                 .appending(path: "lociighostd")
                 .appending(path: "lociighostd")
+                .absoluteURL
             if FileManager.default.isExecutableFile(atPath: bundled.path(percentEncoded: false)) {
                 return Resolved(url: bundled, arguments: [], pythonPathOverride: nil)
             }

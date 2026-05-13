@@ -209,16 +209,26 @@
 
   <section class="card">
     <div class="version-line">
-      <strong>v1.10.2</strong>
+      <strong>v1.10.5</strong>
       <span class="status-pill">Released</span>
     </div>
-    <p>Released 2026-05-14. <strong>Fixes the v1.10.0 issue where the
-       app refused to launch on machines without the source repo
-       cloned</strong> — the daemon binary now ships inside the .app
-       itself. Full changelog in the
-       <a href="https://github.com/YCH81/LociiGhost/blob/main/README.en.md#whats-new">README</a>.</p>
+    <p>Released 2026-05-14. <strong>Fixes the v1.10.4 "Could not locate
+       lociighostd" error</strong> — the app launched cleanly but the daemon
+       never spawned. Root cause: Swift Foundation's
+       <code>URL.appending(path:)</code> on a
+       <code>Bundle.main.resourceURL</code> produces a base+relative URL,
+       and the modern <code>URL.path(percentEncoded:)</code> API
+       <em>does not resolve relative URLs against their base</em>. The fix
+       is one line — insert <code>.absoluteURL</code> before reading the
+       path. See
+       <a href="https://github.com/YCH81/LociiGhost/releases/tag/v1.10.5">v1.10.5 release notes</a>
+       for the full diagnosis.</p>
     <p class="meta">The DMG is Apple-Developer-ID-signed and notarised,
-       so it opens with a double-click without a Gatekeeper warning.</p>
+       so it opens with a double-click without a Gatekeeper warning.
+       <strong>Use the DMG, not a zip</strong>: extracting a signed .app
+       into an iCloud-synced folder (Documents, Desktop) lets the File
+       Provider attach extra xattrs that break the signature and show
+       "LociiGhost is damaged".</p>
   </section>
 
   <h2>Support the author</h2>

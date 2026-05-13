@@ -27,9 +27,9 @@
 
 ## 下載
 
-- **最新版本**：v1.10.2
+- **最新版本**：v1.10.5
 - **發布日期**：2026-05-14
-- **下載連結**：[Google Drive 下載資料夾](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) —— DMG 已通過 Apple Developer ID 簽名 + Apple notarize，雙擊即可開啟，不會被 Gatekeeper 擋下
+- **下載連結**：[Google Drive 下載資料夾](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) —— DMG 已通過 Apple Developer ID 簽名 + Apple notarize，雙擊即可開啟，不會被 Gatekeeper 擋下。**請務必用 DMG 安裝**，不要把 .app 解壓到 iCloud 同步的資料夾（Documents、Desktop），File Provider 會蓋上額外 xattr 把簽章弄壞
 
 ## 第一次使用？
 
@@ -51,14 +51,39 @@
 
 ## 最新更新
 
-**v1.10.2**（2026-05-14）
+**v1.10.5**（2026-05-14）
 
-- **修正一般使用者下載後無法啟動的 bug**：v1.10.0 的 .app 假設使用者本機
-  `~/Documents/LociiGhost/Daemon/` 有原始碼 + venv（dev mode 設計留下的
-  限制）。v1.10.2 把整個 PyInstaller daemon binary（94 MB）直接打包進
+- **修好 v1.10.4 雖然不閃退、但 daemon 抓不到的 bug**。Swift Foundation
+  的 `URL.appending(path:)` 在 base URL 上產出 base+relative 雙層結構，
+  新 API `URL.path(percentEncoded:)` 對這種結構不會 resolve —— 只回 relative
+  segment。結果 `resolveExecutable()` 拿到 `"Contents/Resources/lociighostd/
+  lociighostd"`（沒 `/Applications/LociiGhost.app/` 前綴），`isExecutableFile`
+  回 false → 走錯分支 → 拋 `daemonNotFound`。修法：在 `Bundle.main.resourceURL.
+  appending(...)` 之後加 `.absoluteURL` 把 base+relative 合成單一絕對 URL。
+- 同步把 `DaemonStaging.hasBundledDaemon`（之前用 deprecated `.path`
+  getter 剛好繞過這個雷）一併改成 `.absoluteURL.path(percentEncoded: false)`
+  寫法，兩個 callsite 從此不會再對同一條路徑得到不同答案。
+
+**v1.10.4**（2026-05-14，已過時，請升級到 v1.10.5）
+
+- **真正修好 v1.10.0 一般使用者閃退的 bug**。v1.10.1–v1.10.3 各補一層後
+  仍會閃退，挖到最後是 SwiftPM 自動產的 `Bundle.module` accessor 在
+  .app 包裝後找不到 resource bundle，會在第一次 render iPhone row 時
+  （`DeviceVM.developerModeLabel`）打到 `fatalError`。修法：把所有
+  `String(localized: …, bundle: .module, …)` 改成不帶 `bundle:` 參數
+  （走 Bundle.main），並在 package-app.sh 加 grep guard 預防回流。
+- 順便釐清 zip 解壓到 iCloud Drive 路徑會壞掉的問題（File Provider 蓋
+  FinderInfo + protected xattr），**請務必用 DMG 安裝**，從 /Volumes 拖
+  到 /Applications，全程不碰 iCloud。
+- 但 v1.10.4 仍有 daemon 路徑解析 bug，必須升 v1.10.5 才能正常運作。
+
+**v1.10.2**（2026-05-14，已過時，請升級到 v1.10.5）
+
+- 把整個 PyInstaller daemon binary（94 MB）直接打包進
   `.app/Contents/Resources/lociighostd/`，沒有 Python、沒有 source code 的
   使用者也能雙擊就跑。
 - DMG 體積因此從 4.7 MB → 44 MB（含整個 Python runtime 跟所有相依套件）。
+- 但 v1.10.2 還會閃退（Bundle.module bug），v1.10.4 才真正修好。
 
 **v1.10.0**（2026-05）
 

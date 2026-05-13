@@ -209,15 +209,21 @@
 
   <section class="card">
     <div class="version-line">
-      <strong>v1.10.2</strong>
+      <strong>v1.10.5</strong>
       <span class="status-pill">已發佈</span>
     </div>
-    <p>發布日期：2026-05-14。**修正 v1.10.0 一般使用者下載後無法啟動的
-       問題** —— 完整 daemon binary 現已內含於 .app，不再需要本機有
-       原始碼。完整變更紀錄見
-       <a href="https://github.com/YCH81/LociiGhost#%E6%9C%80%E6%96%B0%E6%9B%B4%E6%96%B0">README 最新更新</a>。</p>
+    <p>發布日期：2026-05-14。<strong>修好 v1.10.4 雖然不閃退、但
+       daemon 抓不到的 bug</strong>。Swift Foundation 的
+       <code>URL.appending(path:)</code> 在 <code>Bundle.main.resourceURL</code>
+       上產出 base+relative URL，新 API
+       <code>URL.path(percentEncoded:)</code> 不會 resolve 這種結構，
+       daemon 路徑被當成相對路徑解析。修法是加 <code>.absoluteURL</code>。
+       完整變更紀錄見
+       <a href="https://github.com/YCH81/LociiGhost/releases/tag/v1.10.5">v1.10.5 release notes</a>。</p>
     <p class="meta">DMG 已通過 Apple Developer ID 簽名 + Apple notarize，
-       雙擊即可開啟，不會被 Gatekeeper 擋下。</p>
+       雙擊即可開啟，不會被 Gatekeeper 擋下。<strong>請務必用 DMG 安裝</strong>，
+       不要把 .app 解壓到 iCloud 同步的資料夾（Documents、Desktop），
+       iCloud File Provider 會蓋上額外 xattr 把簽章弄壞，導致顯示「damaged」。</p>
   </section>
 
   <h2>支持作者</h2>

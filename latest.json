@@ -1,5 +1,5 @@
 {
-  "version": "1.10.2",
+  "version": "1.10.5",
   "url": "https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing",
-  "notes": "v1.10.2 — 修正 v1.10.0 / v1.10.1 一般使用者下載後無法啟動的 bug。Daemon binary 現已內含於 .app（94 MB），不再需要本機有原始碼。"
+  "notes": "v1.10.5 — 修好 v1.10.4 daemon 抓不到的 bug。Swift Foundation URL.appending(path:) 在 Bundle.main.resourceURL 上產出 base+relative URL，新 API URL.path(percentEncoded:) 不會 resolve；修法是加 .absoluteURL。v1.10.0 → v1.10.5 是 end-user 終於可以正常使用的版本。"
 }

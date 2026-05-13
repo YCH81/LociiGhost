@@ -59,12 +59,24 @@ enum DaemonStaging {
     /// at `Contents/Resources/lociighostd/lociighostd`. End-user
     /// distributions (the DMG from Google Drive) include this; dev
     /// builds that skip `Daemon/dist/` during package-app.sh don't.
+    ///
+    /// `.absoluteURL` matters: `Bundle.main.resourceURL` is a relative
+    /// URL with a base (the .app's URL), and modern
+    /// `URL.path(percentEncoded:)` doesn't resolve that — see the long
+    /// comment in `DaemonLifecycle.resolveExecutable()` for the full
+    /// diagnosis. The deprecated `.path` getter (used here in v1.10.4
+    /// and earlier) happened to resolve correctly, which is why
+    /// `hasBundledDaemon` returned true while `resolveExecutable()`
+    /// returned `daemonNotFound` on the same .app. v1.10.5 makes both
+    /// callsites use the same `.absoluteURL.path(percentEncoded: false)`
+    /// idiom so they can never disagree again.
     static var hasBundledDaemon: Bool {
         guard let resources = Bundle.main.resourceURL else { return false }
         let bundled = resources
             .appending(path: "lociighostd")
             .appending(path: "lociighostd")
-        return FileManager.default.isExecutableFile(atPath: bundled.path)
+            .absoluteURL
+        return FileManager.default.isExecutableFile(atPath: bundled.path(percentEncoded: false))
     }
 
     /// Make sure a usable copy of the daemon exists at `stagedRoot`.
