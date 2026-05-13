@@ -153,9 +153,9 @@ For your first connection, **strongly recommend USB**. WiFi connection requires 
 
 If the iPhone doesn't appear, see [Section 11 Troubleshooting](#11-troubleshooting).
 
-### 5.2 Enable Developer Mode (required for iOS 17+)
+### 5.2 Enable Developer Mode
 
-iOS 17 and later require Developer Mode to be turned on for location simulation to work.
+Apple requires Developer Mode to be turned on on the iPhone for location simulation to work.
 
 **On the iPhone:**
 
@@ -183,7 +183,7 @@ After clicking:
 
 **This is needed once per Mac restart**, not per app launch. Reopening the app doesn't require re-authentication.
 
-> Why authenticate? Short answer: LociiGhost needs Mac-level permission to talk to your iPhone — a requirement Apple added in iOS 17.
+> Why authenticate? LociiGhost needs Mac-level permission to talk to your iPhone — a requirement Apple added in iOS 17.
 
 ### 5.4 Switching to WiFi Later (no cable)
 
@@ -197,8 +197,6 @@ Full WiFi setup guide → **[wifi-setup.md](wifi-setup.md)**
 
 ## 6. Run Your First Route
 
-iPhone connected. Five minutes to see your iPhone's location actually change.
-
 ### Fastest Check: Teleport to a Place
 
 1. **Find a place on the map** (e.g. Tokyo Station, Times Square)
@@ -211,11 +209,11 @@ iPhone connected. Five minutes to see your iPhone's location actually change.
 4. **Pick up your iPhone**, open the Maps app
 5. The iPhone's location **jumps to where you picked**
 
-> ⏱️ iPhone GPS recalibration takes **30 seconds to 2 minutes**. If you still see the old location at first, wait a bit.
+> P.S. If you use the **Restore** function: ⏱️ iPhone GPS recalibration takes **30 seconds to 2 minutes**. If you still see the old location at first, wait a bit.
 
-### Next: Simulate Moving There
+### Next: Simulate Moving
 
-Teleport jumps instantly — it doesn't simulate travel. To simulate actually moving from your current location to a destination (super useful for testing navigation apps):
+Teleport jumps instantly — it doesn't simulate travel. To simulate actually moving from your current location to a destination:
 
 1. Repeat steps 1–2 above to pick a destination
 2. In the floating panel, click **Navigate**
@@ -243,7 +241,7 @@ Open the **Movement Modes** section in the sidebar and you'll see:
 
 Plus one game-specific mode:
 
-- **Gold Ditto** — for Pikmin Bloom players, mimics a specific spawn pattern. Most users won't need this.
+- **Gold Ditto** — for players, mimics a specific movement pattern. Most users won't need this.
 
 ### How Each Mode Works
 
@@ -308,7 +306,7 @@ Want to change locations without being at your Mac? LociiGhost has a phone-side 
 
 1. In the sidebar, click **Phone Control**
 2. The window shows:
-   - A URL like `http://192.168.1.5:8779/phone`
+   - A URL like `http://111.168.2.5:8779/phone`
    - A 6-digit PIN
 
 **On the iPhone:**
@@ -337,11 +335,11 @@ Want to change locations without being at your Mac? LociiGhost has a phone-side 
 
 ### Speed Slider
 
-The **Speed** slider in the bottom bar goes from 0 to 200+ km/h. **You can drag it during playback** — speed updates instantly and the ETA recalculates.
+The **Speed** slider in the bottom bar goes from 0 to 200+ km/h. **You can drag it while moving** — speed updates instantly and the ETA recalculates.
 
 ### Laps
 
-To loop a route, set **Laps** in the route playback panel (up to 99).
+To loop a route, set **Laps** in the route playback panel (up to 20).
 
 ### Routing Engines (Which Map Service Plans Your Route)
 
@@ -392,9 +390,9 @@ A: Wait 30 seconds to 2 minutes. iPhone GPS recalibration takes time. Not a bug.
 A: Usually the iPhone's screen has been locked too long. Wake the iPhone — the connection auto-restores. If not, go to LociiGhost and check auth status; re-authenticate if needed.
 
 **Q: How do I fully stop simulation and have the iPhone return to its real location?**
-A: Press Stop in LociiGhost to end simulation. For a hard reset: restart the iPhone — that clears all simulation state.
+A: Press Stop in LociiGhost to end simulation, or press the Restore button — restoration typically takes 30 seconds to 2 minutes. For a hard reset: restart the iPhone — that clears all simulation state.
 
-**Q: Can I control two iPhones at once?**
+**Q: Can I control multiple iPhones at once?**
 A: Yes. Connect both — they appear separately in the sidebar. Click to switch between them. Each iPhone has its own route, bookmarks, and state; switching never loses anything.
 
 **Q: Does my location get sent to Apple, Google, or anyone?**
