@@ -61,13 +61,13 @@
 
 - LINE 官方帳號 ID：`@382ydavk`
 - LINE 社群名稱：「LociiGhost Mac/iOS 飛人」
-- 技術 bug 報告、feature request：[GitHub Issues](https://github.com/YCH81/LociiGhost/issues)
+- 技術 bug 報告、feature request：可以在Line社群或官方帳號回報
 
 ## 動機
 
-現有的 macOS 版（`M-0.2.99.5`）功能完整，但架構上是直接從 Windows 搬過來的：
+現有之前改的Locwarp 的 macOS 版（`M-0.2.99.5`）功能完整，但架構上是直接從 Windows 搬過來的：
 Electron renderer、web map、FastAPI HTTP server、WebSocket bridge。在 M 系列
-Mac 上**明顯偏熱** —— 風扇拉滿、Activity Monitor 看到上百 MB 的 Chromium
+Mac 上**明顯偏熱/處理效能不佳** —— 風扇拉滿、Activity Monitor 看到上百 MB 的 Chromium
 overhead —— 對於一個要常駐背景的工具來說，形狀不對。
 
 這次重寫的目標：
