@@ -35,6 +35,17 @@ let package = Package(
             name: "LociiGhost",
             dependencies: ["LociiGhostCore"],
             path: "Sources/LociiGhost",
+            // Exclude the .iconset build-artefact folder — generate-
+            // icon.swift rasterises Resources/AppIcon-Master.pdf into
+            // ten PNGs there before iconutil rolls them up into
+            // AppIcon.icns. SwiftPM resource processing would
+            // otherwise see those PNGs as bundle resources, but
+            // they're intermediate artefacts; the .icns + master
+            // PDF are what we actually ship.
+            exclude: [
+                "Resources/AppIcon.iconset",
+                "Resources/AppIcon-Master.pdf",
+            ],
             resources: [
                 .process("Resources"),
             ]

@@ -58,7 +58,7 @@ struct ControlPanel: View {
                     Image(systemName: state.routeLaps > 1
                           ? "arrow.triangle.2.circlepath"
                           : "arrow.right")
-                        .foregroundStyle(state.routeLaps > 1 ? Color.accentColor : Color.secondary)
+                        .foregroundStyle(state.routeLaps > 1 ? Color.lociSage : Color.secondary)
                     Text("Laps")
                         .font(.caption)
                     Stepper(value: $state.routeLaps, in: 1...99) {
@@ -72,7 +72,7 @@ struct ControlPanel: View {
                         Text("\(state.routeLaps)× looped",
                              comment: "Lap count badge — N times around")
                             .font(.caption2)
-                            .foregroundStyle(Color.accentColor)
+                            .foregroundStyle(Color.lociSage)
                     } else {
                         Text("single trip",
                              comment: "Lap count badge when laps == 1")
@@ -88,7 +88,7 @@ struct ControlPanel: View {
                         Image(systemName: state.useStraightLine
                               ? "arrow.up.right.circle.fill"
                               : "arrow.up.right.circle")
-                            .foregroundStyle(state.useStraightLine ? Color.accentColor : Color.secondary)
+                            .foregroundStyle(state.useStraightLine ? Color.lociSage : Color.secondary)
                         VStack(alignment: .leading, spacing: 1) {
                             Group {
                                 if state.useStraightLine {
@@ -116,7 +116,7 @@ struct ControlPanel: View {
                 .padding(8)
                 .background(
                     state.useStraightLine
-                    ? AnyShapeStyle(Color.accentColor.opacity(0.12))
+                    ? AnyShapeStyle(Color.lociSage.opacity(0.12))
                     : AnyShapeStyle(Color.secondary.opacity(0.06)),
                     in: .rect(cornerRadius: 6)
                 )

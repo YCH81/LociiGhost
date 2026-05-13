@@ -1,8 +1,13 @@
 # LociiGhost
 
+> **iPhone GPS 模擬工具** —— Apple Silicon 原生 macOS app，從 LocWarp（keezxc1223, MIT）概念與部分參照後完整 Swift 重寫。
+>
+> **iPhone GPS spoofing tool** — Apple-Silicon-native macOS app, a complete Swift rewrite informed by LocWarp's concept and partial code reference (keezxc1223, MIT).
+
 A from-scratch, Apple-Silicon-only iOS location simulation tool inspired by
-[LociiGhost](https://github.com/keezxc1223/lociighost), but rebuilt as a native
-macOS application — not a port of the cross-platform Electron version.
+[LocWarp](https://github.com/keezxc1223/locwarp) (by keezxc1223, MIT-licensed),
+but rebuilt as a native macOS application — not a port of the cross-platform
+Electron version.
 
 ## Why
 
@@ -105,6 +110,33 @@ swift run lociighostctl --socket /tmp/lw.sock shutdown
   script ... with administrator privileges"` instead of
   `SMAppService` (one Touch ID prompt per Mac restart).
 
+## Attribution
+
+LociiGhost is a complete native-Swift rewrite of
+[LocWarp](https://github.com/keezxc1223/locwarp) by **keezxc1223**, originally
+distributed under the MIT License. The product concept — six movement modes,
+dual-device synchronisation, the phone-control web UI, bookmark / GPX import
+flows, the OSRM-cached routing approach — was shaped by LocWarp; a number of
+source files in this repository keep explicit "ported from LocWarp" comments
+where the design parity is intentional.
+
+LociiGhost itself (the new Swift app, Apple-Silicon-native daemon, SwiftData
+schema, native MapKit integration, SOU·SOU-style icon set, and any feature
+work since v1.0) is the original work of **YCH81 (Jeff Hu)**.
+
 ## License
 
-MIT (matches upstream LociiGhost).
+LociiGhost is distributed under the **MIT License** — see [`LICENSE`](LICENSE)
+for the full text.
+
+The LICENSE file preserves both copyright notices (LociiGhost's and the
+upstream LocWarp's) as required by the MIT License terms.
+
+```
+Copyright (c) 2026 YCH81 (Jeff Hu)
+Copyright (c) 2026 keezxc1223 (LocWarp upstream)
+```
+
+If you fork or redistribute LociiGhost (modified or not), you only need to
+preserve the [`LICENSE`](LICENSE) file. Everything else — proprietary use,
+commercial use, sublicensing, rebranding — is allowed by MIT.

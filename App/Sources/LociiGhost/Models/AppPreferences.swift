@@ -50,6 +50,41 @@ final class AppPreferences {
     var lastSimulatedLat: Double?
     var lastSimulatedLng: Double?
 
+    // ── v1.9: Route-complete alert sound ────────────────────────
+    /// When true and a navigation / route-loop / random-walk run
+    /// transitions to "idle" naturally (i.e. NOT via an explicit
+    /// stop), play the macOS system default alert (`Glass.aiff`).
+    /// Toggle in Settings. Defaults to false so a fresh install
+    /// doesn't surprise users with sound on first run.
+    var alertSoundEnabled: Bool = false
+
+    // ── v1.9: Google Geocoding fallback ─────────────────────────
+    /// Optional Google Geocoding API key. When set, the search bar
+    /// uses Google as a fallback when MapKit's local search returns
+    /// no useful matches (e.g. Chinese-language store names that
+    /// Apple's geocoder struggles with). Empty / nil → Google is
+    /// disabled, MapKit-only behaviour. Stored in plain text in
+    /// SwiftData; the user pastes their own key.
+    var googleGeocodeAPIKey: String?
+
+    // ── v1.9.1: Routing engine picker ───────────────────────────
+    /// Which routing backend to use when planning navigation routes.
+    /// Stored as the raw string of `RoutingEngine` so SwiftData's
+    /// schema stays primitive. Defaults to "osrm_demo" — the public
+    /// router.project-osrm.org server, the original behaviour.
+    /// Switching to "google" requires `googleGeocodeAPIKey` to be
+    /// set with a key that also has Directions API enabled.
+    /// "straight_line" skips routing entirely.
+    var routingEngineRaw: String = "osrm_demo"
+
+    // ── v1.9.4: Appearance mode (brand vs system tint) ──────────
+    /// Raw string of `AppearanceMode`. "system" (default) lets every
+    /// tinted element fall back to macOS's accent colour, which is
+    /// what most users expect from a Mac-native app. "brand" tints
+    /// the app with the LociiGhost sage palette extracted from the
+    /// AppIcon. The Settings → Appearance section exposes the picker.
+    var appearanceModeRaw: String = "system"
+
     init(
         travelProfileRaw: String = "driving"
     ) {

@@ -26,7 +26,12 @@ log = logging.getLogger(__name__)
 
 # Map our profile names to OSRM's. We expose the friendlier names so
 # the GUI can present "Walking" / "Driving" / "Cycling" without leaking
-# OSRM-specific terminology.
+# OSRM-specific terminology. The public demo at router.project-osrm.org
+# DOES serve all three — but bike/foot have a noticeably sparser graph
+# (no path across highway-only bridges, restricted tunnels, etc.) and
+# will return a 400 `NoRoute` when a waypoint pair has no bike/foot
+# connection. Callers should catch `NoRouteError` and retry with
+# "driving" before surfacing the failure to the user.
 PROFILES = {
     "walking": "foot",
     "cycling": "bike",
@@ -38,6 +43,14 @@ DEFAULT_BASE_URL = "https://router.project-osrm.org/route/v1"
 
 
 class RoutingError(RuntimeError):
+    pass
+
+
+class NoRouteError(RoutingError):
+    """OSRM returned `code: NoRoute` — the chosen profile can't connect
+    every waypoint (typically bike/foot across a stretch that only has
+    a car-accessible road). Callers may want to retry with a more
+    permissive profile before failing the user-facing request."""
     pass
 
 
@@ -123,6 +136,21 @@ class OsrmClient:
         try:
             resp = await self._http.get(url, params=params)
             resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            # OSRM returns 400 with a JSON body like {"code":"NoRoute"}
+            # when the chosen profile can't connect every waypoint.
+            # Surface that as its own exception so handlers.py can
+            # retry with car before giving up.
+            if exc.response.status_code == 400:
+                try:
+                    body = exc.response.json()
+                    if body.get("code") == "NoRoute":
+                        raise NoRouteError(
+                            body.get("message", "no route found")
+                        ) from exc
+                except ValueError:
+                    pass
+            raise RoutingError(f"OSRM request failed: {exc}") from exc
         except httpx.HTTPError as exc:
             raise RoutingError(f"OSRM request failed: {exc}") from exc
 
@@ -201,6 +229,171 @@ class OsrmClient:
             self._db.commit()
         except sqlite3.DatabaseError:
             log.warning("route cache write failed", exc_info=True)
+
+
+class GoogleDirectionsClient:
+    """Minimal async Google Directions API client.
+
+    Returns the same `Route` shape as `OsrmClient` so callers can
+    treat both engines uniformly. Constructed per-request because the
+    API key is user-provided and may change; the underlying httpx
+    AsyncClient is opened/closed in `route_through` rather than held
+    long-term to avoid leaking sockets when the user toggles back to
+    OSRM mid-session.
+
+    Profile mapping:
+      driving  → mode=driving
+      cycling  → mode=bicycling
+      walking  → mode=walking
+
+    See https://developers.google.com/maps/documentation/directions
+    for the endpoint and quota / billing rules. The user owns the
+    key and gets the bill.
+    """
+
+    BASE_URL = "https://maps.googleapis.com/maps/api/directions/json"
+    PROFILE_MAP = {
+        "driving": "driving",
+        "cycling": "bicycling",
+        "walking": "walking",
+    }
+
+    def __init__(self, api_key: str) -> None:
+        self.api_key = api_key
+
+    async def route_through(
+        self,
+        waypoints: list[tuple[float, float]],
+        profile: str = "driving",
+    ) -> Route:
+        if profile not in self.PROFILE_MAP:
+            raise RoutingError(
+                f"Unknown profile {profile!r}; expected one of {sorted(self.PROFILE_MAP)}"
+            )
+        if len(waypoints) < 2:
+            raise RoutingError("route needs at least 2 waypoints")
+        if not self.api_key:
+            raise RoutingError("Google Directions requires an API key")
+
+        origin = f"{waypoints[0][0]},{waypoints[0][1]}"
+        dest = f"{waypoints[-1][0]},{waypoints[-1][1]}"
+        params: dict[str, Any] = {
+            "origin": origin,
+            "destination": dest,
+            "mode": self.PROFILE_MAP[profile],
+            "key": self.api_key,
+        }
+        # Optional intermediate stops. Google's `waypoints` query
+        # parameter is a pipe-separated `lat,lng|lat,lng|...` list,
+        # in the order we want them visited.
+        intermediates = waypoints[1:-1]
+        if intermediates:
+            params["waypoints"] = "|".join(
+                f"{lat},{lng}" for lat, lng in intermediates
+            )
+
+        async with httpx.AsyncClient(timeout=15.0) as http:
+            try:
+                resp = await http.get(self.BASE_URL, params=params)
+                resp.raise_for_status()
+            except httpx.HTTPError as exc:
+                raise RoutingError(f"Google Directions request failed: {exc}") from exc
+
+        try:
+            data = resp.json()
+        except ValueError as exc:
+            raise RoutingError("Google returned non-JSON response") from exc
+
+        status = data.get("status")
+        if status != "OK":
+            raise RoutingError(
+                f"Google Directions error: {status} {data.get('error_message', '')}".strip()
+            )
+
+        routes = data.get("routes") or []
+        if not routes:
+            raise RoutingError("Google Directions returned no routes")
+
+        first = routes[0]
+        # Concatenate the per-step polylines so we get the full path
+        # at navigation-friendly resolution (overview_polyline is too
+        # coarse — long road segments end up as ~3 vertices).
+        coords: list[tuple[float, float]] = []
+        distance_m = 0.0
+        duration_s = 0.0
+        for leg in first.get("legs", []):
+            distance_m += float(leg.get("distance", {}).get("value", 0.0))
+            duration_s += float(leg.get("duration", {}).get("value", 0.0))
+            for step in leg.get("steps", []):
+                encoded = step.get("polyline", {}).get("points") or ""
+                if not encoded:
+                    continue
+                step_coords = _decode_polyline(encoded)
+                # Drop the first coord on every step past the first
+                # — it's a duplicate of the previous step's last
+                # coord and would create a stutter at the seam.
+                if coords:
+                    step_coords = step_coords[1:]
+                coords.extend(step_coords)
+
+        if not coords:
+            # Fallback: overview_polyline. Better than failing.
+            encoded = first.get("overview_polyline", {}).get("points") or ""
+            if encoded:
+                coords = _decode_polyline(encoded)
+
+        if not coords:
+            raise RoutingError("Google Directions route had no geometry")
+
+        return Route(
+            coordinates=coords,
+            distance_m=distance_m,
+            duration_s=duration_s,
+            profile=profile,
+        )
+
+
+def _decode_polyline(encoded: str) -> list[tuple[float, float]]:
+    """Decode a Google polyline-format string into a list of (lat, lng).
+
+    Implements the standard `polyline encoding algorithm`_ inline so we
+    don't pull in an extra runtime dep just for ~25 lines of code.
+
+    .. _polyline encoding algorithm:
+       https://developers.google.com/maps/documentation/utilities/polylinealgorithm
+    """
+    coords: list[tuple[float, float]] = []
+    index = 0
+    lat = 0
+    lng = 0
+    length = len(encoded)
+    while index < length:
+        # Latitude delta.
+        shift = 0
+        result = 0
+        while index < length:
+            b = ord(encoded[index]) - 63
+            index += 1
+            result |= (b & 0x1F) << shift
+            shift += 5
+            if b < 0x20:
+                break
+        dlat = ~(result >> 1) if (result & 1) else (result >> 1)
+        lat += dlat
+        # Longitude delta.
+        shift = 0
+        result = 0
+        while index < length:
+            b = ord(encoded[index]) - 63
+            index += 1
+            result |= (b & 0x1F) << shift
+            shift += 5
+            if b < 0x20:
+                break
+        dlng = ~(result >> 1) if (result & 1) else (result >> 1)
+        lng += dlng
+        coords.append((lat / 1e5, lng / 1e5))
+    return coords
 
 
 def _open_cache() -> sqlite3.Connection:

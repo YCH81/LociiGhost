@@ -1108,11 +1108,16 @@ class DeviceManager:
             # common single-iPhone case it labels every tcp_scan hit
             # with the user's actual device name instead of just the
             # IP, which reads much better in the GUI.
-            if r["method"] == "tcp_scan" and self._device_names:
-                # We don't know which UDID maps to this IP yet, but
-                # if the user only has one paired device it's
-                # unambiguous; pick the most-recently-cached name as
-                # the best guess.
+            #
+            # v1.9 fix: only apply the promotion when there's exactly
+            # ONE cached name. With multiple paired iPhones, the
+            # previous "pick the first cached name" heuristic
+            # labelled EVERY tcp_scan hit with the same name (e.g.
+            # all 5 LAN candidates would show as "Weeeee"), so the
+            # user couldn't tell which row was which iPhone. When
+            # there's ambiguity, keep the IP as the displayed name
+            # — that's at least uniquely identifying.
+            if r["method"] == "tcp_scan" and len(self._device_names) == 1:
                 best = next(iter(self._device_names.values()), None)
                 if best:
                     r = {**r, "name": best}

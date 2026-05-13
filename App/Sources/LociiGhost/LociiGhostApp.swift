@@ -52,6 +52,25 @@ struct LociiGhostApp: App {
     /// the picker.
     @AppStorage("appLanguage") private var appLanguage: AppLanguage = .system
 
+    init() {
+        // Force MapKit (and Apple's other locale-aware system
+        // services) to prefer Traditional Chinese place-name
+        // labels regardless of the user's macOS-wide language
+        // preference. Apple Maps' label language is driven by the
+        // app's `AppleLanguages` UserDefaults entry; setting it
+        // here — once, before any view loads — gives us 漢字
+        // place names where Apple has them, English everywhere
+        // else, on every install.
+        //
+        // The app's UI strings still resolve through our SwiftUI
+        // `.environment(\.locale, …)` plumbing (driven by the
+        // appLanguage picker), so flipping the UI between EN and
+        // 中文 is unaffected by this. The override only changes
+        // what the OS feeds MapKit when it renders its native
+        // tile labels.
+        UserDefaults.standard.set(["zh-Hant", "en"], forKey: "AppleLanguages")
+    }
+
     /// SwiftData container holding `AppPreferences` (Phase 5.2) and
     /// future bookmarks (Phase 5.3). Stored under the same Application
     /// Support directory the daemon uses, so a "wipe LociiGhost" via
@@ -67,7 +86,10 @@ struct LociiGhostApp: App {
         let url = dir.appending(path: "preferences.store")
         let config = ModelConfiguration(url: url)
         do {
-            return try ModelContainer(for: AppPreferences.self, configurations: config)
+            return try ModelContainer(
+                for: AppPreferences.self, Bookmark.self, Route.self, RecentPlace.self,
+                configurations: config,
+            )
         } catch {
             // If the store is unreadable (schema change, corruption),
             // drop back to an in-memory store so the app still launches
@@ -75,15 +97,28 @@ struct LociiGhostApp: App {
             NSLog("LociiGhost: SwiftData container failed (%@); falling back to in-memory",
                   String(describing: error))
             let mem = ModelConfiguration(isStoredInMemoryOnly: true)
-            return try! ModelContainer(for: AppPreferences.self, configurations: mem)
+            return try! ModelContainer(
+                for: AppPreferences.self, Bookmark.self, Route.self, RecentPlace.self,
+                configurations: mem,
+            )
         }
     }()
 
     var body: some Scene {
         WindowGroup("LociiGhost") {
-            MainView()
+            MainView(appLanguage: $appLanguage)
                 .environment(appState)
                 .environment(\.locale, appLanguage.locale)
+                // v1.9.4 brand tint. Reads `appState.appearanceMode`
+                // so the user's choice in Settings → Appearance flips
+                // the whole UI live: `.system` (default) inherits the
+                // user's macOS accent colour, `.brand` paints with the
+                // sage palette extracted from the AppIcon. Tint
+                // propagates through `Environment(\.tint)` so most
+                // built-in tinted controls (Toggle, Picker,
+                // `.borderedProminent` Button, ProgressView) adopt
+                // it automatically.
+                .tint(appState.appearanceMode.tint)
                 .frame(minWidth: 900, minHeight: 600)
                 .task {
                     AppDelegate.sharedAppState = appState
@@ -102,11 +137,33 @@ struct LociiGhostApp: App {
         .windowResizability(.contentSize)
         .commands {
             CommandGroup(replacing: .newItem) {}        // hide File > New
+            // Import / Export GPX live in the File menu so they're
+            // discoverable via Cmd-O / Cmd-E shortcuts as users
+            // would expect from any Mac document app.
+            CommandGroup(after: .newItem) {
+                Button {
+                    Task { @MainActor in await appState.importGPX() }
+                } label: {
+                    Text("Import GPX…",
+                         comment: "File menu — import a .gpx file as a multi-stop route")
+                }
+                .keyboardShortcut("o", modifiers: [.command])
+
+                Button {
+                    Task { @MainActor in await appState.exportGPX() }
+                } label: {
+                    Text("Export current route as GPX…",
+                         comment: "File menu — write current pendingStops to a .gpx file")
+                }
+                .keyboardShortcut("e", modifiers: [.command])
+                .disabled(appState.pendingStops.isEmpty)
+            }
         }
         // Standard Cmd-, opens our SettingsView.
         Settings {
             SettingsView(appLanguage: $appLanguage)
                 .environment(appState)
+                .tint(appState.appearanceMode.tint)
         }
     }
 }

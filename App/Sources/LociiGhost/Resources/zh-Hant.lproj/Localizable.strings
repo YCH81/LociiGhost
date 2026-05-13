@@ -37,7 +37,7 @@
 "Movement Modes" = "移動模式";
 "Multi-stop" = "多點";
 "Navigate" = "導航";
-"No active connection" = "未有任何連線";
+"No active connection" = "未連線";
 "No device selected" = "未選擇裝置";
 "No iPhone connected" = "尚未連接 iPhone";
 "No iPhones found on the LAN. Make sure the iPhone is on the same Wi-Fi and you've run **Pair for WiFi** once. You can also enter an IP manually below." = "區網內找不到 iPhone。請確認 iPhone 與 Mac 在同一個 Wi-Fi,並且至少跑過一次 **WiFi 配對**。也可以從下方手動輸入 IP。";
@@ -60,7 +60,7 @@
 "Resume" = "繼續";
 "Scan LAN for paired iPhones" = "掃描區網上已配對的 iPhone";
 "Scanning LAN for paired iPhones…" = "掃描區網上已配對的 iPhone…";
-"Search address or place" = "搜尋地址或地點";
+"Search address or place" = "搜尋地址、地點、經緯度";
 "Speed" = "速度";
 "Start Joystick" = "啟動搖桿";
 "Start Random Walk" = "開始隨機漫步";
@@ -100,6 +100,125 @@
 /* Navigation status interpolations */
 "Lap %lld / %lld" = "第 %1$lld / %2$lld 圈";
 
+/* Bookmarks (Phase 5.3) */
+"Bookmarks" = "書籤";
+"No bookmarks yet." = "目前沒有書籤。";
+"Right-click anywhere on the map and pick **Save as bookmark…** to add one." = "在地圖上任意位置按右鍵,選 **儲存為書籤…** 即可新增。";
+"Uncategorized" = "未分類";
+"Save bookmark" = "儲存書籤";
+"Edit bookmark" = "編輯書籤";
+"Name" = "名稱";
+"Category" = "分類";
+"Icon" = "圖示";
+"Save" = "儲存";
+"Delete" = "刪除";
+"Edit…" = "編輯…";
+"Teleport here" = "瞬移到這裡";
+"Add as stop" = "加為停靠點";
+"Save as bookmark…" = "儲存為書籤…";
+
+/* GPX (Phase 5.4) */
+"Import GPX…" = "匯入 GPX…";
+"Import GPX" = "匯入 GPX";
+"Export current route as GPX…" = "將目前路線匯出為 GPX…";
+
+/* Routes (Phase 5.4 — saved GPX tracks) */
+"Routes" = "路線";
+"Save route" = "儲存路線";
+"Edit route" = "編輯路線";
+"Imported route" = "匯入的路線";
+"%lld points" = "%lld 個點";
+"No saved routes yet." = "目前沒有儲存的路線。";
+"Use **File ▸ Import GPX…** (⌘O) to add a recorded track." = "使用 **檔案 ▸ 匯入 GPX…** (⌘O) 加入錄製的軌跡。";
+"Start route" = "開始路線";
+"Start route?" = "開始這條路線?";
+"Start" = "開始";
+"Teleport to the start of \"%1$@\" and navigate %2$lld points?" = "瞬移到「%1$@」的起點,並依序走完 %2$lld 個點?";
+
+/* UI Phase 1.4 — top status bar / header / sidebar / search */
+"Phone Control" = "手機操控";
+"Weather at the simulated location" = "目前模擬地點的天氣";
+"Copy coordinates" = "複製座標";
+"Paste from clipboard" = "從剪貼簿貼上";
+"Teleport iPhone to this location" = "瞬移 iPhone 到此地點";
+"Show on map without moving the iPhone" = "在地圖預覽,不移動 iPhone";
+"Navigate to this location with current settings" = "用目前設定導航到此地點";
+"Type an address or lat,lng first." = "請先輸入地址或 lat,lng。";
+"Expand" = "展開";
+"Collapse" = "收合";
+"Choose base map layer" = "選擇地圖底圖";
+"Recenter" = "回到目前位置";
+
+/* Device-row Connect-via-WiFi pull-down menu */
+"Connect via WiFi…" = "用 WiFi 連線…";
+"Don't connect" = "不連線";
+"Connect via USB cable" = "用 USB 線連接";
+"Plug in the USB cable first" = "請先插上 USB 線";
+"Open the WiFi candidate picker" = "開啟 WiFi 連線挑選視窗";
+"Run **Pair for WiFi** once with the cable plugged in" = "請先用 USB 線跑一次 **WiFi 配對**";
+"You" = "您的位置";
+
+/* Gold Ditto mode (Pikmin Bloom 拉金盆 exploit) */
+"Gold Ditto" = "拉金盆";
+"Pull Gold Pot" = "拉金盆";
+"Countdown mode: press the button to start a 2-second countdown, then the Mac will pull the gold pot (swap GPS to A and back)." = "倒數模式:按下按鈕開始 2 秒倒數,歸零後在手機才拉金盆(把 GPS 切到 A 再切回真實位置)。";
+"Instant mode: press the button to pull the gold pot immediately (swap GPS to A and back, no countdown)." = "立即模式:按下按鈕後在手機立刻拉金盆(把 GPS 切到 A 再切回真實位置,沒有倒數)。";
+"A coordinate (your real location)" = "A 座標(您的真實位置)";
+"Show A coordinate" = "顯示 A 座標";
+"Hide A coordinate" = "隱藏 A 座標";
+"Use current location" = "使用目前位置";
+"Pulling the gold pot in…" = "即將拉金盆…";
+"Counting down…" = "倒數中…";
+"Cancelled." = "已取消。";
+"Start the 2-second countdown then push GPS to A" = "啟動 2 秒倒數後把 GPS 推到 A 點";
+"Countdown (2 s)" = "倒數模式 (2 秒)";
+"Instant" = "立即模式";
+"Countdown gives you a visible 2-second timer with beeps before fire. Instant fires set+clear the moment you click, matching the original LocWarp behaviour exactly." = "倒數模式會跑 2 秒視覺倒數加 beep 提醒,歸零才 fire;立即模式按下去馬上 fire set+clear,完全等同 LocWarp 原版行為。";
+"Fire set + clear immediately (LocWarp-style)" = "立即 fire set+clear (LocWarp 原版行為)";
+"Set A coordinate and connect an iPhone first" = "請先設定 A 座標並連接 iPhone";
+"Gold Ditto needs a real iPhone connection." = "拉金盆需要連接真實 iPhone。";
+"Gold pot pulled" = "金盆已拉";
+"GPS was swapped to A and back" = "GPS 已切到 A 再切回真實位置";
+"Apple Maps" = "Apple 地圖";
+"Apple Satellite" = "Apple 衛星";
+"OpenStreetMap" = "OpenStreetMap";
+"Carto Voyager" = "Carto Voyager";
+"ESRI Satellite" = "ESRI 衛星";
+
+/* Search bar action button labels */
+"Paste" = "貼上";
+"Teleport" = "瞬移";
+"Preview" = "預覽";
+"Navigate" = "導航";
+
+/* TopStatusBar (status bar A) — left buttons + chip help */
+"Restore" = "還原";
+"Refresh" = "重新整理";
+"Map Layer" = "地圖圖層";
+"Country of the simulated location" = "目前模擬地點的國家";
+"Coordinates of the simulated location" = "目前模擬地點的經緯度";
+"Mac time / Time at the simulated location" = "Mac 時間 / 模擬地點當地時間";
+
+/* Bookmarks JSON import (Phase 5.5) */
+"Import bookmarks from JSON" = "從 JSON 匯入書籤";
+"JSON parsed, but no bookmarks were found." = "JSON 已解析,但找不到任何書籤。";
+"Imported %lld bookmarks." = "已匯入 %lld 個書籤。";
+
+/* Multi-stop panel — reorder hint + Save-as-route */
+"Drag a row's handle to reorder stops." = "拖曳列首把手即可重新排序停靠點。";
+"Drag to reorder" = "拖曳以重新排序";
+"Save as new route" = "加入新路線";
+"Save these stops as a Route so you can replay this trip later" = "把這些停靠點儲存為路線,日後可以直接重播這趟行程";
+"Custom route (%lld stops)" = "自訂路線 (%lld 個停靠點)";
+
+/* Virtual Map device + disconnected overlay (Phase 5.6) */
+"Map" = "地圖";
+"Browse-only" = "僅瀏覽";
+"Look up locations without a connected iPhone." = "不需要連線 iPhone 也能查地點。";
+"Disconnected" = "已斷線";
+"This iPhone isn't currently reachable. Reconnect it, or pick the **Map** entry in the sidebar to browse the map without a device." = "目前無法連到這台 iPhone。請重新連線,或選擇側欄的「**地圖**」項目以無裝置模式瀏覽地圖。";
+"Switch to a connected iPhone to use movement modes." = "請切換到已連線的 iPhone 才能使用移動模式。";
+
 /* ControlPanel */
 "Target" = "目的地";
 "%lld stops" = "%lld 個停靠點";
@@ -123,3 +242,22 @@
 "PIN" = "PIN";
 "Copy" = "複製";
 "Phone must be on the same Wi-Fi as this Mac. The PIN regenerates each time the daemon restarts; tap Regenerate below to invalidate any phone that's currently paired." = "手機必須跟這台 Mac 在同一個 Wi-Fi。每次 daemon 重啟 PIN 都會重新產生; 按下方「重新產生」可以讓現在配對中的手機立刻失效。";
+
+/* Update-available badge in AppHeaderBar */
+"New v%@" = "新版 v%@";
+"Update available — click to view release" = "有新版本可用 — 點擊查看 Release";
+
+/* Mac phone-control lockout overlay */
+"Phone in control" = "手機端使用中";
+"A phone is currently signed in via Phone Control. The Mac is paused while the phone is driving. Sign out from the phone, or press the button below to take control back." = "已連線手機端,電腦端停止使用。請從手機登出,或按下方按鈕從電腦端強制停止手機控制。";
+"Stop phone control" = "停止手機端";
+"Sign out all phones" = "登出所有手機端";
+"Sign every paired phone out and rotate the PIN." = "把所有已登入的手機端踢出並重新產生 PIN。";
+"Kicks every paired phone and rotates the PIN." = "把所有已登入的手機端踢出並重新產生 PIN。";
+"Use both at once" = "同時使用兩端";
+"Exit sync" = "退出同步手機端";
+"Stop driving simultaneously with the phone — locks the Mac side back to phone control" = "退出同步狀態 — 電腦端回到鎖定,讓手機獨自操作";
+"Use both at the same time?" = "確定要同時開啟兩端?";
+"Enable" = "開啟";
+"Mac and phone can both drive at the same time. If their actions clash and the iPhone's position gets out of sync, press Restore on BOTH sides and start over." = "開啟後 Mac 跟手機都可以同時操作。如果兩邊動作打架,造成 iPhone 定位或功能錯亂,請在兩端都按「還原」後重新開始。";
+"Real GPS may take 30 s to 2 min to re-acquire on iPhone. Toggle Airplane Mode on the iPhone for faster reacquisition." = "iPhone 重新取得真實 GPS 可能需要 30 秒到 2 分鐘。在 iPhone 上開關一次飛航模式可以明顯加速。";

@@ -2,6 +2,7 @@ import SwiftUI
 import MapKit
 import CoreLocation
 import Contacts
+import AppKit
 
 /// Floating search field on top of the map.
 ///
@@ -33,9 +34,14 @@ struct MapSearchBar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            field
+            HStack(spacing: 6) {
+                field
+                    .frame(maxWidth: 280)
+                actionButtons
+            }
             if dropdownIsVisible {
                 suggestionsList
+                    .frame(maxWidth: 280)
             }
             if let msg = statusMessage {
                 Text(msg)
@@ -46,10 +52,197 @@ struct MapSearchBar: View {
                     .background(.regularMaterial, in: .rect(cornerRadius: 5))
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .frame(maxWidth: 360, alignment: .leading)
+                    .frame(maxWidth: 700, alignment: .leading)
             }
         }
-        .frame(maxWidth: 360)
+        .frame(maxWidth: 700)
+    }
+
+    /// Four buttons next to the field: Paste / Teleport / Preview /
+    /// Navigate. Each shows BOTH icon and text so a new user doesn't
+    /// have to hover-and-wait to learn what each glyph does.
+    /// `.bordered` style gives macOS-native hover feedback for free.
+    private var actionButtons: some View {
+        HStack(spacing: 4) {
+            Button {
+                pasteFromClipboard()
+            } label: {
+                Label {
+                    Text("Paste",
+                         comment: "Search bar button — paste clipboard into the search field")
+                } icon: {
+                    Image(systemName: "doc.on.clipboard")
+                }
+            }
+            .help(LocalizedStringKey("Paste from clipboard"))
+
+            Button {
+                Task { await act(.teleport) }
+            } label: {
+                Label {
+                    Text("Teleport",
+                         comment: "Search bar button — move iPhone instantly")
+                } icon: {
+                    Image(systemName: "wand.and.stars")
+                }
+            }
+            .disabled(!hasResolvableTarget || state.isVirtualMapSelected)
+            .help(LocalizedStringKey("Teleport iPhone to this location"))
+
+            Button {
+                Task { await act(.preview) }
+            } label: {
+                Label {
+                    Text("Preview",
+                         comment: "Search bar button — show on map without affecting iPhone")
+                } icon: {
+                    Image(systemName: "eye")
+                }
+            }
+            .disabled(!hasResolvableTarget)
+            .help(LocalizedStringKey("Show on map without moving the iPhone"))
+
+            Button {
+                Task { await act(.navigate) }
+            } label: {
+                Label {
+                    Text("Navigate",
+                         comment: "Search bar button — start navigation with current settings")
+                } icon: {
+                    Image(systemName: "location.north.fill")
+                }
+            }
+            .disabled(!hasResolvableTarget || state.isVirtualMapSelected)
+            .help(LocalizedStringKey("Navigate to this location with current settings"))
+        }
+        .controlSize(.small)
+        .buttonStyle(.bordered)
+        .labelStyle(.titleAndIcon)
+    }
+
+    /// True when there's something we can resolve to coords:
+    /// either a typed `lat,lng` OR at least one autocomplete result
+    /// (we'll take the first one for the action).
+    private var hasResolvableTarget: Bool {
+        coordCandidate != nil || !model.completions.isEmpty
+    }
+
+    private enum SearchAction { case teleport, preview, navigate }
+
+    /// Resolve whatever the user has in the field to a single
+    /// Coordinate, then dispatch the chosen action. Centralised so
+    /// the three buttons share resolution rather than each duplicating
+    /// the typed-coord vs. completion fallback logic.
+    @MainActor
+    private func act(_ action: SearchAction) async {
+        let coord: Coordinate
+        if let c = coordCandidate {
+            coord = c
+        } else if let first = model.completions.first {
+            resolvingTitle = first.title
+            defer { resolvingTitle = nil }
+            do {
+                let (cl, item) = try await model.resolve(first)
+                coord = Coordinate(lat: cl.latitude, lng: cl.longitude)
+                model.query = item.name ?? first.title
+                model.completions = []
+            } catch {
+                statusIsError = true
+                statusMessage = error.localizedDescription
+                return
+            }
+        } else if let googleHit = await tryGoogleFallback() {
+            // MapKit returned nothing usable (common for Chinese
+            // store / landmark names). Fall back to Google if the
+            // user pasted an API key in Settings. We replace the
+            // search field with the resolved address so the user
+            // sees what Google matched.
+            coord = googleHit.coordinate
+            model.query = googleHit.formatted
+            model.completions = []
+        } else {
+            statusIsError = true
+            statusMessage = String(
+                localized: "Type an address or lat,lng first.",
+                comment: "Search bar — error when an action button is hit with empty field",
+            )
+            return
+        }
+        statusIsError = false
+        isFocused = false
+
+        // Friendly label used for the recent-places log. If the user
+        // resolved a completion the model.query was rewritten to the
+        // place's display name; for raw coord-typed input we fall
+        // back to the formatted lat/lng so the popover row stays
+        // readable.
+        let trimmedQuery = model.query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let recentLabel: String
+        if coordCandidate != nil {
+            recentLabel = String(format: "%.5f, %.5f", coord.lat, coord.lng)
+        } else {
+            recentLabel = trimmedQuery
+        }
+        let recentKind: RecentPlace.Kind = (coordCandidate != nil) ? .coord : .search
+
+        switch action {
+        case .preview:
+            // Just fly there. No teleport, no navigation. The user
+            // is browsing — still log it, so re-opening the popover
+            // can re-fly to a previously-previewed place.
+            state.pendingMapFly = MapFlyRequest(coordinate: coord, spanMeters: 2_500)
+            state.recordRecentPlace(label: recentLabel, lat: coord.lat, lng: coord.lng, kind: recentKind)
+            statusMessage = String(format: "Previewing %.5f, %.5f", coord.lat, coord.lng)
+
+        case .teleport:
+            guard let udid = state.selectedUDID,
+                  state.devices.first(where: { $0.udid == udid })?.connected == true
+            else {
+                statusIsError = true
+                statusMessage = String(localized: "Connect a device first.")
+                return
+            }
+            state.pendingMapFly = MapFlyRequest(coordinate: coord, spanMeters: 2_000)
+            await state.teleport(udid: udid, lat: coord.lat, lng: coord.lng)
+            // Overwrite the coord-only label inserted by `teleport(...)`
+            // with the friendlier "place name" string from the search
+            // field. recordRecentPlace de-dupes on label+coord, so the
+            // duplicate same-coord entry is collapsed into the one
+            // with the better label.
+            state.recordRecentPlace(label: recentLabel, lat: coord.lat, lng: coord.lng, kind: recentKind)
+            statusMessage = String(format: "Teleported to %.5f, %.5f", coord.lat, coord.lng)
+
+        case .navigate:
+            guard let udid = state.selectedUDID,
+                  state.devices.first(where: { $0.udid == udid })?.connected == true
+            else {
+                statusIsError = true
+                statusMessage = String(localized: "Connect a device first.")
+                return
+            }
+            // Use current profile + user-set custom speed (or the
+            // profile's default). Mirrors what the bottom-bar
+            // controls do when the user hits Navigate manually.
+            let speed = state.customSpeedMps ?? state.travelProfile.defaultSpeedMps
+            state.pendingMapFly = MapFlyRequest(coordinate: coord, spanMeters: 4_000)
+            await state.navigate(
+                udid: udid,
+                through: [coord],
+                profile: state.travelProfile,
+                speed: speed,
+            )
+            state.recordRecentPlace(label: recentLabel, lat: coord.lat, lng: coord.lng, kind: .navigate)
+            statusMessage = String(format: "Navigating to %.5f, %.5f", coord.lat, coord.lng)
+        }
+    }
+
+    private func pasteFromClipboard() {
+        guard let s = NSPasteboard.general.string(forType: .string),
+              !s.isEmpty else { return }
+        model.query = s
+        // If the pasted text is a valid coord pair, the suggestions
+        // dropdown's CoordinateRow will surface it automatically; the
+        // user can hit one of the action buttons next.
     }
 
     // MARK: - Subviews
@@ -80,7 +273,7 @@ struct MapSearchBar: View {
         .background(.regularMaterial, in: .rect(cornerRadius: 8))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(isFocused ? Color.accentColor.opacity(0.6) : Color.clear,
+                .strokeBorder(isFocused ? Color.lociSage.opacity(0.6) : Color.clear,
                               lineWidth: 1.5)
         )
     }
@@ -171,6 +364,36 @@ struct MapSearchBar: View {
             if !parts.isEmpty { return parts.joined(separator: ", ") }
         }
         return fallback.subtitle.isEmpty ? fallback.title : "\(fallback.title) — \(fallback.subtitle)"
+    }
+
+    /// Try Google Geocoding when MapKit produces nothing. Returns the
+    /// first hit, or nil if the user has no key configured or Google
+    /// also returned no results. Throwing errors are surfaced through
+    /// `statusMessage` so the user sees why their query failed
+    /// (e.g. "REQUEST_DENIED — bad API key").
+    @MainActor
+    private func tryGoogleFallback() async -> GoogleGeocodingService.Hit? {
+        guard let key = state.googleGeocodeAPIKey else { return nil }
+        let query = model.query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return nil }
+
+        resolvingTitle = query
+        defer { resolvingTitle = nil }
+
+        do {
+            let lang = Locale.current.identifier
+            let hits = try await GoogleGeocodingService.search(
+                query: query,
+                apiKey: key,
+                language: lang,
+                limit: 1,
+            )
+            return hits.first
+        } catch {
+            statusIsError = true
+            statusMessage = "Google fallback: \(error.localizedDescription)"
+            return nil
+        }
     }
 
     /// Parse strings like `"37.779, -122.418"`, `"25.04 121.56"`, or

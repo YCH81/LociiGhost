@@ -74,28 +74,130 @@ PORT_CANDIDATES = [8779, 8780, 8781, 8788, 8789, 8800]
 # ── Auth state ────────────────────────────────────────────────────
 
 
-class _PhoneAuth:
-    """In-memory rotating PIN + token. Loses state on daemon restart,
-    which is the desired behaviour — the user is forced to re-pair
-    their phone after a host reboot, which keeps stale phone tabs
-    from sneaking back in after a long-running desktop session."""
+class _PhoneSession:
+    """One mobile-web tab. Each authenticated phone gets its own
+    `_PhoneSession` — own token, own targeted iPhone UDID, own
+    last-seen heartbeat. Lets two people on two phones drive two
+    different iPhones independently without fighting for the
+    same `controlling_udid`."""
 
-    def __init__(self) -> None:
-        self.token: str = secrets.token_hex(16)            # 32 hex chars
-        self.pin: str = f"{secrets.randbelow(1_000_000):06d}"
+    def __init__(self, token: str) -> None:
+        self.token: str = token
+        self.controlling_udid: Optional[str] = None
+        self.last_seen: float = time.monotonic()
         self.created_at: float = time.monotonic()
 
-    def rotate(self) -> None:
-        self.token = secrets.token_hex(16)
+    def touch(self) -> None:
+        self.last_seen = time.monotonic()
+
+    def is_stale(self, timeout_s: float) -> bool:
+        return (time.monotonic() - self.last_seen) > timeout_s
+
+
+class _PhoneAuth:
+    """Multi-session phone-auth manager (v1.8).
+
+    Shared PIN gates auth, but each successful PIN exchange
+    mints a NEW token + `_PhoneSession`. The desktop's lockout
+    overlay reads the *union* of `controlling_udid` across all
+    sessions — Mac on iPhone A is locked only if at least one
+    phone session is currently driving A.
+
+    Daemon-wide state (pin, sync_mode) lives here; per-tab
+    state (token, targeted device, last_seen) lives on
+    `_PhoneSession`."""
+
+    # Phone polls /state every 3 s. If a session hasn't been
+    # heard from in this many seconds we evict it — handles
+    # tabs closed without explicit logout / lost network /
+    # device sleep.
+    #
+    # v1.9.2: bumped 15 → 300 seconds (5 min). iOS Safari
+    # aggressively suspends background tabs to save battery —
+    # `setInterval` gets throttled or paused outright the moment
+    # the user swipes to another app (a Pokémon GO catch, Maps,
+    # an incoming message). At 15s the daemon was reaping
+    # sessions mid-suspend, so returning to the LociiGhost tab
+    # gave a 401 on the next poll and the page flipped to
+    # "disconnected". 5 minutes covers most "I'm in the game
+    # for a while" scenarios while still cleaning up genuinely
+    # abandoned tabs eventually.
+    SESSION_IDLE_TIMEOUT_S = 300.0
+
+    def __init__(self) -> None:
+        self.pin: str = f"{secrets.randbelow(1_000_000):06d}"
+        self.created_at: float = time.monotonic()
+        # Active sessions, keyed by token. Pretty small dict —
+        # typical user has ≤ 2 phones, so O(n) scans below are
+        # fine.
+        self.sessions: dict[str, _PhoneSession] = {}
+        # Mac-side opt-in: lets Mac + phones drive concurrently.
+        self.sync_mode: bool = False
+
+    # ── PIN / token lifecycle ─────────────────────────────────
+
+    def rotate_pin(self) -> None:
+        """Rotate the PIN. Does NOT touch existing sessions —
+        a kicked phone needs the new PIN to reconnect, but
+        sessions already authenticated stay valid until they
+        explicitly log out or go stale."""
         self.pin = f"{secrets.randbelow(1_000_000):06d}"
         self.created_at = time.monotonic()
 
-    def check_token(self, supplied: Optional[str]) -> bool:
-        if not supplied:
+    def authenticate(self, pin: str) -> Optional[_PhoneSession]:
+        """Verify PIN; if good, mint a fresh session and return
+        it. Returns None on bad PIN — caller raises 403."""
+        if not secrets.compare_digest(pin, self.pin):
+            return None
+        token = secrets.token_hex(16)
+        session = _PhoneSession(token)
+        self.sessions[token] = session
+        return session
+
+    def get_session(self, token: Optional[str]) -> Optional[_PhoneSession]:
+        if not token:
+            return None
+        return self.sessions.get(token)
+
+    def remove_session(self, token: Optional[str]) -> bool:
+        """Remove the session that owns `token`. Returns True
+        if a session was actually removed (caller decides
+        whether to broadcast)."""
+        if not token:
             return False
-        # `secrets.compare_digest` is constant-time vs the obvious `==`
-        # so a network attacker can't time-side-channel the token.
-        return secrets.compare_digest(supplied, self.token)
+        return self.sessions.pop(token, None) is not None
+
+    def clear_all(self) -> int:
+        """Kick every session (force-logout from Mac). Returns
+        the count that got cleared."""
+        count = len(self.sessions)
+        self.sessions.clear()
+        return count
+
+    # ── Aggregate queries (used by Mac side) ──────────────────
+
+    def is_any_active(self) -> bool:
+        return bool(self.sessions)
+
+    def controlling_udids(self) -> list[str]:
+        """De-duped list of UDIDs currently being driven by
+        some phone session. Used in `event.phone_session`
+        broadcasts so the Mac knows which iPhone rows to lock."""
+        seen: list[str] = []
+        for s in self.sessions.values():
+            if s.controlling_udid and s.controlling_udid not in seen:
+                seen.append(s.controlling_udid)
+        return seen
+
+    def sweep_stale(self) -> int:
+        """Remove sessions that haven't been touched within
+        the idle timeout. Returns count removed (caller
+        broadcasts if > 0)."""
+        cutoff = self.SESSION_IDLE_TIMEOUT_S
+        stale = [t for t, s in self.sessions.items() if s.is_stale(cutoff)]
+        for t in stale:
+            self.sessions.pop(t, None)
+        return len(stale)
 
 
 # ── Helpers ───────────────────────────────────────────────────────
@@ -145,6 +247,18 @@ class NavigateRequest(BaseModel):
     udid: Optional[str] = None
 
 
+class StopPoint(BaseModel):
+    lat: float
+    lng: float
+
+
+class MultiStopRequest(BaseModel):
+    stops: list[StopPoint]
+    profile: str = "driving"
+    speed: Optional[float] = None
+    udid: Optional[str] = None
+
+
 class UdidOnlyRequest(BaseModel):
     udid: Optional[str] = None
 
@@ -181,29 +295,122 @@ def create_http_app(
     rpc_server: Optional[Any] = None,
 ) -> FastAPI:
     auth = _PhoneAuth()
+    # Hand the auth instance to the socket-side RPC server so
+    # handlers.py can expose phone.session / phone.force_logout
+    # RPCs that read + mutate the same state the FastAPI side
+    # owns. Without this they'd be two independent ideas of "is
+    # the phone logged in?".
+    if rpc_server is not None:
+        setattr(rpc_server, "phone_auth", auth)
     static_dir = Path(__file__).parent / "static"
     app = FastAPI(title="LociiGhost Phone Control")
 
-    # Token dependency — returns the token if valid, raises 401.
-    async def require_token(
+    # Token dependency — looks up the session that owns the
+    # token and touches its heartbeat. Raises 401 if no session
+    # matches (token expired / phone got kicked). Returns the
+    # session so handlers can read its `controlling_udid` (or
+    # write to it via `_resolve_udid`).
+    async def require_session(
         request: Request,
         x_lociighost_token: Optional[str] = Header(default=None),
         t: Optional[str] = Query(default=None),
-    ) -> str:
+    ) -> _PhoneSession:
         supplied = x_lociighost_token or t
-        if not auth.check_token(supplied):
+        session = auth.get_session(supplied)
+        if session is None:
             raise HTTPException(status_code=401, detail="invalid_token")
-        return supplied  # type: ignore[return-value]
+        session.touch()
+        return session
+
+    # Back-compat alias for endpoints that don't care about the
+    # session payload, only that the request is authenticated.
+    async def require_token(
+        session: _PhoneSession = Depends(require_session),
+    ) -> str:
+        return session.token
 
     # ---- Auth / pairing ----
 
     @app.post("/api/phone/auth")
     async def phone_auth(req: AuthRequest) -> dict[str, Any]:
-        # Constant-time compare so a network attacker can't time-side-
-        # channel the PIN either.
-        if not secrets.compare_digest(req.pin, auth.pin):
+        # Each successful PIN exchange mints a FRESH token + a
+        # FRESH `_PhoneSession`. Multiple phones can authenticate
+        # independently — each one ends up with its own session
+        # and can target a different iPhone.
+        session = auth.authenticate(req.pin)
+        if session is None:
             raise HTTPException(status_code=403, detail="bad_pin")
-        return {"token": auth.token}
+        # Mac listens for `event.phone_session` to update its
+        # lockout overlay. udids list = de-duped controlled
+        # devices across ALL sessions (this new one starts with
+        # controlling_udid=None until the user takes an action).
+        await _emit("event.phone_session", {
+            "active": auth.is_any_active(),
+            "udids": auth.controlling_udids(),
+        })
+        return {"token": session.token}
+
+    @app.get("/api/phone/sync_mode")
+    async def phone_sync_mode_get(_token: str = Depends(require_token)) -> dict[str, Any]:
+        return {"sync": auth.sync_mode}
+
+    class SyncModeRequest(BaseModel):
+        sync: bool
+    @app.post("/api/phone/sync_mode")
+    async def phone_sync_mode_set(
+        req: SyncModeRequest, _token: str = Depends(require_token)
+    ) -> dict[str, Any]:
+        """Toggle the Mac/phone simultaneous-control flag. The
+        Mac's lockout overlay reads the same flag (via the
+        socket-side `phone.session` RPC + `event.sync_mode`
+        broadcast) so flipping here flips on the Mac too."""
+        was = auth.sync_mode
+        auth.sync_mode = bool(req.sync)
+        if was != auth.sync_mode:
+            await _emit("event.sync_mode", {"sync": auth.sync_mode})
+        return {"sync": auth.sync_mode}
+
+    class TargetRequest(BaseModel):
+        udid: Optional[str] = None
+
+    @app.post("/api/phone/target")
+    async def phone_target(
+        req: TargetRequest,
+        session: _PhoneSession = Depends(require_session),
+    ) -> dict[str, Any]:
+        """Phone tab explicitly picks (or unsets) which iPhone
+        it's driving. Updates the calling session's
+        `controlling_udid` and broadcasts so the Mac's lockout
+        flips even before the phone has fired any other action.
+        Pass `udid: null` to revert to Auto-pick-first-connected."""
+        new_target = req.udid or None
+        if session.controlling_udid != new_target:
+            session.controlling_udid = new_target
+            await _emit("event.phone_session", {
+                "active": auth.is_any_active(),
+                "udids": auth.controlling_udids(),
+            })
+        return {
+            "ok": True,
+            "udid": session.controlling_udid,
+            "udids": auth.controlling_udids(),
+        }
+
+    @app.post("/api/phone/logout")
+    async def phone_logout(
+        session: _PhoneSession = Depends(require_session),
+    ) -> dict[str, Any]:
+        """Phone-initiated sign-out. Removes ONLY the calling
+        tab's session — other phones keep going. PIN is NOT
+        rotated (a second phone might still be using it). If
+        this was the last session, Mac will see active=False.
+        """
+        auth.remove_session(session.token)
+        await _emit("event.phone_session", {
+            "active": auth.is_any_active(),
+            "udids": auth.controlling_udids(),
+        })
+        return {"ok": True}
 
     @app.get("/api/phone/info")
     async def phone_info(request: Request) -> dict[str, Any]:
@@ -277,16 +484,43 @@ def create_http_app(
 
     # ---- Actions (mutate) ----
 
-    def _resolve_udid(supplied: Optional[str]) -> str:
-        """Pick which device an action targets. Caller-supplied UDID
-        wins; otherwise the first connected device. Raises 400 if
-        nothing's connected so the phone doesn't silently fail."""
+    def _resolve_udid(
+        supplied: Optional[str],
+        session: Optional[_PhoneSession] = None,
+    ) -> str:
+        """Pick which device an action targets. Caller-supplied
+        UDID wins; otherwise the first connected device. Raises
+        400 if nothing's connected so the phone doesn't silently
+        fail.
+
+        When called from a phone endpoint, pass the requesting
+        `session` so we can stamp its `controlling_udid`. That
+        per-session field is the source of truth for the Mac's
+        per-device lockout overlay — broadcasting on every
+        change is what makes "phone A drives iPhone X; phone B
+        drives iPhone Y" work in real time.
+        """
+        target: Optional[str] = None
         if supplied:
-            return supplied
-        for udid, sess in manager._sessions.items():  # noqa: SLF001
-            if sess.transport in ("usb", "network"):
-                return udid
-        raise HTTPException(status_code=400, detail="no_device_connected")
+            target = supplied
+        else:
+            for udid, sess in manager._sessions.items():  # noqa: SLF001
+                if sess.transport in ("usb", "network"):
+                    target = udid
+                    break
+        if target is None:
+            raise HTTPException(status_code=400, detail="no_device_connected")
+        # Stamp the session that called us; emit a broadcast if
+        # this changes the union of controlled UDIDs the Mac
+        # cares about. `controlling_udids()` is recomputed AFTER
+        # the assignment so the payload reflects the new state.
+        if session is not None and session.controlling_udid != target:
+            session.controlling_udid = target
+            asyncio.create_task(_emit("event.phone_session", {
+                "active": auth.is_any_active(),
+                "udids": auth.controlling_udids(),
+            }))
+        return target
 
     async def _emit(event_method: str, params: dict[str, Any]) -> None:
         """Forward a state change to RPC clients (the desktop GUI)
@@ -302,9 +536,9 @@ def create_http_app(
 
     @app.post("/api/phone/teleport")
     async def phone_teleport(
-        req: TeleportRequest, _token: str = Depends(require_token)
+        req: TeleportRequest, session: _PhoneSession = Depends(require_session),
     ) -> dict[str, Any]:
-        udid = _resolve_udid(req.udid)
+        udid = _resolve_udid(req.udid, session)
         loc = await manager.location_for(udid)
         # Cancel any in-flight navigator before teleport — same
         # semantics as the desktop right-click "Teleport" path.
@@ -333,9 +567,9 @@ def create_http_app(
 
     @app.post("/api/phone/restore")
     async def phone_restore(
-        req: UdidOnlyRequest, _token: str = Depends(require_token)
+        req: UdidOnlyRequest, session: _PhoneSession = Depends(require_session),
     ) -> dict[str, Any]:
-        udid = _resolve_udid(req.udid)
+        udid = _resolve_udid(req.udid, session)
         loc = await manager.location_for(udid)
         await loc.clear()
         await _emit("event.state_changed", {
@@ -345,9 +579,9 @@ def create_http_app(
 
     @app.post("/api/phone/stop")
     async def phone_stop(
-        req: UdidOnlyRequest, _token: str = Depends(require_token)
+        req: UdidOnlyRequest, session: _PhoneSession = Depends(require_session),
     ) -> dict[str, Any]:
-        udid = _resolve_udid(req.udid)
+        udid = _resolve_udid(req.udid, session)
         sess = await manager.session_for(udid)
         for runner_attr in ("navigator", "walker", "joystick"):
             runner = getattr(sess, runner_attr, None)
@@ -362,9 +596,43 @@ def create_http_app(
         })
         return {"ok": True, "udid": udid}
 
+    @app.post("/api/phone/pause")
+    async def phone_pause(
+        req: UdidOnlyRequest, session: _PhoneSession = Depends(require_session),
+    ) -> dict[str, Any]:
+        """Pause whichever movement runner is currently active
+        (navigator / walker / joystick). No-op if none running."""
+        udid = _resolve_udid(req.udid, session)
+        sess = await manager.session_for(udid)
+        for runner_attr in ("navigator", "walker", "joystick"):
+            runner = getattr(sess, runner_attr, None)
+            if runner is not None and hasattr(runner, "pause"):
+                try:
+                    await runner.pause()
+                except Exception:
+                    pass
+        await _emit("event.state_changed", {"udid": udid, "mode": "paused"})
+        return {"ok": True, "udid": udid}
+
+    @app.post("/api/phone/resume")
+    async def phone_resume(
+        req: UdidOnlyRequest, session: _PhoneSession = Depends(require_session),
+    ) -> dict[str, Any]:
+        udid = _resolve_udid(req.udid, session)
+        sess = await manager.session_for(udid)
+        for runner_attr in ("navigator", "walker", "joystick"):
+            runner = getattr(sess, runner_attr, None)
+            if runner is not None and hasattr(runner, "resume"):
+                try:
+                    await runner.resume()
+                except Exception:
+                    pass
+        await _emit("event.state_changed", {"udid": udid, "mode": "moving"})
+        return {"ok": True, "udid": udid}
+
     @app.post("/api/phone/navigate")
     async def phone_navigate(
-        req: NavigateRequest, _token: str = Depends(require_token)
+        req: NavigateRequest, session: _PhoneSession = Depends(require_session),
     ) -> dict[str, Any]:
         # Phone-side navigate uses the same OSRM round-trip the
         # desktop does, then a one-shot Navigator. The phone doesn't
@@ -374,7 +642,7 @@ def create_http_app(
         from .navigator import Navigator      # local import — heavy modules
         from .interpolator import route_length_m
 
-        udid = _resolve_udid(req.udid)
+        udid = _resolve_udid(req.udid, session)
         sess = await manager.session_for(udid)
         loc = await manager.location_for(udid)
 
@@ -453,9 +721,83 @@ def create_http_app(
             "speed_mps": speed_mps,
         }
 
+    @app.post("/api/phone/multistop")
+    async def phone_multistop(
+        req: MultiStopRequest, session: _PhoneSession = Depends(require_session),
+    ) -> dict[str, Any]:
+        """Phone-side multi-stop nav. Takes 1..N waypoints (the
+        phone built up via long-presses) and runs them as a single
+        OSRM-routed trip via `route_through`. Origin is the
+        device's last known simulated position (same rule as the
+        single-leg endpoint), so the user must teleport once
+        before the very first multi-stop in a session.
+        """
+        from .navigator import Navigator
+        from .interpolator import route_length_m
+
+        if not req.stops:
+            raise HTTPException(status_code=400, detail="no_stops")
+
+        udid = _resolve_udid(req.udid, session)
+        sess = await manager.session_for(udid)
+        loc = await manager.location_for(udid)
+
+        if sess.navigator is not None:
+            try: await sess.navigator.stop()
+            except Exception: pass
+            sess.navigator = None
+
+        origin = getattr(loc, "last_lat_lng", None)
+        if origin is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "no_origin: tap the map and Teleport once first, "
+                    "so the iPhone has a starting position to route from."
+                ),
+            )
+
+        waypoints = [origin] + [(s.lat, s.lng) for s in req.stops]
+        try:
+            route = await osrm.route_through(waypoints, profile=req.profile)
+        except RoutingError as exc:
+            raise HTTPException(status_code=502, detail=f"routing_failed: {exc}")
+
+        speed_mps = req.speed
+        if speed_mps is None:
+            speed_mps = {
+                "walking": 1.4, "cycling": 5.5, "driving": 11.1,
+            }.get(req.profile, 11.1)
+
+        async def _nav_emit(method: str, status) -> None:
+            payload = status.to_json() if hasattr(status, "to_json") else dict(status)
+            payload["udid"] = udid
+            await _emit(method, payload)
+
+        nav = Navigator(
+            location=loc,
+            coords=route.coordinates,
+            speed_mps=speed_mps,
+            profile=req.profile,
+            on_event=_nav_emit,
+        )
+        await manager.set_navigator(udid, nav)
+        nav.start()
+        await _emit("event.state_changed", {
+            "udid": udid, "mode": "navigate",
+            **nav.status().to_json(),
+        })
+        return {
+            "ok": True,
+            "udid": udid,
+            "distance_m": route_length_m(route.coordinates),
+            "speed_mps": speed_mps,
+            "stops": len(req.stops),
+        }
+
     @app.post("/api/phone/joystick/start")
     async def phone_joystick_start(
-        req: JoystickStartRequest, _token: str = Depends(require_token)
+        req: JoystickStartRequest, session: _PhoneSession = Depends(require_session),
     ) -> dict[str, Any]:
         """Start a joystick session at the given lat/lng. The phone
         then sends `update` calls as the user drags the virtual
@@ -467,7 +809,7 @@ def create_http_app(
         doing instead of being stuck on a stale snapshot.
         """
         from .joystick import JoystickController
-        udid = _resolve_udid(req.udid)
+        udid = _resolve_udid(req.udid, session)
         sess = await manager.session_for(udid)
         loc = await manager.location_for(udid)
         # Cancel any other movement before taking over.
@@ -507,9 +849,9 @@ def create_http_app(
 
     @app.post("/api/phone/joystick/update")
     async def phone_joystick_update(
-        req: JoystickUpdateRequest, _token: str = Depends(require_token)
+        req: JoystickUpdateRequest, session: _PhoneSession = Depends(require_session),
     ) -> dict[str, Any]:
-        udid = _resolve_udid(req.udid)
+        udid = _resolve_udid(req.udid, session)
         sess = await manager.session_for(udid)
         if sess.joystick is None:
             raise HTTPException(
@@ -521,7 +863,7 @@ def create_http_app(
 
     @app.post("/api/phone/random_walk")
     async def phone_random_walk(
-        req: RandomWalkRequest, _token: str = Depends(require_token)
+        req: RandomWalkRequest, session: _PhoneSession = Depends(require_session),
     ) -> dict[str, Any]:
         """Start a random walk centred on (center_lat, center_lng) with
         the given radius. Walker drifts inside that circle until
@@ -534,7 +876,7 @@ def create_http_app(
             raise HTTPException(status_code=400,
                                 detail="invalid speed band")
 
-        udid = _resolve_udid(req.udid)
+        udid = _resolve_udid(req.udid, session)
         sess = await manager.session_for(udid)
         loc = await manager.location_for(udid)
         # Cancel competing motion first.
@@ -609,11 +951,50 @@ def create_http_app(
 
     @app.get("/phone", response_class=HTMLResponse, include_in_schema=False)
     async def phone_html() -> FileResponse:
-        return FileResponse(static_dir / "phone.html",
-                            media_type="text/html; charset=utf-8")
+        # Aggressive no-cache headers: iOS Safari LOVES to keep
+        # static HTML around even after the page is closed, which
+        # leaves users stranded on stale UI after we ship daemon
+        # updates. `no-store` plus matching Pragma + Expires
+        # covers Safari, Chrome, and the older WebViews.
+        return FileResponse(
+            static_dir / "phone.html",
+            media_type="text/html; charset=utf-8",
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
 
     if static_dir.is_dir():
         app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+    # Zombie-session sweeper. Runs forever, every few seconds
+    # checking whether `auth.active` is stale (phone tab closed
+    # / network died / put to sleep with no explicit logout).
+    # When it goes stale we flip active=False + broadcast so
+    # the Mac's lockout overlay drops. Stashed onto app.state
+    # so `run_http_server` can spawn it alongside uvicorn.
+    async def phone_session_sweeper() -> None:
+        while True:
+            try:
+                await asyncio.sleep(5)
+                removed = auth.sweep_stale()
+                if removed > 0:
+                    await _emit("event.phone_session", {
+                        "active": auth.is_any_active(),
+                        "udids": auth.controlling_udids(),
+                    })
+                    log.info(
+                        "phone session sweeper: evicted %d stale tab(s)",
+                        removed,
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.debug("phone_session_sweeper iteration failed", exc_info=True)
+
+    app.state.phone_session_sweeper = phone_session_sweeper
 
     return app
 
@@ -673,6 +1054,15 @@ async def run_http_server(
     )
     server = uvicorn.Server(config)
     log.info("phone-control HTTP server starting on 0.0.0.0:%d", bound_port)
+    # Spawn the zombie-session sweeper alongside the HTTP loop
+    # so a phone tab that vanishes without logging out gets
+    # auto-cleared and the Mac's lockout overlay drops. The
+    # task is cancelled on shutdown via the finally below.
+    sweeper_coro = getattr(app.state, "phone_session_sweeper", None)
+    sweeper_task = (
+        asyncio.create_task(sweeper_coro(), name="phone-session-sweeper")
+        if sweeper_coro is not None else None
+    )
     try:
         await server.serve()
     except asyncio.CancelledError:
@@ -682,3 +1072,6 @@ async def run_http_server(
     except Exception:
         log.exception("phone-control HTTP server crashed")
         raise
+    finally:
+        if sweeper_task is not None and not sweeper_task.done():
+            sweeper_task.cancel()

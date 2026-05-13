@@ -31,11 +31,27 @@ struct MapContainerView: NSViewRepresentable {
         map.showsZoomControls = true
         map.showsScale = true
         map.isRotateEnabled = false
-        // Restore the user's last visible region from SwiftData so the
-        // map opens where they left it instead of jumping back to
-        // Taipei every relaunch. The fallback (if no prefs row yet,
-        // typically first launch only) is the original Taipei view.
-        if let saved = state.savedMapCamera {
+        // Initial map region:
+        //
+        //   * Browse-only Map device selected → ALWAYS open at
+        //     Taipei. A power user might have last panned to
+        //     Tokyo while debugging an iPhone session; we don't
+        //     want the next "open the app cold to look up an
+        //     address" to silently land them on the other side
+        //     of the East China Sea. Taipei is the home base
+        //     for this app's primary user.
+        //   * Real iPhone selected → restore the user's last
+        //     visible region from SwiftData so the map opens
+        //     where they left it (mid-trip continuation, etc.).
+        //     Fall back to Taipei when there is no saved camera
+        //     (first launch with an iPhone connected).
+        if state.isVirtualMapSelected {
+            map.region = MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 25.0330, longitude: 121.5654),
+                latitudinalMeters: 4_000,
+                longitudinalMeters: 4_000
+            )
+        } else if let saved = state.savedMapCamera {
             map.region = MKCoordinateRegion(
                 center: CLLocationCoordinate2D(
                     latitude: saved.center.lat, longitude: saved.center.lng
@@ -51,9 +67,10 @@ struct MapContainerView: NSViewRepresentable {
             )
         }
 
-        let osm = MKTileOverlay(urlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png")
-        osm.canReplaceMapContent = true
-        map.addOverlay(osm, level: .aboveLabels)
+        // Initial base layer is whatever the user (or default) has
+        // set on AppState. Subsequent changes are picked up by
+        // updateNSView via the coordinator's `applyTileLayer`.
+        Coordinator.applyTileLayer(state.mapTileLayer, to: map)
 
         let click = NSClickGestureRecognizer(
             target: context.coordinator,
@@ -82,6 +99,9 @@ struct MapContainerView: NSViewRepresentable {
         context.coordinator.state = state
         context.coordinator.refreshAnnotations(on: nsView)
         context.coordinator.applyPendingFly(on: nsView)
+        // Cheap idempotence: applyTileLayer no-ops when the layer
+        // hasn't changed, so calling it on every state update is fine.
+        Coordinator.applyTileLayer(state.mapTileLayer, to: nsView)
     }
 
     @MainActor
@@ -110,17 +130,78 @@ struct MapContainerView: NSViewRepresentable {
             self.state = state
         }
 
+        /// Last applied layer per MKMapView, keyed by ObjectIdentifier
+        /// of the map. Static so makeNSView and updateNSView agree
+        /// without storing per-instance state on the Coordinator
+        /// (which would risk staleness across NSViewRepresentable
+        /// re-creates). One-entry dictionary in the common case.
+        private static var lastAppliedLayer: [ObjectIdentifier: MapTileLayer] = [:]
+
+        /// Apply a base-layer choice to the map. Removes any previous
+        /// tile overlay and either:
+        ///
+        ///   * sets `mapType` to .standard / .hybridFlyover for the
+        ///     Apple-rendered cases, or
+        ///   * adds a fresh MKTileOverlay for the raster cases.
+        ///
+        /// Idempotent — checks `lastAppliedLayer` first and bails
+        /// when the user picked the same layer they already had.
+        static func applyTileLayer(_ layer: MapTileLayer, to map: MKMapView) {
+            let key = ObjectIdentifier(map)
+            if lastAppliedLayer[key] == layer { return }
+            lastAppliedLayer[key] = layer
+
+            // Wipe any previous tile overlay; non-tile overlays
+            // (route polyline, etc.) live in `addOverlay(_,level:)`
+            // calls elsewhere and we do NOT want to wipe those.
+            for ov in map.overlays where ov is MKTileOverlay {
+                map.removeOverlay(ov)
+            }
+
+            if let template = layer.tileURLTemplate {
+                let tile = MKTileOverlay(urlTemplate: template)
+                tile.canReplaceMapContent = true
+                map.addOverlay(tile, level: .aboveLabels)
+                // For raster layers we still want MKMapType to be
+                // standard so MapKit's labels don't double up on
+                // top of the tile imagery.
+                map.mapType = .standard
+            } else {
+                // Apple-rendered layers — no tile overlay; let MapKit
+                // do its native vector / satellite render.
+                switch layer {
+                case .appleSatellite: map.mapType = .hybridFlyover
+                case .appleStandard:  map.mapType = .standard
+                default:              map.mapType = .standard
+                }
+            }
+        }
+
         func applyPendingFly(on map: MKMapView) {
             guard let req = state.pendingMapFly, req.id != lastServicedFlyID else { return }
             lastServicedFlyID = req.id
-            let region = MKCoordinateRegion(
-                center: CLLocationCoordinate2D(
-                    latitude: req.coordinate.lat,
-                    longitude: req.coordinate.lng
-                ),
-                latitudinalMeters: req.spanMeters,
-                longitudinalMeters: req.spanMeters
+            let center = CLLocationCoordinate2D(
+                latitude: req.coordinate.lat,
+                longitude: req.coordinate.lng,
             )
+            let region: MKCoordinateRegion
+            if req.preserveZoom {
+                // Follow-puck path: keep the user's current span,
+                // only shift the centre. setRegion-with-current-
+                // span would jitter on rapid updates; passing the
+                // map's existing `region.span` keeps zoom stable.
+                region = MKCoordinateRegion(center: center, span: map.region.span)
+            } else {
+                region = MKCoordinateRegion(
+                    center: center,
+                    latitudinalMeters: req.spanMeters,
+                    longitudinalMeters: req.spanMeters,
+                )
+            }
+            // Animation length is fine for one-shot teleports
+            // (200-300 ms is unnoticed) and looks smooth for
+            // 1 Hz follow updates (the next animation overlaps
+            // the previous one — MKMapView coalesces).
             map.setRegion(region, animated: true)
         }
 
@@ -128,10 +209,40 @@ struct MapContainerView: NSViewRepresentable {
             guard let map = gesture.view as? MKMapView else { return }
             let point = gesture.location(in: map)
             let coord = map.convert(point, toCoordinateFrom: map)
+            let coordinate = Coordinate(
+                lat: coord.latitude,
+                lng: coord.longitude,
+            )
+            if state.isVirtualMapSelected {
+                // Browse-only mode: clicking the map sets the
+                // "what am I looking at" pin (via `browseCursor`,
+                // a transient field that's INDEPENDENT of
+                // `simulatedLocation`). That way:
+                //
+                //   * Status-bar chips populate for the clicked
+                //     spot (via `currentMapFocus`)
+                //   * Persistence + real-iPhone code paths stay
+                //     untouched — connecting an iPhone right after
+                //     a browse session no longer inherits the
+                //     browse pin's location as the iPhone's
+                //     "simulated GPS"
+                state.browseCursor = coordinate
+                refreshAnnotations(on: map)
+                return
+            }
+            // Stop-adding only when Multi-stop mode is the active
+            // panel. Without this gate every stray map click would
+            // sprout a red pin even when the user is just panning
+            // around looking for somewhere to teleport — a real
+            // annoyance the previous version surfaced. Right-click
+            // ALWAYS pops the context menu (see `handleRightClick`),
+            // so there's still a one-step "add as stop" path
+            // available regardless of mode.
+            guard state.activeMovementMode == .multiStop else { return }
             // Append rather than replace so successive clicks build a
             // multi-stop trip. The control panel exposes a clear / undo
             // affordance for getting out of this mode.
-            state.pendingStops.append(Coordinate(lat: coord.latitude, lng: coord.longitude))
+            state.pendingStops.append(coordinate)
             refreshAnnotations(on: map)
         }
 
@@ -152,6 +263,34 @@ struct MapContainerView: NSViewRepresentable {
             menu.popUp(positioning: nil, at: point, in: map)
         }
 
+        /// Look up a localized string for use in an NSMenu, honouring
+        /// the user's `appLanguage` picker. Required because:
+        ///
+        ///   * NSMenu is AppKit — `\.locale` SwiftUI environment doesn't
+        ///     reach it
+        ///   * `String(localized: …)` uses `Bundle.main.preferredLocalizations`,
+        ///     which we've forced to `[zh-Hant, en]` at app init (for
+        ///     MapKit Chinese labels). Without this helper, every menu
+        ///     item would silently lock to zh-Hant.
+        ///
+        /// We read `appLanguage` straight from UserDefaults (that's where
+        /// `@AppStorage` lives). `.system` falls back to `Bundle.main`,
+        /// which honours the AppleLanguages override above.
+        private func menuString(_ key: String) -> String {
+            let lang = UserDefaults.standard.string(forKey: "appLanguage") ?? "system"
+            let target: String
+            switch lang {
+            case "en":      target = "en"
+            case "zh-Hant": target = "zh-Hant"
+            default:        return Bundle.main.localizedString(forKey: key, value: key, table: nil)
+            }
+            if let path = Bundle.main.path(forResource: target, ofType: "lproj"),
+               let lprojBundle = Bundle(path: path) {
+                return lprojBundle.localizedString(forKey: key, value: key, table: nil)
+            }
+            return Bundle.main.localizedString(forKey: key, value: key, table: nil)
+        }
+
         private func makeContextMenu(at coord: CLLocationCoordinate2D) -> NSMenu {
             let menu = NSMenu()
 
@@ -167,7 +306,7 @@ struct MapContainerView: NSViewRepresentable {
                 .connected ?? false
 
             let teleport = NSMenuItem(
-                title: "Teleport here",
+                title: menuString("Teleport here"),
                 action: #selector(menuTeleport(_:)),
                 keyEquivalent: ""
             )
@@ -175,18 +314,44 @@ struct MapContainerView: NSViewRepresentable {
             teleport.image = NSImage(systemSymbolName: "wand.and.stars", accessibilityDescription: nil)
             teleport.isEnabled = isConnected
             if !isConnected {
-                teleport.toolTip = "Connect a device first."
+                teleport.toolTip = menuString("Connect a device first.")
             }
             menu.addItem(teleport)
 
             let addStop = NSMenuItem(
-                title: "Add as stop",
+                title: menuString("Add as stop"),
                 action: #selector(menuAddStop(_:)),
                 keyEquivalent: ""
             )
             addStop.target = self
             addStop.image = NSImage(systemSymbolName: "mappin.and.ellipse", accessibilityDescription: nil)
             menu.addItem(addStop)
+
+            // Copy-coordinates lands right after the action items
+            // (Teleport / Add stop) and before the bookmark
+            // section. Puts the user's mental model in the order
+            // "do something with this point" → "remember this
+            // point" without forcing them to scan the whole menu.
+            let copyCoord = NSMenuItem(
+                title: menuString("Copy coordinates"),
+                action: #selector(menuCopyCoordinate(_:)),
+                keyEquivalent: "",
+            )
+            copyCoord.target = self
+            copyCoord.image = NSImage(systemSymbolName: "doc.on.doc",
+                                      accessibilityDescription: nil)
+            menu.addItem(copyCoord)
+
+            menu.addItem(.separator())
+
+            let addBookmark = NSMenuItem(
+                title: menuString("Save as bookmark…"),
+                action: #selector(menuAddBookmark(_:)),
+                keyEquivalent: ""
+            )
+            addBookmark.target = self
+            addBookmark.image = NSImage(systemSymbolName: "bookmark", accessibilityDescription: nil)
+            menu.addItem(addBookmark)
 
             return menu
         }
@@ -203,6 +368,28 @@ struct MapContainerView: NSViewRepresentable {
             if let map = mapView {
                 refreshAnnotations(on: map)
             }
+        }
+
+        @objc func menuCopyCoordinate(_ sender: NSMenuItem) {
+            // 6-decimal precision matches what the status bar's
+            // copy button uses, so a user copying coords from
+            // either entry point gets the same string format.
+            guard let coord = contextMenuCoordinate else { return }
+            let pb = NSPasteboard.general
+            pb.clearContents()
+            pb.setString(
+                String(format: "%.6f, %.6f", coord.latitude, coord.longitude),
+                forType: .string,
+            )
+        }
+
+        @objc func menuAddBookmark(_ sender: NSMenuItem) {
+            guard let coord = contextMenuCoordinate else { return }
+            // Hand the coordinate off to AppState; the sheet view
+            // attached to MainView reacts to `pendingBookmarkCoord`
+            // becoming non-nil.
+            state.pendingBookmarkCoord =
+                Coordinate(lat: coord.latitude, lng: coord.longitude)
         }
 
         func refreshAnnotations(on map: MKMapView) {
@@ -340,18 +527,33 @@ struct MapContainerView: NSViewRepresentable {
                 lastDestinationSignature = destination
             }
 
-            // --- Pending stops (red, numbered) --------------------------
+            // --- Pending stops + active waypoints (numbered pins) ------
             // Wipe the previous batch wholesale -- order matters and is
             // encoded in the annotation index, so we'd rather rebuild than
             // try to diff stop-by-stop.
+            //
+            // Render BOTH the staging list (`pendingStops`, red, what the
+            // user is composing right now) AND the captured waypoint list
+            // (`activeWaypoints`, blue, what the iPhone is currently
+            // walking through). After a Navigate kicks off, pendingStops
+            // empties and activeWaypoints picks up the same coordinates;
+            // the colour change tells the user "this trip is now live".
             for old in pendingStopAnnotations {
                 map.removeAnnotation(old)
             }
             pendingStopAnnotations.removeAll(keepingCapacity: true)
             for (index, stop) in state.pendingStops.enumerated() {
-                let pin = StopAnnotation(stopNumber: index + 1)
+                let pin = StopAnnotation(stopNumber: index + 1, isActive: false)
                 pin.coordinate = CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lng)
                 pin.title = "Stop \(index + 1)"
+                pin.subtitle = String(format: "%.5f, %.5f", stop.lat, stop.lng)
+                map.addAnnotation(pin)
+                pendingStopAnnotations.append(pin)
+            }
+            for (index, stop) in state.activeWaypoints.enumerated() {
+                let pin = StopAnnotation(stopNumber: index + 1, isActive: true)
+                pin.coordinate = CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lng)
+                pin.title = "Waypoint \(index + 1)"
                 pin.subtitle = String(format: "%.5f, %.5f", stop.lat, stop.lng)
                 map.addAnnotation(pin)
                 pendingStopAnnotations.append(pin)
@@ -362,22 +564,37 @@ struct MapContainerView: NSViewRepresentable {
                 map.removeAnnotation(old)
                 simulatedAnnotation = nil
             }
-            if let sim = state.simulatedLocation {
+            // Pull from `currentMapFocus`, which automatically
+            // resolves to `browseCursor` in browse mode and
+            // `simulatedLocation` for a real iPhone. This is
+            // what fixes the "browse-pin contaminates iPhone
+            // pin" bug — the two sources never cross.
+            if let sim = state.currentMapFocus {
                 let pin = SimulatedAnnotation()
                 pin.coordinate = CLLocationCoordinate2D(latitude: sim.lat, longitude: sim.lng)
-                pin.title = "iPhone (simulated)"
+                // Browse-only Map mode uses the pin to mean "where
+                // the user clicked" — there's no iPhone being
+                // simulated. Label it "You" instead. The
+                // viewFor-annotation switch below picks a different
+                // glyph + colour for the same reason.
+                pin.title = state.isVirtualMapSelected
+                    ? String(localized: "You",
+                             bundle: .module,
+                             comment: "Map pin label in browse-only Map mode — \"you are here\"")
+                    : "iPhone (simulated)"
                 pin.subtitle = String(format: "%.5f, %.5f", sim.lat, sim.lng)
                 map.addAnnotation(pin)
                 simulatedAnnotation = pin
             }
 
             // --- Mac proxy location (blue dot) --------------------------
-            // Hidden while we have a simulated location: the iPhone-
-            // simulated pin is the only "current location" the user
-            // should be tracking. Showing a second dot would just
-            // create the visual illusion that the iPhone is in two
-            // places at once.
-            let macHidden = state.simulatedLocation != nil
+            // Hidden while we have a simulated/browse pin: the green
+            // pin already shows the "current location" the user
+            // should be tracking. Two dots would imply the iPhone is
+            // in two places at once. We check `currentMapFocus` (not
+            // just `simulatedLocation`) so the Mac puck also hides
+            // in browse mode after the user has clicked a point.
+            let macHidden = state.currentMapFocus != nil
             if let old = macAnnotation {
                 map.removeAnnotation(old)
                 macAnnotation = nil
@@ -494,23 +711,53 @@ struct MapContainerView: NSViewRepresentable {
                 return v
 
             case is SimulatedAnnotation:
-                let id = "sim"
+                // Two visual variants on the same pin so a quick
+                // glance tells the user what mode they're in:
+                //
+                //   * Real iPhone selected → green pin + iPhone
+                //     glyph (the legacy look)
+                //   * Browse-only Map device → blue pin + person
+                //     glyph; the label above also flips to "You"
+                //
+                // Use distinct dequeue identifiers per variant so
+                // a recycled view never carries the wrong glyph
+                // / colour over from the previous mode.
+                let isBrowse = state.isVirtualMapSelected
+                let id = isBrowse ? "sim-you" : "sim-iphone"
                 let v = (mapView.dequeueReusableAnnotationView(withIdentifier: id) as? MKMarkerAnnotationView)
                     ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: id)
                 v.annotation = annotation
-                v.markerTintColor = .systemGreen
-                v.glyphImage = NSImage(systemSymbolName: "iphone", accessibilityDescription: nil)
+                if isBrowse {
+                    v.markerTintColor = .systemBlue
+                    v.glyphImage = NSImage(systemSymbolName: "person.fill",
+                                           accessibilityDescription: nil)
+                } else {
+                    v.markerTintColor = .systemGreen
+                    v.glyphImage = NSImage(systemSymbolName: "iphone",
+                                           accessibilityDescription: nil)
+                }
                 v.canShowCallout = true
                 return v
 
             case let stop as StopAnnotation:
-                let id = "stop"
+                // Two visual variants on the same annotation class
+                // so the user can tell staging (red) apart from
+                // active waypoints (blue) at a glance:
+                //
+                //   * isActive = false → red, staging stop the
+                //     user just clicked. Disappears the moment
+                //     they hit Navigate.
+                //   * isActive = true  → blue, waypoint captured
+                //     into `activeWaypoints` at navigation start;
+                //     stays drawn while the iPhone walks the trip.
+                //
+                // Use distinct dequeue ids so a recycled view
+                // never carries the wrong tint over.
+                let id = stop.isActive ? "stop-active" : "stop-staging"
                 let v = (mapView.dequeueReusableAnnotationView(withIdentifier: id) as? MKMarkerAnnotationView)
                     ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: id)
                 v.annotation = annotation
-                v.markerTintColor = .systemRed
-                // Numbered glyph (1-50). SF Symbols has number.circle.fill /
-                // 1.circle.fill, but the simplest match is `glyphText`.
+                v.markerTintColor = stop.isActive ? .systemBlue : .systemRed
                 v.glyphText = "\(stop.stopNumber)"
                 v.canShowCallout = true
                 return v
@@ -553,7 +800,14 @@ struct MapContainerView: NSViewRepresentable {
 
 private final class StopAnnotation: MKPointAnnotation {
     let stopNumber: Int
-    init(stopNumber: Int) { self.stopNumber = stopNumber; super.init() }
+    /// false → staging pin (red), true → live waypoint pin (blue).
+    /// Read by `viewFor:` to pick the marker tint.
+    let isActive: Bool
+    init(stopNumber: Int, isActive: Bool = false) {
+        self.stopNumber = stopNumber
+        self.isActive = isActive
+        super.init()
+    }
 }
 private final class SimulatedAnnotation: MKPointAnnotation {}
 private final class MacAnnotation: MKPointAnnotation {}

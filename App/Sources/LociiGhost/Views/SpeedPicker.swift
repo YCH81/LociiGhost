@@ -74,8 +74,8 @@ struct SpeedPicker: View {
                         .font(.caption2)
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
-                        .background(Color.accentColor.opacity(0.18), in: .rect(cornerRadius: 3))
-                        .foregroundStyle(Color.accentColor)
+                        .background(Color.lociSage.opacity(0.18), in: .rect(cornerRadius: 3))
+                        .foregroundStyle(Color.lociSage)
                 }
             }
         }

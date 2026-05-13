@@ -15,9 +15,9 @@ struct BottomBar: View {
             Spacer()
             actions
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, minHeight: 44)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, minHeight: 76)
         .background(.bar)
         .overlay(Divider(), alignment: .top)
     }
@@ -83,38 +83,22 @@ struct BottomBar: View {
 
     @ViewBuilder
     private var actionsContent: some View {
-        HStack(spacing: 6) {
+        // The bottom bar's job since v1.4 is "live navigation
+        // controls" only — Restore / Disconnect / Refresh / Quit
+        // moved up to TopStatusBar. This keeps the bottom strip
+        // focused on the iPhone's CURRENT motion: pace, profile,
+        // pause/stop. Connect lives here as the natural twin of
+        // the device chip on the left of this same bar.
+        HStack(spacing: 8) {
             if let active = activeDevice, active.connected {
-                // Live progress only when there's an actual navigation.
                 if let nav = state.navigation {
                     navigationProgress(nav: nav)
-                    Divider().frame(height: 16)
+                    Divider().frame(height: 22)
                 }
-
-                // Profile picker / pause / stop are PERMANENT here as a
-                // safety surface. Even after a daemon restart wipes the
-                // app's `navigation` state, the iPhone may still be
-                // frozen at a simulated location -- the user needs a
-                // visible kill switch they can click without first
-                // having to reconnect or start a fake nav.
                 travelModePicker(udid: active.udid)
-                Divider().frame(height: 16)
+                Divider().frame(height: 22)
                 pauseButton(udid: active.udid)
                 stopButton(udid: active.udid)
-                Divider().frame(height: 16)
-
-                Button {
-                    Task { await state.restore(udid: active.udid) }
-                } label: {
-                    Label("Restore Real GPS", systemImage: "arrow.counterclockwise")
-                }
-                .help(LocalizedStringKey("Stop simulating and let the device report its real location"))
-
-                Button(role: .destructive) {
-                    Task { await state.disconnect(udid: active.udid) }
-                } label: {
-                    Label("Disconnect", systemImage: "iphone.slash")
-                }
             }
 
             if let active = activeDevice, !active.connected {
@@ -125,26 +109,12 @@ struct BottomBar: View {
                 }
                 .keyboardShortcut(.defaultAction)
             }
-
-            Button {
-                Task { await state.refreshDevices() }
-            } label: {
-                Label("Refresh", systemImage: "arrow.clockwise")
-            }
-            .help(LocalizedStringKey("Re-scan for connected devices"))
-
-            Divider()
-                .frame(height: 16)
-
-            Button {
-                state.quitApp()
-            } label: {
-                Label("Quit", systemImage: "power")
-            }
-            .help(LocalizedStringKey("Quit LociiGhost. The privileged daemon stays running so the next launch doesn't need the password."))
-            .keyboardShortcut("q", modifiers: .command)
         }
-        .controlSize(.small)
+        // `.large` is the biggest controlSize macOS gives us —
+        // these are the primary day-to-day navigation buttons,
+        // they should be the easiest things to click in the
+        // whole window.
+        .controlSize(.large)
         .buttonStyle(.bordered)
     }
 
@@ -173,7 +143,7 @@ struct BottomBar: View {
         }
         .pickerStyle(.segmented)
         .labelsHidden()
-        .frame(width: 130)
+        .frame(width: 200)
         .help(activeNav == nil
               ? "Default travel mode for the next Navigate."
               : "Change travel mode mid-route. Speed updates immediately; route stays the same.")
@@ -201,55 +171,55 @@ struct BottomBar: View {
         }
     }
 
-    /// Always functional when the device is connected. During an active
-    /// trip this is a normal "end navigation" button; when idle it
-    /// becomes the panic-stop — clear any stale simulation that survived
-    /// a daemon restart or app reload, regardless of whether this app
-    /// instance has a NavigationVM for it.
+    /// Stop the current trip. Always calls `stopNavigation` — the
+    /// user reported the previous "double-click flips into Restore"
+    /// behaviour was confusing and accidentally yanked the iPhone
+    /// back to real GPS. New rule: Stop is Stop, no matter how many
+    /// times you click it. Restore Real GPS lives on its own button
+    /// in the top status bar A and is the only path to that action.
     private func stopButton(udid: String) -> some View {
-        let isNavigating = state.navigation != nil
-        return Button(role: .destructive) {
-            Task {
-                if isNavigating {
-                    await state.stopNavigation(udid: udid)
-                } else {
-                    // Emergency stop: clear any ghost simulation that
-                    // outlived the navigator (e.g., daemon got restarted
-                    // mid-trip).
-                    await state.restore(udid: udid)
-                }
-            }
+        Button(role: .destructive) {
+            Task { await state.stopNavigation(udid: udid) }
         } label: {
             Label("Stop", systemImage: "stop.fill")
+                .foregroundStyle(.red)
+                .fontWeight(.semibold)
         }
-        .help(isNavigating
-              ? "End navigation; iPhone stays at last simulated position."
-              : "Panic stop — clears any lingering simulation and returns the iPhone to real GPS.")
+        // `.tint(.red)` on a `.bordered` button paints the chip's
+        // background tint, AND `.foregroundStyle(.red)` on the
+        // Label inside makes the icon+text themselves red as
+        // well — together the button reads as a clear "this is
+        // the destructive one" affordance even at a glance.
+        // The `.destructive` role is kept so accessibility
+        // tools still announce it as such.
+        .tint(.red)
+        .help(LocalizedStringKey("End navigation; iPhone stays at last simulated position."))
     }
 
     private func navigationProgress(nav: NavigationVM) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             Image(systemName: nav.isPaused ? "pause.circle.fill" : nav.profile.symbol)
                 .foregroundStyle(nav.isPaused ? .orange : .green)
-            VStack(alignment: .leading, spacing: 1) {
+                .font(.title3)
+            VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text("\(progressLabel(nav)) · ETA \(formatDuration(nav.etaSeconds))")
-                        .font(.caption.monospacedDigit())
+                        .font(.callout.monospacedDigit())
                     if nav.laps > 1 {
                         HStack(spacing: 3) {
                             Image(systemName: "arrow.triangle.2.circlepath")
                             Text("Lap \(nav.currentLap) / \(nav.laps)")
                         }
-                        .font(.caption2.monospacedDigit())
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(Color.accentColor.opacity(0.15), in: .capsule)
-                        .foregroundStyle(Color.accentColor)
+                        .font(.caption.monospacedDigit())
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.lociSage.opacity(0.15), in: .capsule)
+                        .foregroundStyle(Color.lociSage)
                     }
                 }
                 ProgressView(value: nav.progress)
                     .progressViewStyle(.linear)
-                    .frame(width: 140)
+                    .frame(width: 180)
             }
         }
     }

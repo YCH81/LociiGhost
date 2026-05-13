@@ -16,7 +16,7 @@ from .interpolator import route_length_m
 from .joystick import JoystickController
 from .navigator import Navigator
 from .random_walker import RandomWalker
-from .routing import OsrmClient, Route, RoutingError
+from .routing import GoogleDirectionsClient, NoRouteError, OsrmClient, Route, RoutingError
 from .rpc import RpcServer
 
 log = logging.getLogger(__name__)
@@ -198,6 +198,47 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
         })
         return {"ok": True}
 
+    @server.method("location.gold_ditto")
+    async def location_gold_ditto(udid: str, lat: float, lng: float) -> dict[str, Any]:
+        """Pikmin Bloom 拉金盆 exploit cycle (ported from LocWarp 0.2.143).
+
+        Two-step burst inside the game's flower-bud animation window:
+
+          1. push the iPhone's GPS to A (the user's real location,
+             passed in from the Mac)
+          2. immediately clear the simulation so the iPhone reverts
+             to real GPS
+
+        The user is expected to have manually opened the in-game
+        flower bud BEFORE invoking this RPC. The bud's animation
+        freezes the game's location verification just long enough
+        for the GPS round-trip to look atomic from the game's
+        perspective — when the animation ends, the game sees the
+        player at A (their real spot) and credits the gold-pot
+        reward there. The gold-pot location itself stays untouched
+        so the same pot can be milked repeatedly.
+
+        Differs from `teleport` + `restore` in that we deliberately
+        skip the `_stop_all_movement` call and the
+        `event.position_update` broadcast: the desktop map's camera
+        should stay parked on the gold pot, not jump to A.
+        """
+        _validate_coord(lat, lng)
+        loc = await manager.location_for(udid)
+        await loc.set(float(lat), float(lng))
+        await server.broadcast_event("event.gold_ditto", {
+            "udid": udid,
+            "phase": "teleported",
+            "lat": lat,
+            "lng": lng,
+        })
+        await loc.clear()
+        await server.broadcast_event("event.gold_ditto", {
+            "udid": udid,
+            "phase": "restored",
+        })
+        return {"ok": True, "lat": lat, "lng": lng}
+
     @server.method("location.navigate")
     async def location_navigate(
         udid: str,
@@ -223,6 +264,13 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
         # last waypoint back to the first and concatenating that closed
         # loop `laps` times. Useful for "drive this circuit five times".
         laps: int = 1,
+        # v1.9.1: which routing backend to use. Defaults to the OSRM
+        # demo for backward compatibility with clients that don't pass
+        # this field at all. "google" routes through Google Directions
+        # using `engine_api_key`; "straight_line" forces straight_line
+        # mode regardless of the explicit straight_line flag above.
+        engine: str = "osrm_demo",
+        engine_api_key: str | None = None,
     ) -> dict[str, Any]:
         if speed_mps is None:
             speed_mps = SPEED_PRESETS.get(profile, SPEED_PRESETS["driving"])
@@ -264,11 +312,48 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
         if laps > 1 and waypoints[0] != waypoints[-1]:
             waypoints = waypoints + [waypoints[0]]
 
-        if straight_line:
+        # v1.9.1 engine dispatch. `straight_line=True` always wins
+        # over engine — if either the explicit flag or
+        # engine=="straight_line" is set, we skip network routing.
+        # For engine=="google" we use GoogleDirectionsClient with
+        # the user-supplied API key. Everything else falls back to
+        # the daemon's shared OsrmClient.
+        effective_straight = straight_line or engine == "straight_line"
+        if effective_straight:
             base_route = _straight_line_route(waypoints, speed_mps, profile)
+        elif engine == "google":
+            if not engine_api_key:
+                raise errors.RpcError(
+                    code=errors.PYMD3_ERROR,
+                    message="Google Directions engine requires an API key. "
+                            "Paste one in Settings → Geocoding, or switch "
+                            "the routing engine back to OSRM Public Demo.",
+                )
+            try:
+                base_route = await GoogleDirectionsClient(engine_api_key).route_through(
+                    waypoints, profile,
+                )
+            except RoutingError as exc:
+                raise errors.RpcError(code=errors.PYMD3_ERROR, message=str(exc)) from exc
         else:
             try:
                 base_route = await osrm.route_through(waypoints, profile)
+            except NoRouteError:
+                # bike/foot can't bridge every waypoint pair (highway-only
+                # crossings, restricted tunnels, etc.). Fall back to car
+                # — graph is denser so it almost always finds a path, and
+                # actual playback speed comes from speed_mps anyway, so
+                # the user-perceived mode still matches what they picked.
+                log.info(
+                    "OSRM NoRoute for profile=%s — retrying as car",
+                    profile,
+                )
+                try:
+                    base_route = await osrm.route_through(waypoints, "driving")
+                except RoutingError as exc2:
+                    raise errors.RpcError(
+                        code=errors.PYMD3_ERROR, message=str(exc2),
+                    ) from exc2
             except RoutingError as exc:
                 raise errors.RpcError(code=errors.PYMD3_ERROR, message=str(exc)) from exc
 
@@ -279,14 +364,26 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
                 # Drop the duplicate first point that would otherwise
                 # cause the polyline to "stutter" at the seam.
                 full.extend(one_lap[1:])
-            route = Route(
-                coordinates=full,
-                distance_m=base_route.distance_m * laps,
-                duration_s=base_route.duration_s * laps,
-                profile=profile,
-            )
+            coords = full
+            total_distance = base_route.distance_m * laps
         else:
-            route = base_route
+            coords = list(base_route.coordinates)
+            total_distance = base_route.distance_m
+
+        # Recompute ETA from the SpeedPicker setting so the time the
+        # UI shows matches what playback will actually take. The
+        # engine's own duration is unreliable here: OSRM/Google return
+        # durations at their own assumed profile speed, while the
+        # SpeedPicker is free-form (and also wins for cases where we
+        # fell back to "driving" geometry after NoRoute on bike/foot
+        # — see the except NoRouteError branch above).
+        total_duration = total_distance / speed_mps if speed_mps > 0 else 0.0
+        route = Route(
+            coordinates=coords,
+            distance_m=total_distance,
+            duration_s=total_duration,
+            profile=profile,
+        )
 
         await _stop_all_movement(manager, udid, server)
         loc = await manager.location_for(udid)
@@ -437,6 +534,76 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
             )
         await sess.joystick.update(heading_deg, speed_mps)
         return sess.joystick.status().to_json()
+
+    # ------------------------------------------------------------------
+    # phone.* — query / force-end the mobile-web phone-control session
+    # ------------------------------------------------------------------
+
+    @server.method("phone.session")
+    async def phone_session() -> dict[str, Any]:
+        """Returns whether ANY phone tab is currently logged in,
+        plus the de-duped set of iPhone UDIDs being driven across
+        all sessions. Mac UI uses `udids` to decide per-device
+        lockout — switching to a non-targeted iPhone or the Map
+        keeps the Mac usable.
+
+        Lazy sweeps stale sessions inline so a long-idle Mac that
+        just reconnected doesn't see ghost active sessions.
+        """
+        auth = getattr(server, "phone_auth", None)
+        if auth is None:
+            return {"active": False, "udids": []}
+        # Inline sweep so the answer is always fresh.
+        removed = auth.sweep_stale()
+        if removed > 0:
+            await server.broadcast_event("event.phone_session", {
+                "active": auth.is_any_active(),
+                "udids": auth.controlling_udids(),
+            })
+        return {
+            "active": auth.is_any_active(),
+            "udids": auth.controlling_udids(),
+        }
+
+    @server.method("phone.sync_mode")
+    async def phone_sync_mode_get() -> dict[str, Any]:
+        auth = getattr(server, "phone_auth", None)
+        return {"sync": bool(auth and getattr(auth, "sync_mode", False))}
+
+    @server.method("phone.set_sync_mode")
+    async def phone_sync_mode_set(sync: bool) -> dict[str, Any]:
+        auth = getattr(server, "phone_auth", None)
+        if auth is None:
+            return {"ok": False, "reason": "no_http_server"}
+        was = getattr(auth, "sync_mode", False)
+        auth.sync_mode = bool(sync)
+        if was != auth.sync_mode:
+            await server.broadcast_event("event.sync_mode", {"sync": auth.sync_mode})
+        return {"ok": True, "sync": auth.sync_mode}
+
+    @server.method("phone.force_logout")
+    async def phone_force_logout() -> dict[str, Any]:
+        """Mac-initiated revoke. Rotates the PIN + token so the
+        currently-paired phone tab gets booted, then broadcasts
+        the session-ended event."""
+        auth = getattr(server, "phone_auth", None)
+        if auth is None:
+            return {"ok": False, "reason": "no_http_server"}
+        was_any = bool(auth and auth.is_any_active())
+        try:
+            # Kick EVERY active session (multi-session model)
+            # and rotate the PIN so the kicked phones can't
+            # reconnect with the old credentials. The Mac
+            # "stop phone control" button is the hard reset.
+            auth.clear_all()
+            auth.rotate_pin()
+        except Exception:
+            return {"ok": False}
+        if was_any:
+            await server.broadcast_event("event.phone_session", {
+                "active": False, "udids": [],
+            })
+        return {"ok": True}
 
 
 # ----------------------------------------------------------------------

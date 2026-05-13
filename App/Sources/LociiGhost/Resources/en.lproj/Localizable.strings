@@ -38,7 +38,7 @@
 "Movement Modes" = "Movement Modes";
 "Multi-stop" = "Multi-stop";
 "Navigate" = "Navigate";
-"No active connection" = "No active connection";
+"No active connection" = "Not connected";
 "No device selected" = "No device selected";
 "No iPhone connected" = "No iPhone connected";
 "No iPhones found on the LAN. Make sure the iPhone is on the same Wi-Fi and you've run **Pair for WiFi** once. You can also enter an IP manually below." = "No iPhones found on the LAN. Make sure the iPhone is on the same Wi-Fi and you've run **Pair for WiFi** once. You can also enter an IP manually below.";
@@ -61,7 +61,7 @@
 "Resume" = "Resume";
 "Scan LAN for paired iPhones" = "Scan LAN for paired iPhones";
 "Scanning LAN for paired iPhones…" = "Scanning LAN for paired iPhones…";
-"Search address or place" = "Search address or place";
+"Search address or place" = "Search address, place, or coordinates";
 "Speed" = "Speed";
 "Start Joystick" = "Start Joystick";
 "Start Random Walk" = "Start Random Walk";
@@ -101,6 +101,125 @@
 /* Navigation status interpolations */
 "Lap %lld / %lld" = "Lap %1$lld / %2$lld";
 
+/* Bookmarks (Phase 5.3) */
+"Bookmarks" = "Bookmarks";
+"No bookmarks yet." = "No bookmarks yet.";
+"Right-click anywhere on the map and pick **Save as bookmark…** to add one." = "Right-click anywhere on the map and pick **Save as bookmark…** to add one.";
+"Uncategorized" = "Uncategorized";
+"Save bookmark" = "Save bookmark";
+"Edit bookmark" = "Edit bookmark";
+"Name" = "Name";
+"Category" = "Category";
+"Icon" = "Icon";
+"Save" = "Save";
+"Delete" = "Delete";
+"Edit…" = "Edit…";
+"Teleport here" = "Teleport here";
+"Add as stop" = "Add as stop";
+"Save as bookmark…" = "Save as bookmark…";
+
+/* GPX (Phase 5.4) */
+"Import GPX…" = "Import GPX…";
+"Import GPX" = "Import GPX";
+"Export current route as GPX…" = "Export current route as GPX…";
+
+/* Routes (Phase 5.4 — saved GPX tracks) */
+"Routes" = "Routes";
+"Save route" = "Save route";
+"Edit route" = "Edit route";
+"Imported route" = "Imported route";
+"%lld points" = "%lld points";
+"No saved routes yet." = "No saved routes yet.";
+"Use **File ▸ Import GPX…** (⌘O) to add a recorded track." = "Use **File ▸ Import GPX…** (⌘O) to add a recorded track.";
+"Start route" = "Start route";
+"Start route?" = "Start route?";
+"Start" = "Start";
+"Teleport to the start of \"%1$@\" and navigate %2$lld points?" = "Teleport to the start of \"%1$@\" and navigate %2$lld points?";
+
+/* UI Phase 1.4 — top status bar / header / sidebar / search */
+"Phone Control" = "Phone Control";
+"Weather at the simulated location" = "Weather at the simulated location";
+"Copy coordinates" = "Copy coordinates";
+"Paste from clipboard" = "Paste from clipboard";
+"Teleport iPhone to this location" = "Teleport iPhone to this location";
+"Show on map without moving the iPhone" = "Show on map without moving the iPhone";
+"Navigate to this location with current settings" = "Navigate to this location with current settings";
+"Type an address or lat,lng first." = "Type an address or lat,lng first.";
+"Expand" = "Expand";
+"Collapse" = "Collapse";
+"Choose base map layer" = "Choose base map layer";
+"Recenter" = "Recenter";
+
+/* Device-row Connect-via-WiFi pull-down menu */
+"Connect via WiFi…" = "Connect via WiFi…";
+"Don't connect" = "Don't connect";
+"Connect via USB cable" = "Connect via USB cable";
+"Plug in the USB cable first" = "Plug in the USB cable first";
+"Open the WiFi candidate picker" = "Open the WiFi candidate picker";
+"Run **Pair for WiFi** once with the cable plugged in" = "Run **Pair for WiFi** once with the cable plugged in";
+"You" = "You";
+
+/* Gold Ditto mode (Pikmin Bloom 拉金盆 exploit) */
+"Gold Ditto" = "Gold Ditto";
+"Pull Gold Pot" = "Pull Gold Pot";
+"Countdown mode: press the button to start a 2-second countdown, then the Mac will pull the gold pot (swap GPS to A and back)." = "Countdown mode: press the button to start a 2-second countdown, then the gold pot is pulled on the iPhone (GPS swaps to A and back).";
+"Instant mode: press the button to pull the gold pot immediately (swap GPS to A and back, no countdown)." = "Instant mode: press the button to pull the gold pot on the iPhone immediately (GPS swaps to A and back, no countdown).";
+"A coordinate (your real location)" = "A coordinate (your real location)";
+"Show A coordinate" = "Show A coordinate";
+"Hide A coordinate" = "Hide A coordinate";
+"Use current location" = "Use current location";
+"Pulling the gold pot in…" = "Pulling the gold pot in…";
+"Counting down…" = "Counting down…";
+"Cancelled." = "Cancelled.";
+"Start the 2-second countdown then push GPS to A" = "Start the 2-second countdown then push GPS to A";
+"Countdown (2 s)" = "Countdown (2 s)";
+"Instant" = "Instant";
+"Countdown gives you a visible 2-second timer with beeps before fire. Instant fires set+clear the moment you click, matching the original LocWarp behaviour exactly." = "Countdown gives you a visible 2-second timer with beeps before fire. Instant fires set+clear the moment you click, matching the original LocWarp behaviour exactly.";
+"Fire set + clear immediately (LocWarp-style)" = "Fire set + clear immediately (LocWarp-style)";
+"Set A coordinate and connect an iPhone first" = "Set A coordinate and connect an iPhone first";
+"Gold Ditto needs a real iPhone connection." = "Gold Ditto needs a real iPhone connection.";
+"Gold pot pulled" = "Gold pot pulled";
+"GPS was swapped to A and back" = "GPS was swapped to A and back";
+"Apple Maps" = "Apple Maps";
+"Apple Satellite" = "Apple Satellite";
+"OpenStreetMap" = "OpenStreetMap";
+"Carto Voyager" = "Carto Voyager";
+"ESRI Satellite" = "ESRI Satellite";
+
+/* Search bar action button labels */
+"Paste" = "Paste";
+"Teleport" = "Teleport";
+"Preview" = "Preview";
+"Navigate" = "Navigate";
+
+/* TopStatusBar (status bar A) — left buttons + chip help */
+"Restore" = "Restore";
+"Refresh" = "Refresh";
+"Map Layer" = "Map Layer";
+"Country of the simulated location" = "Country of the simulated location";
+"Coordinates of the simulated location" = "Coordinates of the simulated location";
+"Mac time / Time at the simulated location" = "Mac time / Time at the simulated location";
+
+/* Bookmarks JSON import (Phase 5.5) */
+"Import bookmarks from JSON" = "Import bookmarks from JSON";
+"JSON parsed, but no bookmarks were found." = "JSON parsed, but no bookmarks were found.";
+"Imported %lld bookmarks." = "Imported %lld bookmarks.";
+
+/* Multi-stop panel — reorder hint + Save-as-route */
+"Drag a row's handle to reorder stops." = "Drag a row's handle to reorder stops.";
+"Drag to reorder" = "Drag to reorder";
+"Save as new route" = "Save as new route";
+"Save these stops as a Route so you can replay this trip later" = "Save these stops as a Route so you can replay this trip later";
+"Custom route (%lld stops)" = "Custom route (%lld stops)";
+
+/* Virtual Map device + disconnected overlay (Phase 5.6) */
+"Map" = "Map";
+"Browse-only" = "Browse-only";
+"Look up locations without a connected iPhone." = "Look up locations without a connected iPhone.";
+"Disconnected" = "Disconnected";
+"This iPhone isn't currently reachable. Reconnect it, or pick the **Map** entry in the sidebar to browse the map without a device." = "This iPhone isn't currently reachable. Reconnect it, or pick the **Map** entry in the sidebar to browse the map without a device.";
+"Switch to a connected iPhone to use movement modes." = "Switch to a connected iPhone to use movement modes.";
+
 /* ControlPanel */
 "Target" = "Target";
 "%lld stops" = "%lld stops";
@@ -124,3 +243,22 @@
 "PIN" = "PIN";
 "Copy" = "Copy";
 "Phone must be on the same Wi-Fi as this Mac. The PIN regenerates each time the daemon restarts; tap Regenerate below to invalidate any phone that's currently paired." = "Phone must be on the same Wi-Fi as this Mac. The PIN regenerates each time the daemon restarts; tap Regenerate below to invalidate any phone that's currently paired.";
+
+/* Update-available badge in AppHeaderBar */
+"New v%@" = "New v%@";
+"Update available — click to view release" = "Update available — click to view release";
+
+/* Mac phone-control lockout overlay */
+"Phone in control" = "Phone in control";
+"A phone is currently signed in via Phone Control. The Mac is paused while the phone is driving. Sign out from the phone, or press the button below to take control back." = "A phone is currently signed in via Phone Control. The Mac is paused while the phone is driving. Sign out from the phone, or press the button below to take control back.";
+"Stop phone control" = "Stop phone control";
+"Sign out all phones" = "Sign out all phones";
+"Sign every paired phone out and rotate the PIN." = "Sign every paired phone out and rotate the PIN.";
+"Kicks every paired phone and rotates the PIN." = "Kicks every paired phone and rotates the PIN.";
+"Use both at once" = "Use both at once";
+"Exit sync" = "Exit sync";
+"Stop driving simultaneously with the phone — locks the Mac side back to phone control" = "Stop driving simultaneously with the phone — locks the Mac side back to phone control";
+"Use both at the same time?" = "Use both at the same time?";
+"Enable" = "Enable";
+"Mac and phone can both drive at the same time. If their actions clash and the iPhone's position gets out of sync, press Restore on BOTH sides and start over." = "Mac and phone can both drive at the same time. If their actions clash and the iPhone's position gets out of sync, press Restore on BOTH sides and start over.";
+"Real GPS may take 30 s to 2 min to re-acquire on iPhone. Toggle Airplane Mode on the iPhone for faster reacquisition." = "Real GPS may take 30 s to 2 min to re-acquire on iPhone. Toggle Airplane Mode on the iPhone for faster reacquisition.";

@@ -24,17 +24,38 @@ fi
 
 cd "$DAEMON_DIR"
 
-if [[ ! -d ".venv" ]]; then
-    echo "==> creating venv (Python 3.13)"
-    python3.13 -m venv .venv
+# Detect a stale venv: shebangs inside .venv/bin are absolute paths
+# baked at creation time, so renaming or moving the project root
+# leaves the venv pointing at a non-existent interpreter. Recreate it
+# if so, otherwise every console-script entry point (pip, pyinstaller,
+# etc.) fails with "bad interpreter: No such file or directory".
+VENV_DIR="$DAEMON_DIR/.venv"
+VENV_BIN="$VENV_DIR/bin"
+VENV_PY="$VENV_BIN/python3.13"
+
+venv_is_stale() {
+    [[ ! -x "$VENV_PY" ]] && return 0
+    # The interpreter inside the venv is a symlink/shim back to the
+    # real python3.13. If the real python3.13 isn't reachable from
+    # within the venv, ANY install (pip, pyinstaller) will fail.
+    "$VENV_PY" -c 'import sys' >/dev/null 2>&1 || return 0
+    return 1
+}
+
+if [[ ! -d "$VENV_DIR" ]] || venv_is_stale; then
+    echo "==> (re)creating venv (Python 3.13)"
+    rm -rf "$VENV_DIR"
+    python3.13 -m venv "$VENV_DIR"
 fi
 
-# shellcheck source=/dev/null
-source .venv/bin/activate
+if ! "$VENV_PY" -m pip --version >/dev/null 2>&1; then
+    echo "==> bootstrapping pip inside venv"
+    "$VENV_PY" -m ensurepip --upgrade
+fi
 
 echo "==> installing daemon + build deps"
-pip install --quiet --upgrade pip
-pip install --quiet -e ".[dev]"
+"$VENV_PY" -m pip install --quiet --upgrade pip
+"$VENV_PY" -m pip install --quiet -e ".[dev]"
 
 # macOS Sequoia auto-flags some files in ~/Documents as UF_HIDDEN. Python 3.13's
 # site.py refuses to load hidden .pth files, which silently breaks editable
@@ -45,7 +66,12 @@ echo "==> cleaning previous build"
 rm -rf "$BUILD_DIR" "$DIST_DIR"
 
 echo "==> running PyInstaller"
-pyinstaller \
+# Invoke via `python -m PyInstaller` instead of the pyinstaller
+# console script — the script's shebang is an absolute path baked
+# at install time, which breaks if the project ever gets renamed
+# or moved. `python -m` uses whichever interpreter we explicitly
+# call, so it's path-rename-safe.
+"$VENV_PY" -m PyInstaller \
     --noconfirm \
     --clean \
     --name lociighostd \
@@ -54,16 +80,22 @@ pyinstaller \
     --distpath "$DIST_DIR" \
     --workpath "$BUILD_DIR" \
     --hidden-import lociighostd \
+    --collect-submodules lociighostd \
+    --add-data "lociighostd/static:lociighostd/static" \
     --exclude-module tkinter \
     --exclude-module test \
     --exclude-module unittest \
-    --exclude-module pydoc \
     --exclude-module xmlrpc \
-    --exclude-module pdb \
-    --exclude-module IPython \
     --exclude-module matplotlib \
     --exclude-module numpy.tests \
-    lociighostd/__main__.py
+    lociighostd_entry.py
+    # NOTE: IPython and pydoc are NOT excluded any more.
+    # pymobiledevice3/utils.py does an unconditional top-level
+    # `import IPython` (since pymobiledevice3 ~v4.x), and IPython
+    # in turn imports pydoc at module load. Excluding either makes
+    # the daemon crash on the first device call with
+    # `ModuleNotFoundError`. Cost is ~4 MB on the bundle — unavoidable
+    # until upstream makes those imports lazy.
 
 echo
 echo "==> built: $DIST_DIR/lociighostd/lociighostd"

@@ -83,6 +83,24 @@ struct PhoneControlSheet: View {
                     .help(LocalizedStringKey(
                         "Generate a fresh PIN + token. Any phone tab still using the old PIN gets logged out."
                     ))
+
+                    // Hard kill switch — kicks every authenticated
+                    // phone tab AND rotates the PIN so they can't
+                    // reconnect with the old credentials. Always
+                    // visible (not gated on phoneSessionActive)
+                    // so the user can pre-emptively clear a
+                    // forgotten phone tab sitting on someone
+                    // else's screen.
+                    Button(role: .destructive) {
+                        Task { await state.forcePhoneLogout() }
+                    } label: {
+                        Label("Sign out all phones",
+                              systemImage: "person.crop.circle.badge.xmark")
+                    }
+                    .tint(.red)
+                    .help(LocalizedStringKey(
+                        "Sign every paired phone out and rotate the PIN."
+                    ))
                 }
                 Spacer()
                 Button("Close") { dismiss() }

@@ -53,6 +53,17 @@ for lproj in "$SOURCE_RES"/*.lproj; do
     fi
 done
 
+# App icon. The .icns is produced by Scripts/generate-icon.swift
+# from the master design at Resources/AppIcon-Master.pdf. If it's
+# missing, regenerate it on the fly so a fresh checkout still
+# produces an iconified .app without needing two scripts in order.
+ICNS_SRC="$SOURCE_RES/AppIcon.icns"
+if [[ ! -f "$ICNS_SRC" ]]; then
+    echo "==> AppIcon.icns not found — regenerating from master"
+    (cd "$ROOT" && swift Scripts/generate-icon.swift)
+fi
+cp "$ICNS_SRC" "$OUT/Contents/Resources/AppIcon.icns"
+
 cat >"$OUT/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -67,6 +78,8 @@ cat >"$OUT/Contents/Info.plist" <<'PLIST'
     </array>
     <key>CFBundleExecutable</key>
     <string>LociiGhost</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
     <string>com.lociighost.app</string>
     <key>CFBundleInfoDictionaryVersion</key>
@@ -78,9 +91,11 @@ cat >"$OUT/Contents/Info.plist" <<'PLIST'
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>1.9.4</string>
     <key>CFBundleVersion</key>
     <string>1</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>Copyright © 2026 YCH81 (Jeff Hu). Includes LocWarp © 2026 keezxc1223, used under MIT License — see LICENSE for full text.</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>NSHighResolutionCapable</key>
@@ -99,8 +114,130 @@ PLIST
 
 printf 'APPL????' >"$OUT/Contents/PkgInfo"
 
-# Ad-hoc sign so Gatekeeper at least understands what this is.
-codesign --sign - --force --deep --options runtime "$OUT" 2>/dev/null || true
+# ── Signing pipeline ──────────────────────────────────────────────
+#
+# Two modes, selected by environment variables. Defaults (nothing
+# set) keep the historical ad-hoc behaviour so day-to-day local
+# builds aren't disturbed.
+#
+#   LOCIIGHOST_SIGN_IDENTITY
+#       Full Developer ID Application identity string, e.g.
+#         "Developer ID Application: Jeff Hu (ABCDEFGHIJ)"
+#       Trigger for Hardened-Runtime + timestamp + entitlements
+#       signing. The .app emerging from this path is Gatekeeper-
+#       acceptable on someone else's Mac without `xattr -d
+#       com.apple.quarantine` gymnastics.
+#
+#   LOCIIGHOST_NOTARY_PROFILE
+#       Name of a `notarytool store-credentials` keychain profile.
+#       When BOTH this AND LOCIIGHOST_SIGN_IDENTITY are set, the
+#       signed .app is zipped, uploaded to Apple's notarisation
+#       service, and the resulting ticket is stapled back onto it.
+#       Once stapled, the .app launches on any Mac with full
+#       Gatekeeper trust, including offline (the stapled ticket
+#       removes the network check).
+#
+# First-time setup (run once on your dev Mac):
+#
+#   xcrun notarytool store-credentials LociiGhost \
+#       --apple-id you@example.com \
+#       --team-id  ABCDEFGHIJ \
+#       --password "app-specific-password-from-appleid.apple.com"
+#
+# Then for every release build:
+#
+#   export LOCIIGHOST_SIGN_IDENTITY="Developer ID Application: Jeff Hu (ABCDEFGHIJ)"
+#   export LOCIIGHOST_NOTARY_PROFILE="LociiGhost"
+#   CONFIG=release ./Scripts/package-app.sh
+
+SIGN_IDENTITY="${LOCIIGHOST_SIGN_IDENTITY:-}"
+NOTARY_PROFILE="${LOCIIGHOST_NOTARY_PROFILE:-}"
+ENTITLEMENTS="$ROOT/Scripts/LociiGhost.entitlements"
+
+if [[ -n "$SIGN_IDENTITY" ]]; then
+    echo "==> Developer ID signing: $SIGN_IDENTITY"
+
+    if [[ ! -f "$ENTITLEMENTS" ]]; then
+        echo "    entitlements file missing at $ENTITLEMENTS" >&2
+        exit 1
+    fi
+
+    # Inside-out signing: every nested signable item (SwiftPM
+    # resource bundle, main executable) gets signed BEFORE the
+    # outer .app wrapper. codesign rejects nested-already-signed
+    # contents otherwise, and notarisation rejects unsigned
+    # nested binaries.
+    if [[ -d "$OUT/Contents/MacOS/LociiGhost_LociiGhost.bundle" ]]; then
+        codesign --force --options runtime --timestamp \
+            --sign "$SIGN_IDENTITY" \
+            "$OUT/Contents/MacOS/LociiGhost_LociiGhost.bundle"
+    fi
+
+    codesign --force --options runtime --timestamp \
+        --entitlements "$ENTITLEMENTS" \
+        --sign "$SIGN_IDENTITY" \
+        "$OUT/Contents/MacOS/LociiGhost"
+
+    codesign --force --options runtime --timestamp \
+        --entitlements "$ENTITLEMENTS" \
+        --sign "$SIGN_IDENTITY" \
+        "$OUT"
+
+    echo "==> verifying signature"
+    codesign --verify --deep --strict --verbose=2 "$OUT"
+    # spctl is the Gatekeeper assess — pre-notarisation it'll say
+    # "rejected: source=Unnotarized Developer ID", which is fine.
+    # Post-staple it says "accepted: source=Notarized Developer ID".
+    spctl --assess --type execute --verbose "$OUT" 2>&1 \
+        | sed 's/^/    /' || true
+
+    if [[ -n "$NOTARY_PROFILE" ]]; then
+        echo "==> notarising via keychain profile: $NOTARY_PROFILE"
+        ZIP="$ROOT/dist/LociiGhost.zip"
+        rm -f "$ZIP"
+        # ditto -k produces an Apple-compatible zip that
+        # preserves the .app's extended attributes; plain `zip`
+        # corrupts code signatures.
+        /usr/bin/ditto -c -k --keepParent "$OUT" "$ZIP"
+
+        # --wait blocks until Apple's servers return a verdict
+        # (usually under a minute, occasionally up to 30 min if
+        # they're backlogged). Pipe through `tee` so the log
+        # ends up in stdout for CI.
+        xcrun notarytool submit "$ZIP" \
+            --keychain-profile "$NOTARY_PROFILE" \
+            --wait \
+            | tee "$ROOT/dist/notarytool.log"
+
+        echo "==> stapling notarisation ticket"
+        xcrun stapler staple "$OUT"
+
+        echo "==> post-staple Gatekeeper check"
+        spctl --assess --type execute --verbose "$OUT" 2>&1 \
+            | sed 's/^/    /' || true
+
+        rm -f "$ZIP"
+        echo "==> notarised + stapled — ready for distribution"
+    else
+        echo "==> signed with Developer ID, but no notary profile set"
+        echo "    (skipping notarisation — .app will work locally but"
+        echo "     show 'unverified developer' on other Macs)"
+        echo
+        echo "    To enable notarisation:"
+        echo "      1) xcrun notarytool store-credentials LociiGhost \\"
+        echo "             --apple-id you@example.com \\"
+        echo "             --team-id ABCDEFGHIJ \\"
+        echo "             --password '<app-specific-password>'"
+        echo "      2) export LOCIIGHOST_NOTARY_PROFILE=LociiGhost"
+        echo "      3) re-run this script"
+    fi
+else
+    # Local-development ad-hoc fallback. No certificate needed,
+    # but the .app only opens on this Mac (Gatekeeper warns
+    # everywhere else).
+    echo "==> ad-hoc signing (LOCIIGHOST_SIGN_IDENTITY not set — local-only build)"
+    codesign --sign - --force --deep --options runtime "$OUT" 2>/dev/null || true
+fi
 
 echo "==> packaged: $OUT"
 echo "==> open with: open $OUT"

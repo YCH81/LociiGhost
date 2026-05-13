@@ -50,9 +50,9 @@
     outline: none;
     margin-bottom: 14px;
   }
-  #pin-input:focus { border-color: #0a84ff; }
+  #pin-input:focus { border-color: #7E9472; }
   #pin-submit {
-    background: #0a84ff; color: #fff;
+    background: #7E9472; color: #fff;
     border: none; border-radius: 12px;
     padding: 14px 38px;
     font-size: 17px; font-weight: 600;
@@ -97,7 +97,7 @@
     right: 18px; bottom: max(env(safe-area-inset-bottom), 24px);
     width: 60px; height: 60px;
     border-radius: 30px;
-    background: #0a84ff; color: #fff;
+    background: #7E9472; color: #fff;
     border: none;
     font-size: 30px;
     box-shadow: 0 4px 16px rgba(0,0,0,0.4);
@@ -159,7 +159,7 @@
     outline: none;
     margin-bottom: 10px;
   }
-  .sheet input:focus { border-color: #0a84ff; }
+  .sheet input:focus { border-color: #7E9472; }
   .sheet .row { display: flex; gap: 8px; margin-bottom: 10px; }
   .sheet .row input { margin-bottom: 0; }
   .sheet .btn-row {
@@ -171,7 +171,33 @@
     padding: 12px 20px; font-size: 15px; font-weight: 600;
   }
   .sheet .btn-row .ghost   { background: #2a2a2a; color: #fff; }
-  .sheet .btn-row .primary { background: #0a84ff; color: #fff; }
+  .sheet .btn-row .primary { background: #7E9472; color: #fff; }
+
+  /* Profile / speed picker tile — big, finger-friendly, glows
+     accent when selected. Used by the navigate sheet AND the
+     joystick speed sheet (so both look identical). */
+  .sheet .profile-row {
+    display: block;
+    width: 100%;
+    padding: 14px 16px;
+    margin-bottom: 8px;
+    background: #2a2a2a;
+    color: #fff;
+    border: 2px solid transparent;
+    border-radius: 10px;
+    font-size: 16px;
+    text-align: left;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color 0.12s ease, border-color 0.12s ease;
+  }
+  .sheet .profile-row:active { background: #3a3a3a; }
+  .sheet .profile-row.selected {
+    background: rgba(10,132,255,0.18);
+    border-color: #7E9472;
+    color: #7E9472;
+    font-weight: 600;
+  }
 
   /* coord input hint */
   .coord-hint, .hint {
@@ -198,7 +224,7 @@
     position: absolute;
     width: 56px; height: 56px;
     border-radius: 50%;
-    background: #0a84ff;
+    background: #7E9472;
     border: 3px solid #fff;
     box-shadow: 0 4px 12px rgba(0,0,0,0.5);
     top: 50%; left: 50%;
@@ -230,7 +256,7 @@
   }
   .random-value { color: #fff; font-weight: 600; font-size: 15px; }
   #random-radius {
-    width: 100%; margin-bottom: 8px; accent-color: #0a84ff;
+    width: 100%; margin-bottom: 8px; accent-color: #7E9472;
   }
 
   .geocode-results { list-style: none; max-height: 50vh; overflow-y: auto; }
@@ -264,6 +290,267 @@
   }
   #toast.show { opacity: 1; }
 
+  /* Exit button — top-left chrome. Tap → confirm sheet →
+     /api/phone/logout. Visible only after PIN auth (parent
+     #app-screen.active controls that). */
+  #exit-btn {
+    position: absolute;
+    left: 14px;
+    top: max(env(safe-area-inset-top), 14px);
+    height: 44px;
+    padding: 0 14px;
+    border-radius: 22px;
+    background: rgba(28,28,30,0.92);
+    color: #ff453a;
+    border: none;
+    font-size: 13px;
+    font-weight: 600;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  /* Settings button — sits directly below the layer button.
+     Same dark-blur disc; opens a small menu of preferences
+     (currently just UI mode). */
+  #settings-btn {
+    position: absolute;
+    right: 14px;
+    top: calc(max(env(safe-area-inset-top), 14px) + 52px);
+    width: 44px; height: 44px;
+    border-radius: 22px;
+    background: rgba(28,28,30,0.92);
+    color: #7E9472;
+    border: none;
+    font-size: 20px;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #settings-menu {
+    position: absolute;
+    right: 14px;
+    top: calc(max(env(safe-area-inset-top), 14px) + 104px);
+    min-width: 200px;
+    background: rgba(28,28,30,0.95);
+    border-radius: 12px;
+    padding: 6px;
+    z-index: 1000;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.55);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    display: none;
+    flex-direction: column;
+    gap: 2px;
+  }
+  #settings-menu.open { display: flex; }
+  #settings-menu .settings-section {
+    color: #8e8e93;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 8px 12px 4px 12px;
+  }
+  #settings-menu .settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    color: #fff;
+    font-size: 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #settings-menu .settings-row:active { background: rgba(255,255,255,0.08); }
+  #settings-menu .settings-row.active { color: #7E9472; }
+  #settings-menu .settings-row .check { font-size: 13px; }
+
+  /* Layer picker — small floating button top-right, taps to
+     reveal a tiny menu of available tile layers. Visual style
+     matches the recenter button so the two read as a pair. */
+  #layer-btn {
+    position: absolute;
+    right: 14px;
+    top: max(env(safe-area-inset-top), 14px);
+    width: 44px; height: 44px;
+    border-radius: 22px;
+    background: rgba(28,28,30,0.92);
+    color: #7E9472;
+    border: none;
+    font-size: 20px;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #layer-menu {
+    position: absolute;
+    right: 14px;
+    top: calc(max(env(safe-area-inset-top), 14px) + 52px);
+    min-width: 180px;
+    background: rgba(28,28,30,0.95);
+    border-radius: 12px;
+    padding: 6px;
+    z-index: 1000;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.55);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    display: none;
+    flex-direction: column;
+    gap: 2px;
+  }
+  #layer-menu.open { display: flex; }
+  #layer-menu .layer-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    color: #fff;
+    font-size: 15px;
+    border-radius: 8px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #layer-menu .layer-row:active { background: rgba(255,255,255,0.08); }
+  #layer-menu .layer-row.active { color: #7E9472; }
+  #layer-menu .layer-row .check { font-size: 13px; }
+
+  /* ── v2 UI: side toolbars + persistent joystick ──────────
+     Hidden in v1 (the original FAB-based UI). Shown when
+     <body> has class `ui-v2`. Both UIs share the same
+     handleAction() dispatcher under the hood. */
+  #v2-left, #v2-right {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 999;
+  }
+  #v2-left  { left: 14px; }
+  #v2-right { right: 14px; }
+  body.ui-v2 #v2-left,
+  body.ui-v2 #v2-right { display: flex; }
+  /* Hide v1 elements when v2 is active */
+  body.ui-v2 #fab,
+  body.ui-v2 #actions { display: none !important; }
+
+  .v2-btn {
+    min-width: 56px; height: 56px;
+    padding: 0 10px;
+    border-radius: 28px;
+    background: rgba(28,28,30,0.85);
+    color: #7E9472;
+    border: none;
+    font-size: 22px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .v2-btn:active { transform: scale(0.92); }
+  .v2-btn.destructive { color: #ff453a; }
+  /* Multi-stop mode pin button: glows orange when active so the
+     user knows their next map tap will add a stop, not drop
+     the destination-pin. */
+  .v2-btn.mode-active {
+    background: rgba(255,159,10,0.30);
+    color: #ff9f0a;
+    box-shadow: 0 0 0 2px rgba(255,159,10,0.6), 0 4px 12px rgba(0,0,0,0.5);
+  }
+  .v2-btn.mode-active .v2-lbl { color: #ff9f0a; }
+  /* Small label after the icon — gives the v2 buttons readable
+     names without ballooning their size on narrow phones. */
+  .v2-btn .v2-lbl {
+    font-size: 12px;
+    font-weight: 500;
+    color: #fff;
+  }
+  .v2-btn.destructive .v2-lbl { color: #ff453a; }
+
+  /* Floating joystick — only appears AFTER user taps the
+     joystick button and presses Start in the speed sheet.
+     Visible in both v1 and v2 once active. */
+  #floating-joystick {
+    position: absolute;
+    right: 80px;
+    bottom: max(env(safe-area-inset-bottom), 30px);
+    width: 140px; height: 140px;
+    border-radius: 50%;
+    background: rgba(28,28,30,0.35);
+    border: 2px solid rgba(255,255,255,0.35);
+    z-index: 999;
+    touch-action: none;
+    display: none;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+  }
+  #floating-joystick.show { display: block; }
+  #floating-joystick-knob {
+    position: absolute;
+    width: 50px; height: 50px;
+    border-radius: 50%;
+    background: rgba(10,132,255,0.92);
+    border: 3px solid rgba(255,255,255,0.9);
+    left: 45px; top: 45px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    transition: transform 0.05s ease-out;
+  }
+  #floating-joystick-close {
+    position: absolute;
+    top: -10px; right: -10px;
+    width: 28px; height: 28px;
+    border-radius: 14px;
+    background: rgba(255,69,58,0.95);
+    color: #fff;
+    border: 2px solid rgba(255,255,255,0.85);
+    font-size: 14px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+  }
+
+  /* Pause button — sits directly above the recenter button.
+     Only visible while a navigation/random-walk session is
+     active (toggled via the `.show` class from JS that watches
+     the /state poll). Tap toggles pause/resume. */
+  #pause-btn {
+    position: absolute;
+    left: 14px;
+    bottom: calc(max(env(safe-area-inset-bottom), 24px) + 58px);
+    width: 50px; height: 50px;
+    border-radius: 25px;
+    background: rgba(28,28,30,0.92);
+    color: #ff9f0a;
+    border: none;
+    font-size: 22px;
+    font-weight: 600;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    display: none;
+  }
+  #pause-btn.show { display: block; }
+  #pause-btn.paused { color: #30d158; }
+
   /* recenter floating button — Apple-Maps-style "snap to me" */
   #recenter-btn {
     position: absolute;
@@ -272,7 +559,7 @@
     width: 50px; height: 50px;
     border-radius: 25px;
     background: rgba(28,28,30,0.92);
-    color: #0a84ff;
+    color: #7E9472;
     border: none;
     font-size: 26px;
     font-weight: 600;
@@ -280,10 +567,146 @@
     box-shadow: 0 4px 12px rgba(0,0,0,0.5);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
-    display: none;
+    /* Always visible — used to be gated on "is the iPhone
+       reporting a position right now?", which caused the button
+       to disappear during disconnect, idle, or any moment the
+       daemon hadn't yet sent a position_update. The user
+       reported losing track of where their pin was. Now: button
+       is always there; the click handler does a best-effort
+       recenter based on whatever target is available. */
   }
-  #recenter-btn.show { display: block; }
-  #recenter-btn.following { color: #fff; background: #0a84ff; }
+  #recenter-btn.following { color: #fff; background: #7E9472; }
+  /* Slide out of the way when the bottom action strip opens,
+     so the recenter button never sits behind the first action
+     card (which used to make it look "missing" to users). */
+  #recenter-btn.hidden-by-actions { display: none; }
+
+  /* Device-picker lockout — appears as a full-screen modal
+     when there are 2+ connected iPhones AND this tab hasn't
+     picked one yet. Greys out everything underneath and only
+     dismisses when the user taps a device. v1.8 addition. */
+  #device-picker {
+    position: absolute;
+    inset: 0;
+    z-index: 3000;
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-end;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  #device-picker.show { display: flex; }
+  #device-picker .picker-sheet {
+    background: #1a1a1a;
+    color: #fff;
+    border-radius: 18px 18px 0 0;
+    padding: 22px 18px max(env(safe-area-inset-bottom), 22px) 18px;
+    box-shadow: 0 -8px 24px rgba(0,0,0,0.55);
+  }
+  #device-picker h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  #device-picker .picker-hint {
+    color: #aaa;
+    font-size: 13px;
+    margin-bottom: 14px;
+    line-height: 1.4;
+  }
+  #device-picker .picker-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    background: #2a2a2a;
+    color: #fff;
+    border: 2px solid transparent;
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #device-picker .picker-row:active {
+    background: rgba(10,132,255,0.20);
+    border-color: #7E9472;
+  }
+  #device-picker .picker-row .picker-name {
+    font-size: 16px;
+    font-weight: 600;
+  }
+  #device-picker .picker-row .picker-meta {
+    font-size: 12px;
+    color: #aaa;
+    margin-top: 2px;
+  }
+  #device-picker .picker-row .picker-arrow {
+    font-size: 22px;
+    color: #7E9472;
+  }
+  #device-picker .picker-empty {
+    color: #aaa;
+    font-size: 14px;
+    padding: 14px 0;
+  }
+
+  /* Multi-stop status pill — floats top-centre when there are
+     staged stops. Shows count + "Go" / "Clear" buttons. */
+  #multistop-bar {
+    position: absolute;
+    top: max(env(safe-area-inset-top), 14px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(28,28,30,0.92);
+    border-radius: 22px;
+    padding: 6px 10px 6px 14px;
+    color: #fff;
+    font-size: 14px;
+    z-index: 1000;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+  #multistop-bar.show { display: flex; }
+  #multistop-bar .multistop-count { font-weight: 600; }
+  #multistop-bar button {
+    border: none;
+    border-radius: 14px;
+    padding: 5px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #multistop-bar .ms-go    { background: #7E9472; color: #fff; }
+  #multistop-bar .ms-clear { background: #3a3a3c; color: #fff; }
+
+  /* Suppress iOS Safari's native long-press menu on the map.
+     Without these, holding a finger down for 3 s would pop the
+     "copy / share" callout — fighting our multi-stop intent. */
+  #map, #map * {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Stop markers — red numbered circles, same family as Mac. */
+  .stop-pin {
+    width: 28px; height: 28px;
+    background: #ff3b30;
+    border: 3px solid #fff;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  }
 
   /* selected pin (destination) */
   .selected-pin {
@@ -296,7 +719,7 @@
   /* iPhone's current simulated location dot */
   .current-pin {
     width: 16px; height: 16px;
-    background: #0a84ff;
+    background: #7E9472;
     border: 3px solid #fff;
     border-radius: 50%;
     box-shadow: 0 0 0 6px rgba(10,132,255,0.25),
@@ -320,6 +743,63 @@
     max-width: calc(100vw - 28px);
   }
   .overlay.open { display: block; }
+
+  /* While the joystick overlay is open in v2, hide every
+     other floating control so the user has a clear, distraction-
+     free view of the map + their joystick. Toggled by JS
+     adding/removing `joystick-busy` on <body> in
+     openJoystick / closeJoystick. */
+  body.ui-v2.joystick-busy #v2-left,
+  body.ui-v2.joystick-busy #v2-right,
+  body.ui-v2.joystick-busy #multistop-bar,
+  body.ui-v2.joystick-busy #layer-btn,
+  body.ui-v2.joystick-busy #layer-menu,
+  body.ui-v2.joystick-busy #settings-btn,
+  body.ui-v2.joystick-busy #settings-menu,
+  body.ui-v2.joystick-busy #exit-btn,
+  body.ui-v2.joystick-busy #recenter-btn,
+  body.ui-v2.joystick-busy #pause-btn,
+  body.ui-v2.joystick-busy #fab,
+  body.ui-v2.joystick-busy #actions {
+    display: none !important;
+  }
+
+  /* Joystick overlay specifically — FULLY transparent so the
+     map (and the iPhone's moving puck) is 100% visible behind.
+     Per user request: no blur, no dark fill. Text + buttons
+     get a strong text-shadow so they stay readable on top of
+     arbitrary map content (cities, dark satellite, etc.). */
+  #joystick-overlay {
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border: none;
+    box-shadow: none;
+  }
+  /* Pad itself = invisible disc with just a dashed outline so
+     the user can see the active area without obscuring the map. */
+  #joystick-overlay #joystick-pad {
+    background: transparent;
+    border: 2px dashed rgba(255,255,255,0.55);
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.4);  /* outer halo for daylight tiles */
+  }
+  /* Text legibility — give every label a soft black shadow so
+     it survives both light and dark map backgrounds. */
+  #joystick-overlay .overlay-title,
+  #joystick-overlay #joystick-status {
+    text-shadow: 0 1px 2px rgba(0,0,0,0.85), 0 0 6px rgba(0,0,0,0.65);
+    color: #fff;
+  }
+  /* Mode picker buttons → translucent pills, halo for contrast. */
+  #joystick-overlay .mode-btn {
+    background: rgba(28,28,30,0.55);
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.5);
+  }
+  /* Stop button keeps its red so the user always sees the kill switch. */
+  #joystick-overlay .overlay-stop {
+    background: rgba(255,69,58,0.92);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  }
   .overlay.random { left: 14px; }     /* full-width on small screens */
   .overlay-header {
     display: flex; justify-content: space-between; align-items: center;
@@ -343,7 +823,7 @@
   }
   .overlay-primary {
     width: 100%;
-    background: #0a84ff; color: #fff;
+    background: #7E9472; color: #fff;
     border: none; border-radius: 10px;
     padding: 12px;
     font-size: 15px; font-weight: 600;
@@ -367,7 +847,7 @@
     font-size: 18px;
   }
   .mode-btn.active {
-    border-color: #0a84ff;
+    border-color: #7E9472;
     background: rgba(10,132,255,0.18);
   }
 
@@ -384,7 +864,7 @@
     text-align: center;
   }
   .nav-mode.active {
-    border-color: #0a84ff;
+    border-color: #7E9472;
     background: rgba(10,132,255,0.18);
   }
   .nav-ico { font-size: 24px; display: block; margin-bottom: 4px; }
@@ -402,6 +882,13 @@
          placeholder="------">
   <button id="pin-submit" disabled>Connect</button>
   <p id="pin-error"></p>
+  <p style="margin-top:24px;font-size:11px;line-height:1.4;color:#888;text-align:center;">
+    Based on
+    <a href="https://github.com/keezxc1223/locwarp"
+       style="color:#888;text-decoration:underline;"
+       target="_blank" rel="noopener">LocWarp</a>
+    by keezxc1223 (MIT).
+  </p>
 </div>
 
 <!-- Map app -->
@@ -413,6 +900,69 @@
 
   <div id="map"></div>
 
+  <!-- Exit button — top-left, signs the phone out and hands
+       control back to the Mac. Mac UI listens for the
+       event.phone_session broadcast and restores its controls. -->
+  <!-- Device picker — full-screen modal that appears when
+       this tab has 2+ connected iPhones to choose from and
+       hasn't picked one yet. Cannot be dismissed without
+       picking. Single-device case auto-skips. -->
+  <div id="device-picker">
+    <div class="picker-sheet">
+      <h2 data-i18n="picker.title">Pick an iPhone</h2>
+      <p class="picker-hint" data-i18n="picker.hint">Choose which iPhone this phone tab controls. Tap one to continue.</p>
+      <div id="device-picker-list"></div>
+    </div>
+  </div>
+
+  <!-- Multi-stop staging bar — appears when user has long-
+       pressed 1+ map points. Lets them launch the trip or
+       clear the list. -->
+  <div id="multistop-bar">
+    <span class="multistop-count" id="multistop-count">0</span>
+    <span data-i18n="stops">stops</span>
+    <button class="ms-go" id="multistop-go" data-i18n="nav-start">Go</button>
+    <button class="ms-clear" id="multistop-clear" data-i18n="clear">Clear</button>
+  </div>
+
+  <button id="exit-btn" aria-label="Exit">⎋ <span data-i18n="exit">Exit</span></button>
+  <button id="layer-btn" aria-label="Map layer">⊞</button>
+  <div id="layer-menu" role="menu"></div>
+  <button id="settings-btn" aria-label="Settings">⚙</button>
+  <div id="settings-menu" role="menu"></div>
+
+  <!-- v2 UI: left toolbar (Search / Coord / Navigate / Multi / Restore) -->
+  <div id="v2-left">
+    <button class="v2-btn" data-v2-kind="search"   aria-label="Search">🔍<span class="v2-lbl" data-i18n="search">Search</span></button>
+    <button class="v2-btn" data-v2-kind="coord"    aria-label="Coord">🎯<span class="v2-lbl" data-i18n="coord">Coord</span></button>
+    <button class="v2-btn" data-v2-kind="navigate" aria-label="Navigate">🧭<span class="v2-lbl" data-i18n="navigate">Navigate</span></button>
+    <button class="v2-btn" data-v2-kind="multistop" aria-label="Multi-stop" id="v2-multistop-btn">📍<span class="v2-lbl" data-i18n="multistop">Multi-stop</span></button>
+    <button class="v2-btn" data-v2-kind="restore"  aria-label="Restore">↩︎<span class="v2-lbl" data-i18n="restore">Restore</span></button>
+  </div>
+  <!-- v2 UI: right toolbar (Teleport / Joystick / Random / Stop) -->
+  <div id="v2-right">
+    <button class="v2-btn" data-v2-kind="teleport"     aria-label="Teleport">✨<span class="v2-lbl" data-i18n="teleport">Teleport</span></button>
+    <button class="v2-btn" data-v2-kind="joystick-v2"  aria-label="Joystick">🕹️<span class="v2-lbl" data-i18n="joystick">Joystick</span></button>
+    <button class="v2-btn" data-v2-kind="random"       aria-label="Random walk">🌀<span class="v2-lbl" data-i18n="random">Random</span></button>
+    <button class="v2-btn destructive" data-v2-kind="stop" aria-label="Stop">⏹<span class="v2-lbl" data-i18n="stop">Stop</span></button>
+  </div>
+  <!-- (Floating joystick widget removed in v1.7.2 — joystick
+       now uses the original overlay-sheet flow for reliability.) -->
+
+  <!-- Speed-picker sheet for the new joystick flow -->
+  <div id="joystick-speed-sheet" class="sheet-backdrop">
+    <div class="sheet">
+      <h2 data-i18n="joystick-speed-title">Joystick speed</h2>
+      <p class="hint" data-i18n="joystick-speed-hint">Pick the top speed when the knob is fully pushed.</p>
+      <div id="joystick-speed-options"></div>
+      <div class="btn-row">
+        <button class="ghost" id="joystick-speed-cancel" data-i18n="cancel">Cancel</button>
+        <button class="primary" id="joystick-speed-start" data-i18n="nav-start">Start</button>
+      </div>
+    </div>
+  </div>
+
+  <button id="pause-btn" aria-label="Pause / Resume">⏸</button>
   <button id="recenter-btn" aria-label="Recenter">⊙</button>
   <button id="fab" aria-label="Actions">＋</button>
   <div id="actions">
@@ -439,6 +989,9 @@
     </div>
     <div class="btn" data-kind="restore">
       <span class="ico">↩︎</span><span class="lbl" data-i18n="restore">Restore</span>
+    </div>
+    <div class="btn" data-kind="multistop">
+      <span class="ico">📍</span><span class="lbl" data-i18n="multistop">Multi-stop</span>
     </div>
   </div>
 
@@ -557,6 +1110,7 @@
       'connect': '連線',
       'bad_pin': 'PIN 不正確',
       'connecting': '連線中...',
+      'session_expired': '連線逾時，請再次輸入 PIN',
       'teleport': '瞬移',
       'navigate': '導航',
       'search': '搜尋',
@@ -603,12 +1157,47 @@
       'cycling': '騎腳踏車',
       'driving': '開車',
       'navigate_no_origin': '請先 Teleport 到一個位置作為起點',
+      'toast.no_location': '尚未取得位置 — 請先瞬移或點地圖選一個點',
+      'settings.title': '設定',
+      'settings.ui_mode': '介面',
+      'settings.ui_v1': '浮動 FAB(舊版)',
+      'settings.ui_v2': '兩側工具列 + 搖桿',
+      'joystick-speed-title': '搖桿移動速度',
+      'joystick-speed-hint': '選擇搖桿推到底時的最高速度',
+      'speed.walk_slow': '慢走 (3 km/h)',
+      'speed.walk':      '走路 (5 km/h)',
+      'speed.jog':       '快走/慢跑 (8 km/h)',
+      'speed.run':       '跑步 (12 km/h)',
+      'speed.bike':      '單車 (19 km/h)',
+      'speed.car':       '開車 (40 km/h)',
+      'exit': '退出',
+      'exit.confirm': '確定要登出嗎?控制權會回到電腦端。',
+      'exit.confirm_yes': '確認登出',
+      'exit.locked_out': '已被電腦端強制登出',
+      'stops': '停靠點',
+      'clear': '清除',
+      'multistop.added': '已加入停靠點 %1',
+      'multistop.empty': '長按地圖 3 秒可加入停靠點',
+      'multistop': '多點',
+      'multistop.hint': '點地圖加入停靠點 — 按 Go 開始巡航,或再按一次「多點」結束',
+      'multistop.no_origin': '請先瞬移一次,做為起點',
+      'settings.target_device': '操作裝置',
+      'settings.target_auto': '自動 (第一台已連線)',
+      'settings.target_none_connected': '目前沒有已連線的裝置',
+      'picker.title': '尚未選擇手機',
+      'picker.hint': '電腦連線了多台 iPhone,請選擇這個手機端要操作哪一台。',
+      'picker.no_devices': '目前沒有已連線的 iPhone',
+      'settings.sync_mode': '同步模式(Mac + 手機同時操作)',
+      'settings.sync_on':   '已開啟',
+      'settings.sync_off':  '未開啟',
+      'sync.confirm': '兩端同時操作可能造成定位或功能不同步。若發生,請在 Mac 跟手機兩邊都按「還原」後重新開始。確定要開啟同步模式?',
     },
     'en': {
       'subtitle': 'Enter the 6-digit PIN shown on the Mac',
       'connect': 'Connect',
       'bad_pin': 'Wrong PIN',
       'connecting': 'Connecting...',
+      'session_expired': 'Session timed out — re-enter your PIN',
       'teleport': 'Teleport',
       'navigate': 'Navigate',
       'search': 'Search',
@@ -655,6 +1244,40 @@
       'cycling': 'Cycling',
       'driving': 'Driving',
       'navigate_no_origin': 'Teleport to a starting position first',
+      'toast.no_location': 'No position yet — teleport or tap the map first',
+      'settings.title': 'Settings',
+      'settings.ui_mode': 'UI mode',
+      'settings.ui_v1': 'Floating FAB (classic)',
+      'settings.ui_v2': 'Side toolbars + joystick',
+      'joystick-speed-title': 'Joystick speed',
+      'joystick-speed-hint': 'Pick the top speed when the knob is fully pushed.',
+      'speed.walk_slow': 'Slow walk (3 km/h)',
+      'speed.walk':      'Walk (5 km/h)',
+      'speed.jog':       'Jog (8 km/h)',
+      'speed.run':       'Run (12 km/h)',
+      'speed.bike':      'Bike (19 km/h)',
+      'speed.car':       'Car (40 km/h)',
+      'exit': 'Exit',
+      'exit.confirm': 'Sign out and hand control back to the Mac?',
+      'exit.confirm_yes': 'Sign out',
+      'exit.locked_out': 'Signed out by the Mac',
+      'stops': 'stops',
+      'clear': 'Clear',
+      'multistop.added': 'Stop %1 added',
+      'multistop.empty': 'Long-press the map for 3 s to add a stop',
+      'multistop': 'Multi-stop',
+      'multistop.hint': 'Tap the map to add stops — hit Go to run them, or tap Multi-stop again to exit',
+      'multistop.no_origin': 'Teleport once first to set a starting point',
+      'settings.target_device': 'Target device',
+      'settings.target_auto': 'Auto (first connected)',
+      'settings.target_none_connected': 'No connected devices',
+      'picker.title': 'Pick an iPhone',
+      'picker.hint': 'The Mac has multiple iPhones connected. Choose which one this phone tab controls.',
+      'picker.no_devices': 'No iPhones currently connected',
+      'settings.sync_mode': 'Sync mode (Mac + phone together)',
+      'settings.sync_on':   'On',
+      'settings.sync_off':  'Off',
+      'sync.confirm': 'Using both at once may cause the iPhone position to get out of sync. If it happens, hit Restore on BOTH the Mac and the phone, then start over. Enable sync mode?',
     },
   };
   const lang = (navigator.language || 'en').toLowerCase().startsWith('zh') ? 'zh-Hant' : 'en';
@@ -709,6 +1332,24 @@
     }
   });
 
+  /** Great-circle distance between two {lat,lng} points, in
+   *  metres. Cheap O(1) trigonometric formula; accuracy ±0.5%
+   *  is more than enough for the "did the iPhone teleport
+   *  somewhere far?" check we use it for.
+   */
+  function haversine(a, b) {
+    if (!a || !b) return 0;
+    const R = 6371000;
+    const toRad = (d) => d * Math.PI / 180;
+    const dLat = toRad(b.lat - a.lat);
+    const dLng = toRad(b.lng - a.lng);
+    const lat1 = toRad(a.lat);
+    const lat2 = toRad(b.lat);
+    const x = Math.sin(dLat / 2) ** 2
+            + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(x));
+  }
+
   // Auto-skip PIN if existing token still works.
   async function tryExistingToken() {
     if (!token) return false;
@@ -732,12 +1373,319 @@
   // off if the user manually pans / zooms; re-enables via recenterBtn.
   let followMode = false;
 
+  // v1.9.2 background-resume support
+  // ── Why this exists
+  // iOS Safari aggressively suspends background tabs: when the
+  // user swipes to another app (Pokémon GO, Maps, Messages),
+  // setInterval gets throttled or paused outright. With the old
+  // setInterval(pollState, 3000) the heartbeats stopped, the
+  // daemon evicted the session after its idle timeout, and the
+  // next poll on return came back 401 → the page reloaded and
+  // the user had to re-enter PIN.
+  //
+  // ── How it works now
+  // We track the interval handle so we can stop/start it. The
+  // visibilitychange listener pauses polling when the tab goes
+  // hidden (saves battery + LAN traffic), and on becoming visible
+  // again fires an IMMEDIATE poll to (a) refresh the daemon's
+  // last_seen before the next sweep, and (b) detect 401 fast if
+  // the session is genuinely gone, surfacing a graceful "tap to
+  // reconnect" overlay rather than a hard reload.
+  let pollHandle = null;
+
+  function startPolling() {
+    if (pollHandle !== null) return;
+    pollState();
+    pollHandle = setInterval(pollState, 3000);
+  }
+
+  function stopPolling() {
+    if (pollHandle === null) return;
+    clearInterval(pollHandle);
+    pollHandle = null;
+  }
+
   function enterApp() {
     document.getElementById('pin-screen').style.display = 'none';
     document.getElementById('app-screen').classList.add('active');
     initMap();
-    pollState();
-    setInterval(pollState, 3000);
+    startPolling();
+    // If this tab had a target UDID persisted from a previous
+    // session, re-announce it to the daemon so the Mac locks
+    // the right iPhone right away (no need to wait for the
+    // first action). Silently ignore failures — the next
+    // action POST will re-stamp via _resolve_udid anyway.
+    if (targetUDID) {
+      api('/api/phone/target', {
+        method: 'POST',
+        body: JSON.stringify({ udid: targetUDID }),
+      }).catch(() => {});
+    }
+    // Best-effort: ask the browser for the phone's real GPS so
+    // the map opens at "where the user actually is". Requires
+    // user consent the first time; silently no-ops on failure.
+    // The DVT location service we use to spoof iPhone GPS is
+    // write-only, so this is the only path to read the iPhone's
+    // *real* position. (iOS Safari may require a secure context
+    // / localhost — over plain http://192.168.x.x the prompt
+    // sometimes never appears. That case falls through to the
+    // map's default Taipei view, same as before.)
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          if (!map) return;
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          // Only fly if /state poll hasn't already centred us
+          // somewhere else in the meantime (e.g. an active
+          // simulation pulled us elsewhere) — that's the
+          // user's intended view, leave it alone.
+          if (currentLatLng === null) {
+            map.setView([lat, lng], 15, { animate: true });
+          }
+        },
+        (err) => { /* permission denied / unavailable — silent */ },
+        { maximumAge: 60000, timeout: 8000, enableHighAccuracy: false },
+      );
+    }
+  }
+
+  /// v1.9.2: graceful "session timed out" path. Called from
+  /// api() when the daemon returns 401 — most often because the
+  /// tab was suspended by iOS Safari while the user was in
+  /// another app, and the session got evicted by the staleness
+  /// sweeper before we could resume polling. Instead of a hard
+  /// reload (which wipes the map state, recents, etc.) we just
+  /// hide the app shell, stop polling, and put the PIN screen
+  /// back on top with a short explanatory line. After the user
+  /// re-enters the PIN, `enterApp()` is called again and they
+  /// pick up where they left off.
+  function goBackToPinScreen(reasonKey) {
+    stopPolling();
+    document.getElementById('app-screen').classList.remove('active');
+    document.getElementById('pin-screen').style.display = 'flex';
+    if (pinInput) {
+      pinInput.value = '';
+      pinSubmit.disabled = true;
+      pinSubmit.textContent = t('connect');
+      // Surface the reason next to the input so the user knows
+      // why they're suddenly back here. We translate a key
+      // rather than hard-coding the string so zh-Hant / en both
+      // get a sensible message.
+      pinError.textContent = t(reasonKey || 'session_expired');
+      pinInput.focus();
+    }
+  }
+
+  // Module-scoped hoists. These need to be visible to
+  // `handleAction()` (which lives outside initMap) but their
+  // bodies depend on `map` / DOM elements that only exist
+  // after initMap runs. Default no-op stubs prevent crashes
+  // if the user somehow triggers an action before init is
+  // complete; `initMap` overwrites them with the real impls.
+  let openSpeedSheet = () => {};
+  let floatingJoystick = null;
+
+  // ── Target iPhone UDID (multi-session, v1.8) ──────────────
+  // Each phone tab picks which iPhone it wants to drive. When
+  // set, EVERY action POST includes this UDID so the daemon
+  // stamps it onto THIS session's `controlling_udid` — not the
+  // shared "first connected" default. localStorage persisted so
+  // a refresh keeps the user's pick.
+  let targetUDID = (() => {
+    try { return localStorage.getItem('lociighost.phone.targetUDID') || null; }
+    catch { return null; }
+  })();
+  async function setTargetUDID(udid) {
+    targetUDID = udid || null;
+    try {
+      if (udid) localStorage.setItem('lociighost.phone.targetUDID', udid);
+      else      localStorage.removeItem('lociighost.phone.targetUDID');
+    } catch {}
+    // Tell the daemon immediately so the Mac's lockout overlay
+    // flips the moment the user picks a target — don't wait
+    // for the first action to register `controlling_udid` via
+    // `_resolve_udid`. Auto-mode (udid == null) clears it on
+    // the daemon too.
+    try {
+      await api('/api/phone/target', {
+        method: 'POST',
+        body: JSON.stringify({ udid: udid || null }),
+      });
+    } catch { /* silent — next action call will re-stamp */ }
+  }
+  /// Shallow merge of `targetUDID` into a body object — every
+  /// action handler funnels through this so we never forget.
+  function withTarget(body) {
+    body = body || {};
+    if (targetUDID && body.udid == null) body.udid = targetUDID;
+    return body;
+  }
+
+  // Track known devices (populated from /state polls) so the
+  // settings menu's picker can render their names.
+  let knownDevices = [];
+
+  /// Force a device-picker overlay when the user has 2+
+  /// connected iPhones to choose from but hasn't yet picked
+  /// one (or their previous pick is no longer connected).
+  /// Auto-pick the lone connected iPhone when there's only
+  /// one — the picker is overkill in that case.
+  function ensureTargetPicked() {
+    const picker = document.getElementById('device-picker');
+    if (!picker) return;
+    const connected = knownDevices.filter(d => d.connected);
+
+    if (connected.length === 0) {
+      // No devices to pick from — hide the modal; the user
+      // will see the disconnected state through normal status
+      // rendering. Don't change targetUDID.
+      picker.classList.remove('show');
+      return;
+    }
+    if (connected.length === 1) {
+      // Single connected device: auto-pick it if we haven't
+      // already. Keeps the original single-iPhone UX intact.
+      if (targetUDID !== connected[0].udid) {
+        setTargetUDID(connected[0].udid);
+      }
+      picker.classList.remove('show');
+      return;
+    }
+    // 2+ devices. If we have a valid pick that's still
+    // connected, the picker stays hidden. Otherwise force it.
+    const valid = targetUDID && connected.some(d => d.udid === targetUDID);
+    if (valid) {
+      picker.classList.remove('show');
+      return;
+    }
+    renderDevicePicker(connected);
+    picker.classList.add('show');
+  }
+
+  function renderDevicePicker(connected) {
+    const list = document.getElementById('device-picker-list');
+    if (!list) return;
+    list.innerHTML = '';
+    if (connected.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'picker-empty';
+      empty.textContent = t('picker.no_devices');
+      list.appendChild(empty);
+      return;
+    }
+    connected.forEach(d => {
+      const row = document.createElement('div');
+      row.className = 'picker-row';
+      const info = document.createElement('div');
+      const name = document.createElement('div');
+      name.className = 'picker-name';
+      name.textContent = d.name || d.udid;
+      const meta = document.createElement('div');
+      meta.className = 'picker-meta';
+      const transport = (d.transport || '').toUpperCase();
+      meta.textContent = `iOS ${d.ios_version || '?'} · ${transport}`;
+      info.appendChild(name);
+      info.appendChild(meta);
+      const arrow = document.createElement('div');
+      arrow.className = 'picker-arrow';
+      arrow.textContent = '›';
+      row.appendChild(info);
+      row.appendChild(arrow);
+      row.addEventListener('click', async () => {
+        await setTargetUDID(d.udid);
+        document.getElementById('device-picker').classList.remove('show');
+      });
+      list.appendChild(row);
+    });
+  }
+
+  // ── Phone-side multi-stop state ────────────────────────────
+  // Phone maintains its own pendingStops list independent of
+  // the Mac's — the multi-stop endpoint on the daemon doesn't
+  // share state across the socket/HTTP boundary. Each entry
+  // is { lat, lng, marker } (Leaflet marker handle kept so we
+  // can remove it on clear).
+  const multistopStops = [];
+  /// True while user has activated multi-stop mode (orange-glowing
+  /// button on left toolbar OR via handleAction). In this mode
+  /// every map tap adds another stop instead of dropping the
+  /// destination-pin. Auto-exits when user hits Go / Clear /
+  /// or taps the multi-stop button again.
+  let multistopMode = false;
+
+  function setMultistopMode(on) {
+    multistopMode = !!on;
+    const btn = document.getElementById('v2-multistop-btn');
+    if (btn) btn.classList.toggle('mode-active', multistopMode);
+    if (multistopMode) {
+      showToast(t('multistop.hint') || 'Tap the map to add stops');
+    }
+  }
+
+  function refreshMultistopBar() {
+    const bar = document.getElementById('multistop-bar');
+    const count = document.getElementById('multistop-count');
+    if (!bar || !count) return;
+    bar.classList.toggle('show', multistopStops.length > 0);
+    count.textContent = String(multistopStops.length);
+  }
+
+  function addStop(latlng) {
+    const idx = multistopStops.length + 1;
+    const marker = L.marker([latlng.lat, latlng.lng], {
+      icon: L.divIcon({
+        className: '',
+        html: `<div class="stop-pin">${idx}</div>`,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+      }),
+      interactive: false,
+      zIndexOffset: 50,
+    }).addTo(map);
+    multistopStops.push({ lat: latlng.lat, lng: latlng.lng, marker });
+    refreshMultistopBar();
+    showToast((t('multistop.added') || 'Stop %1 added').replace('%1', String(idx)));
+  }
+
+  function clearStops() {
+    multistopStops.forEach((s) => { try { map.removeLayer(s.marker); } catch {} });
+    multistopStops.length = 0;
+    refreshMultistopBar();
+    setMultistopMode(false);
+  }
+
+  async function goMultistop() {
+    if (multistopStops.length === 0) {
+      showToast(t('multistop.empty'));
+      return;
+    }
+    // Open the speed picker first so the user can pick their
+    // travel speed for the multi-stop trip — same UX as joystick.
+    // The chosen speed is forwarded to the daemon as the per-leg
+    // OSRM-routed speed override.
+    openSpeedSheet(async (speedMps) => {
+      try {
+        await api('/api/phone/multistop', {
+          method: 'POST',
+          body: JSON.stringify(withTarget({
+            stops: multistopStops.map((s) => ({ lat: s.lat, lng: s.lng })),
+            profile: 'driving',
+            speed: speedMps,
+          })),
+        });
+        showToast(t('navigate_ok'));
+        clearStops();
+        setMultistopMode(false);
+      } catch (e) {
+        const detail = (e && e.detail) || '';
+        if (detail.startsWith('no_origin')) {
+          showToast(t('multistop.no_origin'));
+        } else {
+          showToast(detail || t('request_failed'));
+        }
+      }
+    });
   }
 
   function initMap() {
@@ -745,11 +1693,380 @@
       zoomControl: false,
       attributionControl: false,
     }).setView([25.0330, 121.5654], 14);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-    }).addTo(map);
+    // ── Tile layer registry + picker ──────────────────────
+    // Two free options:
+    //   * Carto Voyager — pale, Apple-Maps-ish, default
+    //   * OpenStreetMap — bold colours, traditional OSM look
+    // Add more here if needed; the picker UI auto-populates.
+    const tileLayers = {
+      carto: {
+        label: 'Carto Voyager',
+        layer: L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+          maxZoom: 19,
+          subdomains: 'abcd',
+          attribution: '',
+        }),
+      },
+      osm: {
+        label: 'OpenStreetMap',
+        layer: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '',
+        }),
+      },
+    };
+
+    // Persist last choice in localStorage so the picker survives
+    // page reload / pin re-entry. Falls back to Carto.
+    let currentLayerKey = (() => {
+      try {
+        const k = localStorage.getItem('lociighost.phone.tileLayer');
+        return tileLayers[k] ? k : 'carto';
+      } catch { return 'carto'; }
+    })();
+    tileLayers[currentLayerKey].layer.addTo(map);
+
+    /** Switch the active tile layer + persist + repaint menu. */
+    function setTileLayer(key) {
+      if (!tileLayers[key] || key === currentLayerKey) return;
+      tileLayers[currentLayerKey].layer.remove();
+      currentLayerKey = key;
+      tileLayers[key].layer.addTo(map);
+      try { localStorage.setItem('lociighost.phone.tileLayer', key); } catch {}
+      renderLayerMenu();
+    }
+
+    /** (Re)populate the layer-menu rows. Marks the active one
+        with a check + accent colour. */
+    function renderLayerMenu() {
+      const menu = document.getElementById('layer-menu');
+      menu.innerHTML = '';
+      Object.entries(tileLayers).forEach(([key, def]) => {
+        const row = document.createElement('div');
+        row.className = 'layer-row' + (key === currentLayerKey ? ' active' : '');
+        row.setAttribute('role', 'menuitemradio');
+        const name = document.createElement('span');
+        name.textContent = def.label;
+        const check = document.createElement('span');
+        check.className = 'check';
+        check.textContent = key === currentLayerKey ? '✓' : '';
+        row.appendChild(name);
+        row.appendChild(check);
+        row.addEventListener('click', () => {
+          setTileLayer(key);
+          document.getElementById('layer-menu').classList.remove('open');
+        });
+        menu.appendChild(row);
+      });
+    }
+    renderLayerMenu();
+
+    // Tap the button to toggle the menu; tap outside to close.
+    document.getElementById('layer-btn').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      document.getElementById('layer-menu').classList.toggle('open');
+      document.getElementById('settings-menu').classList.remove('open');
+    });
+    document.addEventListener('click', (ev) => {
+      const lm = document.getElementById('layer-menu');
+      const lb = document.getElementById('layer-btn');
+      if (lm.classList.contains('open') && ev.target !== lb && !lm.contains(ev.target)) {
+        lm.classList.remove('open');
+      }
+      const sm = document.getElementById('settings-menu');
+      const sb = document.getElementById('settings-btn');
+      if (sm.classList.contains('open') && ev.target !== sb && !sm.contains(ev.target)) {
+        sm.classList.remove('open');
+      }
+    });
+
+    // ── Exit button (phone session sign-out) ────────────────
+    // Tap → confirm dialog → /api/phone/logout. Daemon rotates
+    // the token + broadcasts event.phone_session(active: false)
+    // so the Mac UI restores its controls. Phone tab then sees
+    // 401 on its next /state poll → existing handler reloads
+    // → PIN screen.
+    document.getElementById('exit-btn').addEventListener('click', async () => {
+      if (!confirm(t('exit.confirm') || 'Sign out?')) return;
+      try {
+        await api('/api/phone/logout', { method: 'POST', body: JSON.stringify({}) });
+      } catch (e) { /* logout rotates token; subsequent calls 401 */ }
+      // Don't wait for the 3s state-poll cycle — bounce to PIN now.
+      try { localStorage.removeItem('lociighost.phone.token'); } catch {}
+      location.reload();
+    });
+
+    // ── Settings menu (UI mode picker) ──────────────────────
+    let uiMode = (() => {
+      try {
+        const m = localStorage.getItem('lociighost.phone.uiMode');
+        return (m === 'v2') ? 'v2' : 'v1';
+      } catch { return 'v1'; }
+    })();
+    applyUIMode(uiMode);
+
+    function applyUIMode(mode) {
+      if (mode === 'v2') document.body.classList.add('ui-v2');
+      else               document.body.classList.remove('ui-v2');
+      try { localStorage.setItem('lociighost.phone.uiMode', mode); } catch {}
+      uiMode = mode;
+      renderSettingsMenu();
+    }
+
+    function renderSettingsMenu() {
+      const menu = document.getElementById('settings-menu');
+      menu.innerHTML = '';
+      const hdr = document.createElement('div');
+      hdr.className = 'settings-section';
+      hdr.textContent = t('settings.ui_mode');
+      menu.appendChild(hdr);
+      const options = [
+        { key: 'v1', label: t('settings.ui_v1') },
+        { key: 'v2', label: t('settings.ui_v2') },
+      ];
+      options.forEach((o) => {
+        const row = document.createElement('div');
+        row.className = 'settings-row' + (o.key === uiMode ? ' active' : '');
+        const name = document.createElement('span'); name.textContent = o.label;
+        const check = document.createElement('span');
+        check.className = 'check';
+        check.textContent = o.key === uiMode ? '✓' : '';
+        row.appendChild(name); row.appendChild(check);
+        row.addEventListener('click', () => {
+          applyUIMode(o.key);
+          document.getElementById('settings-menu').classList.remove('open');
+        });
+        menu.appendChild(row);
+      });
+
+      // ── Target device picker (multi-session, v1.8) ────────
+      // Lets this phone tab pick which iPhone it controls,
+      // independent of any other phone tab. Default "Auto"
+      // means the daemon picks the first connected device on
+      // each call (legacy behaviour). Picking a specific UDID
+      // pins this tab to that iPhone until the user changes
+      // it OR closes the tab.
+      const tdHdr = document.createElement('div');
+      tdHdr.className = 'settings-section';
+      tdHdr.textContent = t('settings.target_device');
+      menu.appendChild(tdHdr);
+
+      const autoRow = document.createElement('div');
+      autoRow.className = 'settings-row' + (targetUDID == null ? ' active' : '');
+      const autoLbl = document.createElement('span');
+      autoLbl.textContent = t('settings.target_auto');
+      const autoCk = document.createElement('span');
+      autoCk.className = 'check';
+      autoCk.textContent = targetUDID == null ? '✓' : '';
+      autoRow.appendChild(autoLbl); autoRow.appendChild(autoCk);
+      autoRow.addEventListener('click', () => {
+        setTargetUDID(null);
+        renderSettingsMenu();
+      });
+      menu.appendChild(autoRow);
+
+      const connectedDevices = knownDevices.filter(d => d.connected);
+      if (connectedDevices.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'settings-row';
+        empty.style.color = '#888';
+        empty.textContent = t('settings.target_none_connected');
+        menu.appendChild(empty);
+      } else {
+        connectedDevices.forEach(d => {
+          const row = document.createElement('div');
+          row.className = 'settings-row' + (targetUDID === d.udid ? ' active' : '');
+          const nm = document.createElement('span');
+          nm.textContent = d.name || d.udid;
+          const ck = document.createElement('span');
+          ck.className = 'check';
+          ck.textContent = targetUDID === d.udid ? '✓' : '';
+          row.appendChild(nm); row.appendChild(ck);
+          row.addEventListener('click', () => {
+            setTargetUDID(d.udid);
+            renderSettingsMenu();
+          });
+          menu.appendChild(row);
+        });
+      }
+    }
+    renderSettingsMenu();
+
+    document.getElementById('settings-btn').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      // (Used to also `await refreshSyncMode()` here — removed
+      // with the sync-mode row, since sync is now toggled only
+      // from the Mac side.)
+      renderSettingsMenu();
+      document.getElementById('settings-menu').classList.toggle('open');
+      document.getElementById('layer-menu').classList.remove('open');
+    });
+
+    // ── v2 side-toolbar buttons: same handleAction dispatcher
+    //    as the v1 FAB sheet, so adding actions in either UI
+    //    auto-works in the other.
+    document.querySelectorAll('[data-v2-kind]').forEach((b) => {
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const kind = b.dataset.v2Kind;
+        handleAction(kind);
+      });
+    });
+
+    // ── Floating joystick widget ─────────────────────────────
+    // No longer always-on. Lifecycle:
+    //   1. user taps the "🕹️ Joystick" button (v1 or v2)
+    //   2. speed-picker sheet opens, user picks a max-speed
+    //   3. "Start" → /api/phone/joystick/start fires, sheet
+    //      closes, this widget becomes visible on the map
+    //   4. user drags the knob — heading + scaled speed go to
+    //      /api/phone/joystick/update
+    //   5. release → speed 0 (halt motion, keep session)
+    //   6. ✕ button → /api/phone/joystick/stop equivalent
+    //      (we just close locally + send 0,0; daemon session
+    //      remains for "stop" / "restore" buttons to wipe)
+    floatingJoystick = (() => {
+      const pad   = document.getElementById('floating-joystick');
+      const knob  = document.getElementById('floating-joystick-knob');
+      const close = document.getElementById('floating-joystick-close');
+      if (!pad || !knob) return null;
+
+      const PAD_HALF  = 70;
+      const KNOB_HALF = 25;
+      const MAX_OFFSET = PAD_HALF - KNOB_HALF;
+      // Max speed gets set by the speed-picker sheet (m/s).
+      let maxSpeedMps = 1.4;
+      let activePointerId = null;
+
+      function resetKnob() { knob.style.transform = 'translate(0,0)'; }
+
+      function applyMove(clientX, clientY) {
+        const rect = pad.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        let dx = clientX - cx;
+        let dy = clientY - cy;
+        const dist = Math.hypot(dx, dy);
+        if (dist > MAX_OFFSET && dist > 0) {
+          dx = (dx / dist) * MAX_OFFSET;
+          dy = (dy / dist) * MAX_OFFSET;
+        }
+        knob.style.transform = `translate(${dx}px, ${dy}px)`;
+        // Compass heading: 0 = north (up), clockwise.
+        const heading = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
+        const normDist = Math.min(1, dist / MAX_OFFSET);
+        sendJoystickUpdate(heading, normDist * maxSpeedMps);
+      }
+
+      // Pointer events (unified mouse + touch + stylus). On iOS
+      // Safari 13+ these fire reliably on `<div>`s; `setPointerCapture`
+      // guarantees move/up still reach this element even if the
+      // finger drifts off the pad, which was the bug in the old
+      // touch-only impl (touchmove stopped firing once the touch
+      // left the pad rect, so the joystick froze).
+      pad.addEventListener('pointerdown', (e) => {
+        if (e.target === close) return;
+        e.preventDefault();
+        activePointerId = e.pointerId;
+        try { pad.setPointerCapture(e.pointerId); } catch {}
+        applyMove(e.clientX, e.clientY);
+      });
+      pad.addEventListener('pointermove', (e) => {
+        if (e.pointerId !== activePointerId) return;
+        e.preventDefault();
+        applyMove(e.clientX, e.clientY);
+      });
+      const release = (e) => {
+        if (activePointerId === null) return;
+        if (e && e.pointerId !== activePointerId) return;
+        try { pad.releasePointerCapture(activePointerId); } catch {}
+        activePointerId = null;
+        resetKnob();
+        sendJoystickUpdate(0, 0);
+      };
+      pad.addEventListener('pointerup',     release);
+      pad.addEventListener('pointercancel', release);
+      pad.addEventListener('pointerleave',  release);
+
+      close.addEventListener('click', (e) => {
+        e.stopPropagation();
+        pad.classList.remove('show');
+        sendJoystickUpdate(0, 0);
+        activePointerId = null;
+      });
+
+      return {
+        show(speedMps) {
+          maxSpeedMps = speedMps;
+          resetKnob();
+          pad.classList.add('show');
+        },
+        hide() { pad.classList.remove('show'); },
+      };
+    })();
+
+    // ── Speed-picker sheet (shared by joystick + multi-stop) ─
+    const speedSheet = document.getElementById('joystick-speed-sheet');
+    const speedOpts  = document.getElementById('joystick-speed-options');
+    let selectedSpeedMps = 1.4;
+    // Callback the user-selected speed gets handed to when they
+    // press Start. Each consumer (joystick / multi-stop) sets
+    // this before opening the sheet.
+    let onSpeedSheetStart = null;
+
+    openSpeedSheet = function(onStart) {
+      onSpeedSheetStart = onStart || null;
+      const opts = [
+        { key: 'speed.walk_slow', mps: 0.83 },   // 3 km/h
+        { key: 'speed.walk',      mps: 1.4  },   // 5 km/h
+        { key: 'speed.jog',       mps: 2.2  },   // 8 km/h
+        { key: 'speed.run',       mps: 3.3  },   // 12 km/h
+        { key: 'speed.bike',      mps: 5.28 },   // 19 km/h (per user)
+        { key: 'speed.car',       mps: 11.11 },  // 40 km/h (per user)
+      ];
+      speedOpts.innerHTML = '';
+      opts.forEach((o, idx) => {
+        const row = document.createElement('button');
+        row.className = 'profile-row' + (o.mps === selectedSpeedMps ? ' selected' : '');
+        row.textContent = t(o.key);
+        row.dataset.mps = String(o.mps);
+        row.addEventListener('click', () => {
+          selectedSpeedMps = o.mps;
+          speedOpts.querySelectorAll('.profile-row').forEach((r) =>
+            r.classList.toggle('selected', Number(r.dataset.mps) === o.mps));
+        });
+        speedOpts.appendChild(row);
+      });
+      // Default pick if nothing selected yet
+      if (!opts.some((o) => o.mps === selectedSpeedMps)) selectedSpeedMps = 1.4;
+      speedSheet.classList.add('open');
+    };
+    document.getElementById('joystick-speed-cancel').addEventListener('click', () => {
+      speedSheet.classList.remove('open');
+      onSpeedSheetStart = null;
+    });
+    document.getElementById('joystick-speed-start').addEventListener('click', async () => {
+      speedSheet.classList.remove('open');
+      const cb = onSpeedSheetStart;
+      onSpeedSheetStart = null;
+      if (typeof cb === 'function') {
+        try { await cb(selectedSpeedMps); }
+        catch (err) {
+          const detail = (err && err.detail) || '';
+          showToast(detail || t('request_failed'));
+        }
+      }
+    });
 
     map.on('click', (e) => {
+      // In multi-stop mode every map tap adds another stop
+      // rather than dropping the destination-pin / opening
+      // the action sheet. Exits the mode automatically when
+      // the user hits Go / Clear on the top bar.
+      if (multistopMode) {
+        addStop(e.latlng);
+        return;
+      }
       pendingLatLng = e.latlng;
       if (selectedMarker) selectedMarker.setLatLng(e.latlng);
       else selectedMarker = L.marker(e.latlng, {
@@ -759,6 +2076,16 @@
       // Auto-open the action sheet on tap so the user knows what to do
       // with their pick.
       openActions();
+    });
+
+    // Multi-stop bar buttons.
+    document.getElementById('multistop-go').addEventListener('click', (e) => {
+      e.stopPropagation();
+      goMultistop();
+    });
+    document.getElementById('multistop-clear').addEventListener('click', (e) => {
+      e.stopPropagation();
+      clearStops();
     });
 
     // Manual pan/zoom turns off follow-mode so the map doesn't fight
@@ -772,16 +2099,47 @@
       // panning. For simplicity, just don't trigger follow-off on zoom.
     });
 
-    // Recenter button: snap back to iPhone's current position and
-    // re-enable follow-mode so the dot stays centred as it moves.
+    // Pause/Resume button (above the recenter button).
+    // Only shows when /state reports an active movement mode.
+    // Tap toggles between pause and resume on whichever runner
+    // the daemon currently has spun up for the connected device.
+    const pauseBtn = document.getElementById('pause-btn');
+    let pausedState = false;
+    pauseBtn.addEventListener('click', async () => {
+        const path = pausedState ? '/api/phone/resume' : '/api/phone/pause';
+        try {
+            await api(path, { method: 'POST', body: JSON.stringify(withTarget({})) });
+            pausedState = !pausedState;
+            pauseBtn.classList.toggle('paused', pausedState);
+            pauseBtn.textContent = pausedState ? '▶' : '⏸';
+        } catch (err) {
+            showToast(t('request_failed'));
+        }
+    });
+
+    // Recenter button: best-effort "find me" — priority:
+    //   1. iPhone's live simulated position (currentLatLng) +
+    //      enable follow-mode so the dot stays centred as it moves
+    //   2. The pin the user dropped on the map (pendingLatLng) —
+    //      handy when planning a teleport and you've scrolled away
+    //   3. Last frame's map centre (no-op fly, but ensures the
+    //      tap is never silently ignored — also flashes the
+    //      "following" colour briefly as feedback)
     const recenterBtn = document.getElementById('recenter-btn');
     recenterBtn.addEventListener('click', () => {
-      if (currentLatLng) {
-        followMode = true;
-        recenterBtn.classList.add('following');
-        map.setView([currentLatLng.lat, currentLatLng.lng],
+      const target = currentLatLng || pendingLatLng;
+      if (target) {
+        if (currentLatLng) {
+          followMode = true;
+          recenterBtn.classList.add('following');
+        }
+        map.setView([target.lat, target.lng],
                     Math.max(map.getZoom(), 16),
                     { animate: true });
+      } else {
+        // No known location — give the user a hint instead of
+        // silently doing nothing.
+        showToast(t('toast.no_location'));
       }
     });
   }
@@ -804,10 +2162,15 @@
       },
     });
     if (r.status === 401) {
-      // Token rotated server-side; bounce to PIN screen.
+      // Token gone server-side — most commonly because the
+      // session timed out while the tab was suspended in the
+      // background. Bounce back to PIN screen IN-PLACE rather
+      // than `location.reload()`, so the map state, recent
+      // recents, etc. stay around and the user just has to
+      // re-tap their 6 digits to come back.
       localStorage.removeItem(TOKEN_KEY);
       token = '';
-      location.reload();
+      goBackToPinScreen('session_expired');
       throw new Error('reauth');
     }
     if (!r.ok) {
@@ -837,7 +2200,16 @@
   }
 
   function renderStatus(s) {
-    const connected = (s.devices || []).find(d => d.connected);
+    // Stash the full device list so the settings menu's
+    // target-device picker can render names + connection
+    // states even when called between /state polls.
+    knownDevices = s.devices || [];
+    // Force a device picker whenever the user has 2+
+    // connected iPhones but hasn't pinned a target (or their
+    // previously-picked iPhone disconnected). Single-device
+    // case auto-picks. Zero connected hides the overlay.
+    ensureTargetPicked();
+    const connected = knownDevices.find(d => d.connected);
     const nameEl = document.getElementById('status-name');
     const metaEl = document.getElementById('status-meta');
     const recenterBtn = document.getElementById('recenter-btn');
@@ -850,10 +2222,29 @@
       metaEl.innerHTML = `iOS ${connected.ios_version} · ${transport}` +
         '<span class="pill connected">connected</span>' + modeBadge;
 
+      // Show / hide the pause button based on whether an
+      // active runner exists (nav / walk / joystick). The
+      // /state response sets connected.mode whenever a runner
+      // is up; idle string or missing → button hidden.
+      const pauseBtn2 = document.getElementById('pause-btn');
+      const activeMode = (connected.mode && connected.mode !== 'idle');
+      pauseBtn2.classList.toggle('show', activeMode);
+
       // ── Live iPhone-position dot ─────────────────────────────
       if (typeof connected.current_lat === 'number'
           && typeof connected.current_lng === 'number') {
         const ll = { lat: connected.current_lat, lng: connected.current_lng };
+        // Detect a "teleport-class" jump — anything more than a
+        // few km from the previous tracked position. This catches
+        // the case where the Mac (or another phone-web session)
+        // teleports the iPhone while WE were viewing somewhere
+        // else; without this the blue dot leaves the viewport
+        // and the user thinks the phone web "stopped working".
+        // Threshold ~3 km is well above the per-tick movement of
+        // joystick/random/navigate but far below intra-city
+        // hops, so casual position drift never triggers it.
+        const isBigJump = currentLatLng && haversine(currentLatLng, ll) > 3000;
+        const isFirstFix = currentLatLng === null;
         currentLatLng = ll;
         if (currentMarker) currentMarker.setLatLng(ll);
         else currentMarker = L.marker([ll.lat, ll.lng], {
@@ -862,10 +2253,16 @@
           interactive: false,
           zIndexOffset: -100,
         }).addTo(map);
-        recenterBtn.classList.add('show');
-        // Auto-pan if user asked to follow.
+        // Auto-pan in three cases:
+        //   1. user explicitly enabled follow mode
+        //   2. first time we've seen any position this session
+        //   3. a teleport-class jump landed us far off-screen
         if (followMode) {
           map.panTo([ll.lat, ll.lng], { animate: true, duration: 0.5 });
+        } else if (isFirstFix || isBigJump) {
+          map.setView([ll.lat, ll.lng],
+                      Math.max(map.getZoom(), 14),
+                      { animate: true });
         }
       }
 
@@ -875,7 +2272,7 @@
           routePolyline.setLatLngs(connected.route_coords);
         } else {
           routePolyline = L.polyline(connected.route_coords, {
-            color: '#0a84ff', weight: 5, opacity: 0.75,
+            color: '#7E9472', weight: 5, opacity: 0.75,
             lineJoin: 'round', lineCap: 'round',
           }).addTo(map);
           // First time we see a route, frame it AND turn on follow
@@ -924,8 +2321,22 @@
   // ── FAB + actions ─────────────────────────────────────────────
   const fab = document.getElementById('fab');
   const actionsEl = document.getElementById('actions');
-  function openActions() { actionsEl.classList.add('open'); fab.style.display = 'none'; }
-  function closeActions() { actionsEl.classList.remove('open'); fab.style.display = ''; }
+  function openActions() {
+    actionsEl.classList.add('open');
+    fab.style.display = 'none';
+    // Recenter sits at left-bottom; the action strip spans full
+    // width when open, so the recenter button would be hidden
+    // behind the first action card. Move it out of the way until
+    // the strip closes.
+    const rc = document.getElementById('recenter-btn');
+    if (rc) rc.classList.add('hidden-by-actions');
+  }
+  function closeActions() {
+    actionsEl.classList.remove('open');
+    fab.style.display = '';
+    const rc = document.getElementById('recenter-btn');
+    if (rc) rc.classList.remove('hidden-by-actions');
+  }
   fab.addEventListener('click', openActions);
   // Tapping anywhere outside an action button closes the strip too.
   document.addEventListener('click', (e) => {
@@ -951,7 +2362,20 @@
     if (kind === 'stop')     return doStop();
     if (kind === 'search')   return openSearch();
     if (kind === 'coord')    return openCoord();
-    if (kind === 'joystick') return openJoystick();
+    // Both UIs route the Joystick button to the original v1
+    // overlay sheet (joystick-overlay → joystick-pad). That's
+    // the implementation that's been battle-tested — the new
+    // floating-widget attempt had subtle iOS Safari pointer-
+    // capture issues that left the knob non-interactive for
+    // some users. Reverted to the known-good path.
+    if (kind === 'joystick' || kind === 'joystick-v2') {
+      return openJoystick();
+    }
+    if (kind === 'multistop') {
+      // Toggle button: if already in mode, exit; if not, enter.
+      setMultistopMode(!multistopMode);
+      return;
+    }
     if (kind === 'random')   return openRandom();
     if (kind === 'teleport' || kind === 'navigate') {
       if (!pendingLatLng) {
@@ -995,7 +2419,7 @@
     try {
       await api('/api/phone/teleport', {
         method: 'POST',
-        body: JSON.stringify({ lat, lng }),
+        body: JSON.stringify(withTarget({ lat, lng })),
       });
       showToast(t('teleport_ok'));
     } catch (e) { showToast(t('request_failed')); }
@@ -1004,7 +2428,7 @@
     try {
       await api('/api/phone/navigate', {
         method: 'POST',
-        body: JSON.stringify({ lat, lng, profile: profile || 'driving' }),
+        body: JSON.stringify(withTarget({ lat, lng, profile: profile || 'driving' })),
       });
       showToast(t('navigate_ok'));
     } catch (e) {
@@ -1020,13 +2444,13 @@
   }
   async function doRestore() {
     try {
-      await api('/api/phone/restore', { method: 'POST', body: JSON.stringify({}) });
+      await api('/api/phone/restore', { method: 'POST', body: JSON.stringify(withTarget({})) });
       showToast(t('restore_ok'));
     } catch (e) { showToast(t('request_failed')); }
   }
   async function doStop() {
     try {
-      await api('/api/phone/stop', { method: 'POST', body: JSON.stringify({}) });
+      await api('/api/phone/stop', { method: 'POST', body: JSON.stringify(withTarget({})) });
       showToast(t('stop_ok'));
     } catch (e) { showToast(t('request_failed')); }
   }
@@ -1187,11 +2611,16 @@
     // user's last tap, then to map centre.
     const origin = currentLatLng || pendingLatLng || map.getCenter();
     joystickOverlay.classList.add('open');
+    // Tell the rest of the v2 chrome to step out of the way so
+    // the user has an unobstructed view of the map while
+    // steering. The CSS rule guards on `body.ui-v2` so v1
+    // behaviour is unaffected.
+    document.body.classList.add('joystick-busy');
     joystickStatus.textContent = t('joystick-idle');
     try {
       await api('/api/phone/joystick/start', {
         method: 'POST',
-        body: JSON.stringify({ lat: origin.lat, lng: origin.lng }),
+        body: JSON.stringify(withTarget({ lat: origin.lat, lng: origin.lng })),
       });
       joystickStarted = true;
       showToast(t('joystick-started'));
@@ -1199,10 +2628,12 @@
       const detail = (e && e.detail) || '';
       showToast(detail || t('request_failed'));
       joystickOverlay.classList.remove('open');
+      document.body.classList.remove('joystick-busy');
     }
   }
   function closeJoystick() {
     joystickOverlay.classList.remove('open');
+    document.body.classList.remove('joystick-busy');
     resetKnob();
     joystickStarted = false;
   }
@@ -1279,7 +2710,7 @@
     try {
       await api('/api/phone/joystick/update', {
         method: 'POST',
-        body: JSON.stringify({ heading_deg: heading, speed_mps: speed }),
+        body: JSON.stringify(withTarget({ heading_deg: heading, speed_mps: speed })),
       });
     } catch { /* silent */ }
   }
@@ -1336,9 +2767,9 @@
     } else {
       randomCircle = L.circle([pendingLatLng.lat, pendingLatLng.lng], {
         radius: radius,
-        color: '#0a84ff',
+        color: '#7E9472',
         weight: 2,
-        fillColor: '#0a84ff',
+        fillColor: '#7E9472',
         fillOpacity: 0.18,
       }).addTo(map);
     }
@@ -1358,13 +2789,13 @@
       const band = MODE_RANDOM_BAND[randomMode] || MODE_RANDOM_BAND.walking;
       await api('/api/phone/random_walk', {
         method: 'POST',
-        body: JSON.stringify({
+        body: JSON.stringify(withTarget({
           center_lat: pendingLatLng.lat,
           center_lng: pendingLatLng.lng,
           radius_m: parseFloat(randomRadius.value),
           min_speed_mps: band.min,
           max_speed_mps: band.max,
-        }),
+        })),
       });
       showToast(t('random-started'));
       closeRandom();
@@ -1392,6 +2823,27 @@
       pinInput.focus();
     }
   })();
+
+  // v1.9.2 visibility-aware polling — fixes the "switch to game,
+  // come back, page is disconnected" bug.
+  //
+  // - When the tab goes hidden (user swiped away to another app),
+  //   stop the 3-second poll. iOS Safari was throttling / pausing
+  //   it anyway, and not firing wasted requests saves a little
+  //   battery + LAN traffic.
+  // - When the tab becomes visible again, fire one IMMEDIATE poll.
+  //   That refreshes the daemon's `last_seen` for this session
+  //   before its 300s (5-min) stale sweeper can evict us, and
+  //   surfaces a 401 fast (→ goBackToPinScreen) if the session
+  //   genuinely timed out while we were away.
+  document.addEventListener('visibilitychange', () => {
+    if (!token) return;
+    if (document.hidden) {
+      stopPolling();
+    } else {
+      startPolling();
+    }
+  });
 })();
 </script>
 </body>

@@ -2,27 +2,71 @@ import SwiftUI
 
 struct MainView: View {
     @Environment(AppState.self) private var state
+    /// Language preference plumbed down from LociiGhostApp's
+    /// @AppStorage so AppHeaderBar can flip it without each view
+    /// reaching back into the storage layer.
+    @Binding var appLanguage: AppLanguage
+    /// Whether the sidebar column is showing. The toolbar's
+    /// built-in sidebar-toggle button (NSSplitViewController hands
+    /// us one for free with `NavigationSplitView`) writes to this
+    /// binding — passing `.constant(.all)` would make every toggle
+    /// a silent no-op, which is the bug we just fixed.
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    /// Drives the "are you sure?" alert when the user taps the
+    /// sync-mode toggle on the lockout overlay.
+    @State private var showSyncConfirm: Bool = false
 
     var body: some View {
-        NavigationSplitView(columnVisibility: .constant(.all)) {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             Sidebar()
         } detail: {
             VStack(spacing: 0) {
+                AppHeaderBar(appLanguage: $appLanguage)
+                TopStatusBar()
                 ZStack(alignment: .topLeading) {
                     MapContainerView()
                         .ignoresSafeArea(edges: .top)
+                        // Block hit-testing while the selected
+                        // iPhone is disconnected. The grey overlay
+                        // below also catches mouse events, but
+                        // belt-and-suspenders here keeps map
+                        // gestures (pan/zoom/click) totally
+                        // inert even if the overlay's z-order
+                        // ever shifts.
+                        .allowsHitTesting(!state.selectedDeviceIsDisconnected
+                                          && !state.shouldShowPhoneLockout)
+
+                    if state.shouldShowPhoneLockout {
+                        phoneLockoutOverlay
+                            .transition(.opacity)
+                    } else if state.selectedDeviceIsDisconnected {
+                        disconnectedOverlay
+                            .transition(.opacity)
+                    }
 
                     VStack(alignment: .leading, spacing: 10) {
-                        // Top strip: leave room for MapKit's scale on the
-                        // far left, search bar in the middle, quick
-                        // recenter button on the right (offset enough to
-                        // clear MapKit's compass).
+                        // Top strip: search bar on the left (over
+                        // the scale indicator's column), then a
+                        // spacer, then the right-side cluster:
+                        // recenter + layer picker. The layer picker
+                        // sits BELOW QuickRecenterButton so neither
+                        // collides with MapKit's compass + zoom.
                         HStack(alignment: .top, spacing: 12) {
-                            Spacer().frame(width: 200)
+                            // MapKit's scale indicator lives in the
+                            // top-left corner of the map (≈ 150 pt
+                            // wide depending on zoom). Reserve room
+                            // for it so the search bar's leading
+                            // edge sits clear of the "0 — 2.5 km"
+                            // ruler instead of crashing into it.
+                            Spacer().frame(width: 160)
                             MapSearchBar()
                             Spacer(minLength: 12)
-                            QuickRecenterButton()
-                                .padding(.trailing, 44)
+                            VStack(alignment: .trailing, spacing: 8) {
+                                QuickRecenterButton()
+                                RecentPlacesButton()
+                                MapLayerPicker()
+                            }
+                            .padding(.trailing, 44)
                         }
                         Overlay()
                     }
@@ -48,68 +92,361 @@ struct MainView: View {
         .onChange(of: state.useStraightLine) { _, _ in
             state.schedulePreviewRefresh()
         }
+        // Selection change flips which device's slot the
+        // simulatedLocation computed property reads from (the
+        // dict is keyed on selectedUDID). The chip refresh
+        // task lives behind setters that fire when their
+        // *value* changes — not when the selection flips — so
+        // we kick the scheduler explicitly here. Cheap.
+        //
+        // We also fly the map to the new device's known
+        // simulated location, if any: switching back to a
+        // device that was previously teleported should land
+        // the camera right on it, not leave it on the previous
+        // device's view. Per-device live nav/joystick state
+        // still gets cleared (those singletons can't represent
+        // multiple devices); the daemon will re-emit if the
+        // newly-selected device has anything active.
+        .onChange(of: state.selectedUDID) { _, newSelection in
+            state.refreshWeatherAndTzNow()
+            if let coord = state.simulatedLocation {
+                state.pendingMapFly = MapFlyRequest(
+                    coordinate: coord,
+                    spanMeters: 2_000,
+                )
+            }
+            // We INTENTIONALLY don't clear `activeRoute` /
+            // `activeWaypoints` / `activeDestination` on
+            // selection change any more — those are per-device
+            // (read from `tripsByDevice` keyed on selectedUDID).
+            // Switching to iPhone B and back to A naturally
+            // re-shows A's route. Per-singleton nav state
+            // (NavigationVM / RandomWalkVM / JoystickVM) is
+            // still global, so we wipe those — daemon events
+            // re-populate for the newly-selected device when
+            // an action fires.
+            state.navigation = nil
+            state.randomWalk = nil
+            state.joystick = nil
+        }
+        // Map-follow loop: whenever the simulated puck moves AND
+        // we're in a "things are happening" mode (joystick /
+        // random walk / live navigation), shift the map's centre
+        // to keep the puck on screen. `preserveZoom: true` means
+        // the user's chosen zoom level isn't fighting the
+        // per-second updates — only the centre changes.
+        .onChange(of: state.simulatedLocation) { _, newValue in
+            guard state.shouldFollowSimulatedLocation,
+                  let coord = newValue else { return }
+            state.pendingMapFly = MapFlyRequest(
+                coordinate: coord,
+                spanMeters: 0,
+                preserveZoom: true,
+            )
+        }
+        // Sync-mode confirm. Triggered by the "Use both at once"
+        // button on the lockout overlay. We warn the user that
+        // running both UIs simultaneously can let the two
+        // controllers fight each other; if that happens both
+        // sides hitting Restore is the recovery path.
+        .alert(
+            Text("Use both at the same time?",
+                 comment: "Sync-mode confirm dialog title"),
+            isPresented: $showSyncConfirm,
+        ) {
+            Button(role: .cancel) {} label: {
+                Text("Cancel")
+            }
+            Button {
+                Task { await state.setSyncMode(true) }
+            } label: {
+                Text("Enable",
+                     comment: "Sync-mode confirm — proceed")
+            }
+        } message: {
+            Text("Mac and phone can both drive at the same time. If their actions clash and the iPhone's position gets out of sync, press Restore on BOTH sides and start over.",
+                 comment: "Sync-mode confirm explanation")
+        }
+        // Route-start confirmation. Clicking a sidebar route parks it
+        // in `routePendingConfirm`; the alert here is what actually
+        // turns that into a teleport + navigate. Cancel just clears
+        // the field so a second click on the same route re-prompts.
+        .alert(
+            Text("Start route?",
+                 comment: "Title of the confirm-start-route alert"),
+            isPresented: Binding(
+                get: { state.routePendingConfirm != nil },
+                set: { isOpen in
+                    if !isOpen { state.routePendingConfirm = nil }
+                },
+            ),
+            presenting: state.routePendingConfirm,
+        ) { route in
+            Button(role: .cancel) {
+                state.routePendingConfirm = nil
+            } label: {
+                Text("Cancel")
+            }
+            Button {
+                let r = route
+                guard let udid = state.selectedUDID else {
+                    state.routePendingConfirm = nil
+                    return
+                }
+                state.routePendingConfirm = nil
+                Task { @MainActor in
+                    await state.runRoute(r, udid: udid)
+                }
+            } label: {
+                Text("Start",
+                     comment: "Confirm button on the start-route alert")
+            }
+        } message: { route in
+            Text(String(
+                format: String(
+                    localized: "Teleport to the start of \"%1$@\" and navigate %2$lld points?",
+                    comment: "Body of the confirm-start-route alert",
+                ),
+                route.name,
+                route.pointCount,
+            ))
+        }
+    }
+
+    /// Frosted-grey panel that covers the map when the user
+    /// selected an iPhone row that's currently offline. Carries
+    /// no controls — just a clear "已斷線" message + an
+    /// instruction to pick another device. Intercepts all hit
+    /// events so even right-clicks (which would otherwise pop the
+    /// map's context menu) are swallowed.
+    private var phoneLockoutOverlay: some View {
+        ZStack {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .opacity(0.92)
+                .overlay(Color.black.opacity(0.18))
+            VStack(spacing: 14) {
+                Image(systemName: "iphone.gen3.radiowaves.left.and.right.circle.fill")
+                    .font(.system(size: 56, weight: .light))
+                    .foregroundStyle(.tint)
+                Text("Phone in control",
+                     comment: "Mac map lockout — heading shown while phone-web session is active")
+                    .font(.title2.weight(.semibold))
+                Text("A phone is currently signed in via Phone Control. The Mac is paused while the phone is driving. Sign out from the phone, or press the button below to take control back.",
+                     comment: "Mac map lockout — body explanation")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 420)
+                HStack(spacing: 10) {
+                    Button(role: .destructive) {
+                        Task { await state.forcePhoneLogout() }
+                    } label: {
+                        Label("Stop phone control",
+                              systemImage: "xmark.circle.fill")
+                            .padding(.horizontal, 6)
+                    }
+                    .controlSize(.large)
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+
+                    Button {
+                        showSyncConfirm = true
+                    } label: {
+                        Label("Use both at once",
+                              systemImage: "arrow.left.arrow.right.circle")
+                            .padding(.horizontal, 6)
+                    }
+                    .controlSize(.large)
+                    .buttonStyle(.bordered)
+                }
+                .padding(.top, 4)
+            }
+            .padding(28)
+            .background(.regularMaterial, in: .rect(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .strokeBorder(Color.secondary.opacity(0.25), lineWidth: 0.5),
+            )
+            .shadow(color: Color.black.opacity(0.22), radius: 12, y: 4)
+        }
+        .contentShape(.rect)
+        .onTapGesture { /* eat */ }
+    }
+
+    private var disconnectedOverlay: some View {
+        ZStack {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .opacity(0.92)
+                .overlay(Color.black.opacity(0.18))
+            VStack(spacing: 12) {
+                Image(systemName: "iphone.slash")
+                    .font(.system(size: 48, weight: .light))
+                    .foregroundStyle(.secondary)
+                Text("Disconnected",
+                     comment: "Big centred label shown when the selected iPhone is offline")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text("This iPhone isn't currently reachable. Reconnect it, or pick the **Map** entry in the sidebar to browse the map without a device.",
+                     comment: "Helper text under the disconnected map overlay")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(4)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 360)
+            }
+            .padding(24)
+            .background(.regularMaterial, in: .rect(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(Color.secondary.opacity(0.25), lineWidth: 0.5),
+            )
+            .shadow(color: Color.black.opacity(0.2), radius: 10, y: 3)
+        }
+        // Swallow every gesture so the map underneath stays fully
+        // inert even if `.allowsHitTesting` ever stops working.
+        .contentShape(.rect)
+        .onTapGesture { /* eat */ }
     }
 }
 
 private struct Sidebar: View {
     @Environment(AppState.self) private var state
+    /// Devices is the only section without its own struct, so its
+    /// collapse state lives here. Title row stays visible always so
+    /// the user can find the section to expand again.
+    @State private var devicesCollapsed: Bool = false
 
     var body: some View {
         @Bindable var state = state
+        // Wrap the whole sidebar content in a ScrollView. Without
+        // it, a power user expanding a Bookmarks category with
+        // 70+ rows pushes the VStack past the window's height —
+        // the sidebar then grows the NavigationSplitView's column,
+        // shoving the detail-pane bars (header + status bar +
+        // bottom bar) off-screen. A scrollview keeps the sidebar
+        // bounded to its column's height and lets the user scroll
+        // through their bookmarks instead.
+        ScrollView(.vertical, showsIndicators: true) {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
+            HStack(spacing: 6) {
+                Image(systemName: "iphone.gen3")
+                    .foregroundStyle(.tint)
+                    .font(.caption)
                 Text("Devices").font(.headline)
                 Spacer()
                 Button {
                     Task { await state.refreshDevices() }
                 } label: {
                     Image(systemName: "arrow.clockwise")
+                        .padding(4)
                 }
                 .buttonStyle(.borderless)
-                .help("Refresh device list")
+                .hoverHighlight()
+                .help(LocalizedStringKey("Re-scan for connected devices"))
+                Image(systemName: devicesCollapsed ? "chevron.down" : "chevron.up")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
+                    .contentShape(.rect)
+                    .hoverHighlight(cornerRadius: 4, changesCursor: false)
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            devicesCollapsed.toggle()
+                        }
+                    }
             }
             .padding(.horizontal, 12)
             .padding(.top, 12)
 
             Divider().padding(.vertical, 8)
 
-            if state.devices.isEmpty {
-                ContentUnavailableView {
-                    Label("No iPhone connected", systemImage: "iphone.slash")
-                } description: {
+            if !devicesCollapsed {
+                // The synthetic Map device is always present, so
+                // the empty-state path from before only fires in
+                // the (impossible) case where displayedDevices
+                // returns nothing. Just always render rows inline.
+                //
+                // We deliberately AVOID `List` here because List
+                // inside a ScrollView refuses to expand to its
+                // maxHeight — it collapses to a default size and
+                // the user only sees Map + 1 iPhone even when 3
+                // devices are connected. A plain ForEach renders
+                // every row at its natural height; the outer
+                // sidebar ScrollView handles overflow once the
+                // combined sidebar content exceeds the window.
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(state.displayedDevices) { device in
+                        DeviceRow(device: device)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                state.selectedUDID == device.udid
+                                ? Color.lociSage.opacity(0.18)
+                                : Color.clear,
+                                in: .rect(cornerRadius: 6)
+                            )
+                            .contentShape(.rect)
+                            .onTapGesture {
+                                state.selectedUDID = device.udid
+                            }
+                    }
+                }
+                .padding(.horizontal, 6)
+
+                if state.devices.isEmpty {
                     Text("Plug an iPhone into USB and tap **Trust this computer** when prompted.")
-                        .font(.caption)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 6)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .frame(maxHeight: .infinity)
-            } else {
-                List(state.devices, selection: $state.selectedUDID) { device in
-                    DeviceRow(device: device)
-                        .tag(device.udid)
-                }
-                .listStyle(.sidebar)
+                Divider()
             }
 
+            // Section order, top → bottom (per user request):
+            //
+            //   Devices  → Bookmarks → Routes → Movement Modes →
+            //   WiFi Devices → System Functions
+            //
+            // Bookmarks + Routes float to the top because they're
+            // the most-used everyday surfaces. Movement Modes
+            // follows since picking a mode is the typical next
+            // step. WiFi Devices drops below — pairing / scanning
+            // is rare day-to-day work. System Functions stays
+            // last as the catch-all for one-time setup.
+
+            BookmarksSection()
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+            Divider()
+
+            RoutesSection()
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+            Divider()
+
+            MovementModesSection()
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
             Divider()
 
             WiFiSection()
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
-
-            Divider()
-
-            // Movement Modes sits ABOVE System Functions: it's the
-            // primary day-to-day surface (changing how the iPhone
-            // moves) whereas System Functions is one-time setup
-            // (Developer Mode toggle).
-            MovementModesSection()
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-
             Divider()
 
             SystemSection()
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
+        }
         }
         .frame(minWidth: 260)
         // Sheet attached at the sidebar root so it presents above the
@@ -123,7 +460,51 @@ private struct Sidebar: View {
             WiFiConnectSheet(target: target)
                 .environment(state)
         }
+        // Bookmark create / edit sheet — driven by either a pending
+        // coord (from map right-click) or an existing bookmark
+        // (from sidebar edit). The sheet's dismissAndClear() resets
+        // both fields so the binding flips closed.
+        .sheet(isPresented: Binding(
+            get: { state.pendingBookmarkCoord != nil || state.editingBookmark != nil },
+            set: { isOpen in
+                if !isOpen {
+                    state.pendingBookmarkCoord = nil
+                    state.editingBookmark = nil
+                }
+            }
+        )) {
+            if let bm = state.editingBookmark {
+                BookmarkEditSheet(coord: Coordinate(lat: bm.lat, lng: bm.lng),
+                                  editing: bm)
+                    .environment(state)
+            } else if let coord = state.pendingBookmarkCoord {
+                BookmarkEditSheet(coord: coord, editing: nil)
+                    .environment(state)
+            }
+        }
+        // Route create / edit sheet — driven by either a freshly
+        // imported GPX (pendingRouteImport) or an existing record
+        // (editingRoute). Same dismiss-clears-binding pattern as
+        // BookmarkEditSheet.
+        .sheet(isPresented: Binding(
+            get: { state.pendingRouteImport != nil || state.editingRoute != nil },
+            set: { isOpen in
+                if !isOpen {
+                    state.pendingRouteImport = nil
+                    state.editingRoute = nil
+                }
+            }
+        )) {
+            if let r = state.editingRoute {
+                RouteEditSheet(pending: nil, editing: r)
+                    .environment(state)
+            } else if let p = state.pendingRouteImport {
+                RouteEditSheet(pending: p, editing: nil)
+                    .environment(state)
+            }
+        }
     }
+
 }
 
 /// Sidebar section for the M-style WiFi-only flow: a one-shot "Pair
@@ -132,6 +513,9 @@ private struct Sidebar: View {
 /// LAN-discovered iPhones the user can Connect to without the cable.
 private struct WiFiSection: View {
     @Environment(AppState.self) private var state
+    /// Whole-section collapse — title row stays visible so the
+    /// Refresh button doesn't disappear with the body.
+    @State private var sectionCollapsed: Bool = false
 
     /// Any device in the sidebar list whose pair record is missing —
     /// determines whether the Pair button should be inviting or muted.
@@ -148,10 +532,16 @@ private struct WiFiSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
+                Image(systemName: "wifi")
+                    .foregroundStyle(.tint)
+                    .font(.caption)
                 Text("WiFi Devices")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 0)
+                // Refresh stays visible even when the section is
+                // collapsed so the user doesn't have to expand the
+                // section just to re-scan the LAN.
                 Button {
                     Task { await state.discoverWiFi() }
                 } label: {
@@ -159,13 +549,36 @@ private struct WiFiSection: View {
                         ProgressView().controlSize(.small)
                     } else {
                         Image(systemName: "arrow.clockwise")
+                            .padding(4)
                     }
                 }
                 .buttonStyle(.borderless)
                 .disabled(state.isDiscoveringWiFi)
-                .help("Scan LAN for paired iPhones")
+                .hoverHighlight()
+                .help(LocalizedStringKey("Scan LAN for paired iPhones"))
+                Image(systemName: sectionCollapsed ? "chevron.down" : "chevron.up")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
+                    .contentShape(.rect)
+                    .hoverHighlight(cornerRadius: 4, changesCursor: false)
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            sectionCollapsed.toggle()
+                        }
+                    }
             }
 
+            if !sectionCollapsed {
+                bodyContent
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var bodyContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
             pairButton
 
             // Two-stage progress indicator while the pair RPC is in
@@ -231,7 +644,7 @@ private struct WiFiSection: View {
                     Image(systemName: allPairedAlready
                           ? "checkmark.seal.fill"
                           : "key.radiowaves.forward.fill")
-                        .foregroundStyle(allPairedAlready ? Color.green : Color.accentColor)
+                        .foregroundStyle(allPairedAlready ? Color.green : Color.lociSage)
                 }
                 VStack(alignment: .leading, spacing: 1) {
                     pairButtonTitleText
@@ -317,7 +730,7 @@ private struct WiFiCandidateRow: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "wifi")
-                .foregroundStyle(matchedSession != nil ? Color.green : Color.accentColor)
+                .foregroundStyle(matchedSession != nil ? Color.green : Color.lociSage)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
                     Text(matchedSession?.name ?? candidate.name)
@@ -618,67 +1031,124 @@ private struct ManualIPEntry: View {
 private struct SystemSection: View {
     @Environment(AppState.self) private var state
     @State private var showingDevModeSheet = false
+    @State private var sectionCollapsed: Bool = false
 
     var body: some View {
         @Bindable var state = state
         VStack(alignment: .leading, spacing: 8) {
-            Text("System Functions")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            Button {
-                showingDevModeSheet = true
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "hammer.circle.fill")
-                        .foregroundStyle(.tint)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Enable Developer Mode…")
-                            .font(.body)
-                        Text(subtitle)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(.rect)
+            HStack(spacing: 6) {
+                Image(systemName: "gearshape.fill")
+                    .foregroundStyle(.tint)
+                    .font(.caption)
+                Text("System Functions")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Image(systemName: sectionCollapsed ? "chevron.down" : "chevron.up")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
             }
-            .buttonStyle(.plain)
-            .disabled(selectedDevice == nil)
-            .sheet(isPresented: $showingDevModeSheet) {
-                if let dev = selectedDevice {
-                    DeveloperModeSheet(device: dev)
+            .contentShape(.rect)
+            .hoverHighlight(cornerRadius: 4, changesCursor: false)
+            .onTapGesture {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    sectionCollapsed.toggle()
+                }
+            }
+
+            if !sectionCollapsed {
+                Button {
+                    showingDevModeSheet = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "hammer.circle.fill")
+                            .foregroundStyle(.tint)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Enable Developer Mode…")
+                                .font(.body)
+                            Text(subtitle)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, 2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .hoverHighlight(cornerRadius: 6, changesCursor: false)
+                .disabled(selectedDevice == nil)
+                .sheet(isPresented: $showingDevModeSheet) {
+                    if let dev = selectedDevice {
+                        DeveloperModeSheet(device: dev)
+                            .environment(state)
+                    }
+                }
+
+                Button {
+                    state.openPhoneControlSheet()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "iphone.gen3.radiowaves.left.and.right.circle.fill")
+                            .foregroundStyle(.tint)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Phone Control…",
+                                 comment: "Sidebar button — opens the LAN URL + PIN modal so a phone on the same WiFi can drive teleport / navigate / restore")
+                                .font(.body)
+                            Text("Drive LociiGhost from your phone over WiFi.",
+                                 comment: "Subtitle for the Phone Control sidebar button")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, 2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .hoverHighlight(cornerRadius: 6, changesCursor: false)
+                .sheet(isPresented: $state.showPhoneControlSheet) {
+                    PhoneControlSheet()
                         .environment(state)
                 }
-            }
 
-            Button {
-                state.openPhoneControlSheet()
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "iphone.gen3.radiowaves.left.and.right.circle.fill")
-                        .foregroundStyle(.tint)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Phone Control…",
-                             comment: "Sidebar button — opens the LAN URL + PIN modal so a phone on the same WiFi can drive teleport / navigate / restore")
-                            .font(.body)
-                        Text("Drive LociiGhost from your phone over WiFi.",
-                             comment: "Subtitle for the Phone Control sidebar button")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
+                // Sign-out-all-phones shortcut. Visible whenever
+                // at least one phone session is alive — clicking
+                // boots every paired tab in one go (calls the
+                // same `phone.force_logout` RPC the lockout
+                // overlay uses, just always-accessible).
+                if state.phoneSessionActive {
+                    Button(role: .destructive) {
+                        Task { await state.forcePhoneLogout() }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "person.crop.circle.badge.xmark")
+                                .foregroundStyle(.red)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Sign out all phones",
+                                     comment: "Sidebar shortcut — boots every authenticated phone tab")
+                                    .font(.body)
+                                Text("Kicks every paired phone and rotates the PIN.",
+                                     comment: "Subtitle for the sign-out-all-phones sidebar button")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.vertical, 2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(.rect)
                     }
-                    Spacer(minLength: 0)
+                    .buttonStyle(.plain)
+                    .hoverHighlight(cornerRadius: 6, changesCursor: false)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(.rect)
-            }
-            .buttonStyle(.plain)
-            .sheet(isPresented: $state.showPhoneControlSheet) {
-                PhoneControlSheet()
-                    .environment(state)
             }
         }
     }
@@ -704,7 +1174,58 @@ private struct DeviceRow: View {
     @Environment(AppState.self) private var state
     @State private var showingDevModeSheet = false
 
+    /// True when this row is the always-present Map device.
+    /// Renders with a map glyph + a "browse-only" subtitle and no
+    /// Connect / Disconnect button.
+    private var isVirtualMap: Bool {
+        device.udid == AppState.virtualMapUDID
+    }
+
     var body: some View {
+        if isVirtualMap {
+            virtualMapBody
+        } else {
+            iphoneBody
+        }
+    }
+
+    /// Bespoke compact row for the synthetic Map device. We don't
+    /// re-use `iphoneBody` because most of its sub-views (iOS
+    /// version, transport badges, dev-mode dot, Connect button)
+    /// are meaningless here — rendering them would just be noise
+    /// and forced-disabled clutter.
+    private var virtualMapBody: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "map.fill")
+                .foregroundStyle(.tint)
+                .font(.title3)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text("Map",
+                         comment: "Sidebar entry name for the synthetic browse-only Map device")
+                        .font(.body.weight(.medium))
+                    Text("Browse-only",
+                         comment: "Capsule badge on the synthetic Map device row")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .background(Color.lociSage, in: .capsule)
+                }
+                Text("Look up locations without a connected iPhone.",
+                     comment: "Subtitle on the synthetic Map device row")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 4)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var iphoneBody: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 Image(systemName: device.isUSB ? "iphone" : "iphone.gen3.radiowaves.left.and.right")
@@ -848,38 +1369,70 @@ private struct DeviceRow: View {
             }
             .buttonStyle(.borderless)
             .font(.caption)
-        } else if device.supportsUSB && device.supportsWiFi {
+        } else {
+            // Unified pull-down for every disconnected device,
+            // regardless of which transports the row currently
+            // supports. The default label is **"Connect via USB"**
+            // because USB is the safer / more reliable bring-up
+            // path — WiFi-only sessions need a fresh remote-pairing
+            // dance that breaks the moment the iPhone reboots,
+            // whereas USB Just Works for any iOS version we
+            // care about.
+            //
+            // Items in the menu are always shown but disabled when
+            // the corresponding transport isn't currently
+            // available — better UX than hiding them and leaving
+            // the user wondering whether the option exists.
+            //
+            //   * Connect via USB — disabled when usbmuxd doesn't
+            //     currently see the device on USB (cable unplugged)
+            //   * Connect via WiFi… — disabled when no WiFi pair
+            //     record exists yet OR the transport list doesn't
+            //     include "network"
+            //   * Don't connect — pure dismiss; explicit
+            //     "I'm just looking" exit instead of clicking
+            //     outside the menu
             Menu {
                 Button {
-                    Task { await state.connect(udid: device.udid, preferWiFi: false) }
+                    Task {
+                        await state.connect(udid: device.udid, preferWiFi: false)
+                    }
                 } label: {
-                    Label("Connect via USB", systemImage: "cable.connector")
+                    Label("Connect via USB",
+                          systemImage: "cable.connector")
                 }
+                .disabled(!device.supportsUSB)
+                .help(device.supportsUSB
+                      ? LocalizedStringKey("Connect via USB cable")
+                      : LocalizedStringKey("Plug in the USB cable first"))
+
                 Button {
                     state.openWiFiConnectFlow(udid: device.udid)
                 } label: {
-                    Label("Connect via WiFi", systemImage: "wifi")
+                    Label("Connect via WiFi…",
+                          systemImage: "wifi")
+                }
+                .disabled(!device.supportsWiFi)
+                .help(device.supportsWiFi
+                      ? LocalizedStringKey("Open the WiFi candidate picker")
+                      : LocalizedStringKey("Run **Pair for WiFi** once with the cable plugged in"))
+
+                Divider()
+
+                Button(role: .cancel) {
+                    // Pure dismiss — Menu already closes on
+                    // selection so this body is intentionally
+                    // empty.
+                } label: {
+                    Label("Don't connect",
+                          systemImage: "xmark")
                 }
             } label: {
-                Text("Connect")
+                Text("Connect via USB")
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.visible)
             .fixedSize()
-            .font(.caption)
-        } else if device.supportsWiFi {
-            Button("Connect via WiFi") {
-                state.openWiFiConnectFlow(udid: device.udid)
-            }
-            .buttonStyle(.borderless)
-            .font(.caption)
-        } else {
-            Button("Connect") {
-                Task {
-                    await state.connect(udid: device.udid, preferWiFi: false)
-                }
-            }
-            .buttonStyle(.borderless)
             .font(.caption)
         }
     }
@@ -927,6 +1480,21 @@ private struct Overlay: View {
                     .font(.caption)
                     .padding(8)
                     .background(.red.opacity(0.15), in: .rect(cornerRadius: 6))
+            }
+            // Non-error informational toast. Tinted blue so it doesn't
+            // get confused with the red error toast above. Auto-dismisses
+            // after ~10 s via AppState.showInfo().
+            if let info = state.lastInfo {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "info.circle.fill")
+                        .foregroundStyle(.tint)
+                        .font(.caption)
+                    Text(info)
+                        .font(.caption)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(8)
+                .background(.blue.opacity(0.12), in: .rect(cornerRadius: 6))
             }
         }
     }
