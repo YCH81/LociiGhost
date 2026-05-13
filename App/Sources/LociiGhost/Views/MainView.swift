@@ -535,38 +535,38 @@ private struct SidebarSupportFooter: View {
     var body: some View {
         VStack(spacing: 8) {
             Link(destination: URL(string: "https://ko-fi.com/jflociighost")!) {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Image(systemName: "cup.and.saucer.fill")
-                    Text("Support on Ko-fi",
-                         comment: "Sidebar footer — Ko-fi donation button")
+                    Text("Buy me a bubble tea",
+                         comment: "Sidebar footer — Ko-fi donation button, playful bubble-tea framing")
                         .lineLimit(1)
                 }
-                .font(.caption.weight(.semibold))
+                .font(.callout.weight(.semibold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 7)
+                .padding(.vertical, 10)
                 .background(
                     Color(red: 1.0, green: 0.369, blue: 0.357),
-                    in: .rect(cornerRadius: 6)
+                    in: .rect(cornerRadius: 7)
                 )
             }
             .buttonStyle(.plain)
-            .help(LocalizedStringKey("Support on Ko-fi"))
+            .help(LocalizedStringKey("Buy me a bubble tea"))
 
             Link(destination: URL(string: "https://line.me/ti/g2/-x9IldV0HMk-4Ydc-U93UnvOnUPbJ1En3z9XIg")!) {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Image(systemName: "person.2.fill")
                     Text("Join LINE community",
                          comment: "Sidebar footer — LINE community group link")
                         .lineLimit(1)
                 }
-                .font(.caption.weight(.semibold))
+                .font(.callout.weight(.semibold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 7)
+                .padding(.vertical, 10)
                 .background(
                     Color(red: 0.024, green: 0.780, blue: 0.333),
-                    in: .rect(cornerRadius: 6)
+                    in: .rect(cornerRadius: 7)
                 )
             }
             .buttonStyle(.plain)
