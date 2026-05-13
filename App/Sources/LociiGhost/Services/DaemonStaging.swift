@@ -55,11 +55,35 @@ enum DaemonStaging {
             .appending(path: "Documents/LociiGhost/Daemon", directoryHint: .isDirectory)
     }
 
+    /// True when the .app ships a self-contained PyInstaller daemon
+    /// at `Contents/Resources/lociighostd/lociighostd`. End-user
+    /// distributions (the DMG from Google Drive) include this; dev
+    /// builds that skip `Daemon/dist/` during package-app.sh don't.
+    static var hasBundledDaemon: Bool {
+        guard let resources = Bundle.main.resourceURL else { return false }
+        let bundled = resources
+            .appending(path: "lociighostd")
+            .appending(path: "lociighostd")
+        return FileManager.default.isExecutableFile(atPath: bundled.path)
+    }
+
     /// Make sure a usable copy of the daemon exists at `stagedRoot`.
     /// Re-stages if the source's `__init__.py` is newer than the
     /// staged one's, so day-to-day daemon edits don't require manual
     /// resync.
     static func ensureStaged() async throws {
+        // End-user path: when the .app ships its own daemon inside
+        // Contents/Resources/, neither DaemonLifecycle nor
+        // PrivilegedDaemonInstaller will go anywhere near the staged
+        // tree. Calling ensureStaged() in that case would crash with
+        // "Daemon source not found" on machines that — correctly —
+        // don't have the LociiGhost repo cloned at ~/Documents/.
+        // Short-circuit before touching the filesystem so AppState
+        // can blindly call this on every daemon boot.
+        if hasBundledDaemon {
+            return
+        }
+
         let source = sourceRoot
         guard FileManager.default.fileExists(atPath: source.path) else {
             throw StagingError.sourceMissing(source)

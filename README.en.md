@@ -29,7 +29,7 @@ if you're in Taiwan.
 
 ## Download
 
-- **Latest version**: v1.10.1
+- **Latest version**: v1.10.2
 - **Release date**: 2026-05-14
 - **Download**: [Google Drive folder](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) — DMG is Apple-Developer-ID-signed and notarised, so it opens with a double-click without the Gatekeeper warning.
 
@@ -61,12 +61,12 @@ if you're in Taiwan.
 
 ## What's new
 
-**v1.10.1** (2026-05-14)
+**v1.10.2** (2026-05-14)
 
 - **Fix: end users couldn't actually launch the v1.10.0 .app.** That
   build assumed the user had `~/Documents/LociiGhost/Daemon/` (a dev-
   mode source + venv tree) on disk; anyone who just downloaded the
-  DMG hit "Daemon source not found". v1.10.1 bundles the entire
+  DMG hit "Daemon source not found". v1.10.2 bundles the entire
   94 MB PyInstaller daemon binary into the .app at
   `Contents/Resources/lociighostd/`, so users without Python or the
   cloned repo can double-click and go.

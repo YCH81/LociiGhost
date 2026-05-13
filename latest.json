@@ -1,5 +1,5 @@
 {
-  "version": "1.10.1",
+  "version": "1.10.2",
   "url": "https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing",
-  "notes": "v1.10.1 — 修正 v1.10.0 一般使用者下載後無法啟動的 bug。Daemon binary 現已內含於 .app（94 MB），不再需要本機有原始碼。"
+  "notes": "v1.10.2 — 修正 v1.10.0 / v1.10.1 一般使用者下載後無法啟動的 bug。Daemon binary 現已內含於 .app（94 MB），不再需要本機有原始碼。"
 }

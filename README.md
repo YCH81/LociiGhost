@@ -27,7 +27,7 @@
 
 ## 下載
 
-- **最新版本**：v1.10.1
+- **最新版本**：v1.10.2
 - **發布日期**：2026-05-14
 - **下載連結**：[Google Drive 下載資料夾](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) —— DMG 已通過 Apple Developer ID 簽名 + Apple notarize，雙擊即可開啟，不會被 Gatekeeper 擋下
 
@@ -51,11 +51,11 @@
 
 ## 最新更新
 
-**v1.10.1**（2026-05-14）
+**v1.10.2**（2026-05-14）
 
 - **修正一般使用者下載後無法啟動的 bug**：v1.10.0 的 .app 假設使用者本機
   `~/Documents/LociiGhost/Daemon/` 有原始碼 + venv（dev mode 設計留下的
-  限制）。v1.10.1 把整個 PyInstaller daemon binary（94 MB）直接打包進
+  限制）。v1.10.2 把整個 PyInstaller daemon binary（94 MB）直接打包進
   `.app/Contents/Resources/lociighostd/`，沒有 Python、沒有 source code 的
   使用者也能雙擊就跑。
 - DMG 體積因此從 4.7 MB → 44 MB（含整個 Python runtime 跟所有相依套件）。
