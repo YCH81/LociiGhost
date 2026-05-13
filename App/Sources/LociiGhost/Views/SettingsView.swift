@@ -548,6 +548,20 @@ struct SettingsView: View {
             .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 4) {
+                Image(systemName: "message.fill")
+                    .foregroundStyle(Color(red: 0.024, green: 0.780, blue: 0.333))
+                    .font(.caption2)
+                Link(
+                    String(localized: "LINE Official Account @382ydavk",
+                           comment: "Settings — LINE Official Account link"),
+                    destination: URL(string: "https://line.me/R/ti/p/%40382ydavk")!
+                )
+                .font(.caption)
+                Spacer()
+            }
+            .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 4) {
                 Image(systemName: "arrow.up.right.square")
                     .foregroundStyle(.secondary)
                     .font(.caption2)
