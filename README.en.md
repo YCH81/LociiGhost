@@ -5,6 +5,12 @@
   <a href="README.en.md"><img alt="English" src="https://img.shields.io/badge/English-active-2d3748?style=flat-square"></a>
 </p>
 
+<p>
+  <a href="https://ko-fi.com/jflociighost"><img alt="Support YCH81 (aka Jeff Hu) on Ko-fi" src="https://img.shields.io/badge/Ko--fi-Support-FF5E5B?style=flat-square&logo=kofi&logoColor=white"></a>
+  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/License-MIT-2d3748?style=flat-square"></a>
+  <a href="https://github.com/YCH81/LociiGhost/releases"><img alt="Latest version" src="https://img.shields.io/badge/version-v1.9.4-7fa389?style=flat-square"></a>
+</p>
+
 > **iPhone GPS spoofing tool** — Apple-Silicon-native macOS app, a complete Swift rewrite informed by LocWarp's concept and partial code reference (keezxc1223, MIT).
 >
 > Upstream: [keezxc1223/locwarp](https://github.com/keezxc1223/locwarp) (MIT)

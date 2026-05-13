@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LociiGhost — iPhone GPS 模擬工具</title>
-<meta name="description" content="iPhone GPS 模擬工具 —— Apple Silicon 原生 macOS app，從 LocWarp（keezxc1223, MIT）概念與部分參照後完整 Swift 重寫。">
+<title>LociiGhost — iPhone GPS Spoofing Tool</title>
+<meta name="description" content="iPhone GPS spoofing tool — Apple-Silicon-native macOS app, a complete Swift rewrite informed by LocWarp's concept and partial code reference (keezxc1223, MIT).">
 <style>
   :root {
     --bg: #f5f4ee;
@@ -19,7 +19,7 @@
   body {
     margin: 0;
     font: 16px/1.7 -apple-system, BlinkMacSystemFont, "Helvetica Neue",
-          "PingFang TC", "Heiti TC", "Microsoft JhengHei", sans-serif;
+          "Segoe UI", Roboto, sans-serif;
     background: var(--bg);
     color: var(--ink);
     -webkit-font-smoothing: antialiased;
@@ -147,44 +147,51 @@
 <div class="container">
 
   <nav class="lang-switcher">
-    <a href="index.html" class="active">繁體中文</a>
-    <a href="index.en.html">English</a>
+    <a href="index.html">繁體中文</a>
+    <a href="index.en.html" class="active">English</a>
   </nav>
 
   <header>
     <h1>LociiGhost</h1>
-    <p class="tagline">iPhone GPS 模擬工具 —— Apple Silicon 原生 macOS app。</p>
+    <p class="tagline">iPhone GPS spoofing tool — Apple-Silicon-native macOS app.</p>
   </header>
 
   <section class="card">
     <div class="version-line">
       <strong>v1.9.4</strong>
-      <span class="status-pill">準備發佈中</span>
+      <span class="status-pill">Preparing release</span>
     </div>
-    <p>核心功能完成：多手機獨立控制、per-device 路線記憶、雙裝置同步、
-       SwiftData 持久化、繁中／英雙語、六種移動模式、GPX 匯入、書籤。</p>
-    <p class="meta">公開的可下載二進位等候 Apple Developer ID 證書與
-       notarization 程序完成後釋出，避免使用者打開 .app 時被 Gatekeeper 擋下。</p>
+    <p>Core feature set complete: multi-phone independent control,
+       per-device route memory, dual-device sync, SwiftData persistence,
+       Traditional Chinese + English UI, six movement modes, GPX import,
+       bookmarks.</p>
+    <p class="meta">A signed, downloadable binary will be published once
+       Apple's Developer ID certificate and notarization clear, so users
+       don't hit a Gatekeeper warning when opening the .app.</p>
   </section>
 
-  <h2>目前如何取得</h2>
-  <p>暫時僅提供原始碼。從 GitHub clone 後自行 build：</p>
+  <h2>How to get it (for now)</h2>
+  <p>Source only at the moment. Clone from GitHub and build locally:</p>
   <p><a href="https://github.com/YCH81/LociiGhost">github.com/YCH81/LociiGhost</a>
-     —— 詳細 build 步驟見 repo 內的 <code>README.md</code>。</p>
+     — full build steps in the repo <code>README.en.md</code>.</p>
 
-  <h2>支持作者</h2>
-  <p>如果 LociiGhost 對你有幫助，歡迎透過 Ko-fi 請我喝一杯咖啡，
-     是支持我繼續維護、修 bug、追新 iOS 版本的最直接方式。</p>
+  <h2>Support the author</h2>
+  <p>If LociiGhost is useful to you, you can buy me a coffee on Ko-fi —
+     no platform cut, one-off, no subscription required. It's the most
+     direct way to keep me maintaining the project, fixing bugs, and
+     tracking new iOS releases.</p>
   <p><a href="https://ko-fi.com/jflociighost" class="kofi-button"
-        target="_blank" rel="noopener">在 Ko-fi 上支持 YCH81 aka Jeff Hu</a></p>
+        target="_blank" rel="noopener">Support YCH81 (aka Jeff Hu) on Ko-fi</a></p>
 
-  <h2>聯絡</h2>
-  <p>Bug 回報、使用問題、合作詢問請走 GitHub Issues：
-     <a href="https://github.com/YCH81/LociiGhost/issues">Issues 頁面</a>。</p>
+  <h2>Contact</h2>
+  <p>Bug reports, usage questions, and collaboration inquiries:
+     <a href="https://github.com/YCH81/LociiGhost/issues">GitHub Issues</a>.</p>
 
   <div class="attribution">
-    本專案為 <a href="https://github.com/keezxc1223/locwarp">keezxc1223/locwarp</a>
-    （MIT）概念與部分參照後的完整 Swift 重寫，為獨立 repo（非 GitHub-fork）。
+    This project is a complete Swift rewrite informed by the concept and
+    partial code reference of
+    <a href="https://github.com/keezxc1223/locwarp">keezxc1223/locwarp</a>
+    (MIT), and is maintained as a standalone repo (not a GitHub-fork).
     <br>
     LociiGhost © 2026 YCH81 (Jeff Hu) · MIT License
   </div>
