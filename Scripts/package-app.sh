@@ -162,6 +162,25 @@ if [[ -n "$SIGN_IDENTITY" ]]; then
         exit 1
     fi
 
+    # Move the .app entirely outside ~/Documents before any
+    # signing step. macOS's File Provider daemon (the iCloud Drive
+    # sync engine) keeps re-attaching `com.apple.fileprovider.fpfs#P`
+    # — a system-protected extended attribute — to any file we
+    # write inside an iCloud-synced directory. codesign rejects
+    # files carrying that xattr with "resource fork / Finder
+    # information / detritus not allowed". xattr -cr can't strip
+    # it (the `#P` suffix marks it protected) and the daemon races
+    # us back into the file between sign steps even after ditto.
+    #
+    # /tmp isn't watched by any File Provider, so all signing /
+    # notarisation work happens there cleanly. At the end we ditto
+    # the finished .app back to dist/ for the user.
+    ORIGINAL_OUT="$OUT"
+    SIGN_WORK="$(mktemp -d)"
+    OUT="$SIGN_WORK/$(basename "$ORIGINAL_OUT")"
+    ditto --norsrc --noextattr --noacl "$ORIGINAL_OUT" "$OUT"
+    rm -rf "$ORIGINAL_OUT"
+
     # Inside-out signing: every nested signable item (SwiftPM
     # resource bundle, main executable) gets signed BEFORE the
     # outer .app wrapper. codesign rejects nested-already-signed
@@ -231,6 +250,15 @@ if [[ -n "$SIGN_IDENTITY" ]]; then
         echo "      2) export LOCIIGHOST_NOTARY_PROFILE=LociiGhost"
         echo "      3) re-run this script"
     fi
+
+    # Move the finished (signed + notarised + stapled) .app back to
+    # its original dist/ location. All signing work happened under
+    # /tmp/$SIGN_WORK so iCloud Drive's File Provider couldn't race
+    # codesign with re-attached protected xattrs; the user expects
+    # the final artefact at the original $OUT path though.
+    ditto --norsrc --noextattr --noacl "$OUT" "$ORIGINAL_OUT"
+    rm -rf "$SIGN_WORK"
+    OUT="$ORIGINAL_OUT"
 else
     # Local-development ad-hoc fallback. No certificate needed,
     # but the .app only opens on this Mac (Gatekeeper warns

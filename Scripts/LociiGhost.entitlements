@@ -2,38 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!--
-        Minimal entitlements for a non-sandboxed Developer ID app
-        with Hardened Runtime.
-
-        We deliberately do NOT enable App Sandbox: LociiGhost spawns
-        helper processes (osascript admin prompts, the lociighostd
-        Python daemon), talks to the daemon over a Unix socket in
-        ~/Library/Application Support/LociiGhost/, and writes log
-        files to ~/Library/Logs/LociiGhost/. App Sandbox blocks all
-        of those unless explicit temporary-exception entitlements
-        are added — which is more invasive than just shipping
-        un-sandboxed. Sandbox is only required for Mac App Store
-        distribution; Developer ID + notarisation outside the App
-        Store does not require it.
-
-        Hardened Runtime is enabled at codesign time via
-        `--options runtime` (see package-app.sh). With Hardened
-        Runtime on, the following entitlement gives explicit
-        permission for behaviours the runtime would otherwise block.
-    -->
-
-    <!--
-        com.apple.security.automation.apple-events
-        -------------------------------------------
-        LociiGhost shells out to `osascript "do shell script ... with
-        administrator privileges"` from PrivilegedDaemonInstaller to
-        prompt the user for their macOS password when starting the
-        daemon under root for the WiFi-tunnel flow. Under Hardened
-        Runtime this Apple Events call is blocked by default —
-        this entitlement re-enables it.
-    -->
-    <key>com.apple.security.automation.apple-events</key>
-    <true/>
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
 </dict>
 </plist>
