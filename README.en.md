@@ -49,35 +49,6 @@ if you're in Taiwan.
 - **Apple-Silicon-native** — 0% idle CPU, no Chromium overhead, bundle
   under 200 MB.
 
-## Disclaimer
-
-LociiGhost is an independently-maintained open source tool, provided
-for **research, development testing, and personal map exploration**
-within legal use. Before using it, please understand:
-
-1. **Use at your own risk**: This tool modifies iPhone GPS simulation
-   state, which may violate the Terms of Service of some apps or games
-   — particularly Niantic titles like Pokémon GO and Pikmin Bloom and
-   other location-based games — potentially resulting in **account
-   bans, progress loss, or confiscation of in-game assets**. The
-   author bears no responsibility for any such losses.
-2. **Only validated on the developer's own test setup** (macOS 15+ on
-   Apple Silicon, iPhone 16 Pro Max / iOS 18.7–26.4). Other device /
-   iOS / macOS combinations are not guaranteed to work.
-3. **No support guarantees**: This project is maintained in the
-   author's spare time; no SLA, no support desk. Bug fixes,
-   compatibility with new iOS releases, and new features all depend
-   on the author's available time and energy.
-4. **Comply with local laws**: Use according to the laws applicable
-   where you are. This tool must NOT be used for fraud, harassment,
-   circumventing geographical restrictions for unlawful purposes, or
-   any use that causes harm to third parties.
-5. **MIT-licensed, NO warranty**: The software is provided "AS IS"
-   without warranty of any kind, express or implied. Full legal terms
-   in [`LICENSE`](LICENSE).
-
-If you don't accept these terms, please do not use this tool.
-
 ## What's new
 
 **v1.9.4** (May 2026)
@@ -253,3 +224,32 @@ Copyright (c) 2026 keezxc1223 (LocWarp upstream)
 If you fork or redistribute LociiGhost (modified or not), you only need to
 preserve the [`LICENSE`](LICENSE) file. Everything else — proprietary use,
 commercial use, sublicensing, rebranding — is allowed by MIT.
+
+## Disclaimer
+
+LociiGhost is an independently-maintained open source tool, provided
+for **research, development testing, and personal map exploration**
+within legal use. Before using it, please understand:
+
+1. **Use at your own risk**: This tool modifies iPhone GPS simulation
+   state, which may violate the Terms of Service of some apps or games
+   — particularly Niantic titles like Pokémon GO and Pikmin Bloom and
+   other location-based games — potentially resulting in **account
+   bans, progress loss, or confiscation of in-game assets**. The
+   author bears no responsibility for any such losses.
+2. **Only validated on the developer's own test setup** (macOS 15+ on
+   Apple Silicon, iPhone 16 Pro Max / iOS 18.7–26.4). Other device /
+   iOS / macOS combinations are not guaranteed to work.
+3. **No support guarantees**: This project is maintained in the
+   author's spare time; no SLA, no support desk. Bug fixes,
+   compatibility with new iOS releases, and new features all depend
+   on the author's available time and energy.
+4. **Comply with local laws**: Use according to the laws applicable
+   where you are. This tool must NOT be used for fraud, harassment,
+   circumventing geographical restrictions for unlawful purposes, or
+   any use that causes harm to third parties.
+5. **MIT-licensed, NO warranty**: The software is provided "AS IS"
+   without warranty of any kind, express or implied. Full legal terms
+   in [`LICENSE`](LICENSE).
+
+If you don't accept these terms, please do not use this tool.
