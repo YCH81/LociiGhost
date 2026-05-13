@@ -1,5 +1,10 @@
 # LociiGhost
 
+<p align="right">
+  <a href="README.md"><img alt="繁體中文" src="https://img.shields.io/badge/繁體中文-active-2d3748?style=flat-square"></a>
+  <a href="README.en.md"><img alt="English" src="https://img.shields.io/badge/English-gray?style=flat-square"></a>
+</p>
+
 > **iPhone GPS 模擬工具** —— Apple Silicon 原生 macOS app，從 LocWarp（keezxc1223, MIT）概念與部分參照後完整 Swift 重寫。
 >
 > 上游：[keezxc1223/locwarp](https://github.com/keezxc1223/locwarp)（MIT）
