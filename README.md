@@ -11,13 +11,13 @@
   <a href="https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing"><img alt="Download (Google Drive)" src="https://img.shields.io/badge/download-DMG-7fa389?style=flat-square&logo=googledrive&logoColor=white"></a>
 </p>
 
-> **iPhone GPS 模擬工具** —— Apple Silicon 原生 macOS app，從 LocWarp（keezxc1223, MIT）概念與部分參照後完整 Swift 重寫。
+> **iPhone GPS 模擬工具** —— Apple Silicon 原生 macOS app，從 LocWarp（keezxc1223, MIT）概念與部分參照後 Swift 重寫。
 >
 > 上游：[keezxc1223/locwarp](https://github.com/keezxc1223/locwarp)（MIT）
 
 從零打造、僅支援 Apple Silicon 的 iOS 定位模擬工具，以
 [LocWarp](https://github.com/keezxc1223/locwarp)（keezxc1223 著、MIT 授權）為
-靈感，但重建為原生 macOS app —— 不是跨平台 Electron 版本的移植。
+靈感，但重建為原生 macOS app 。
 
 ## 支持作者
 
@@ -67,10 +67,9 @@
 - iPhone 模擬位置 marker 永遠**浮在路線之上**（z-priority fix）。
 - LICENSE 新增 **Brand & Support Channels carve-out**：「LociiGhost」名稱、
   icon、Ko-fi、LINE 個人保留，不在 MIT 範圍。
-- 兩語**官方 Pages 網站**（[ych81.github.io/LociiGhost](https://ych81.github.io/LociiGhost/)）、
+- **官方 Pages 網站**（[ych81.github.io/LociiGhost](https://ych81.github.io/LociiGhost/)）、
   Ko-fi 贊助連結、LINE 官方帳號（`@382ydavk`）/ 社群（「LociiGhost Mac/iOS 飛人」）。
-- 完整 7 段**免責聲明**（合法用途、帳號封禁、系統風險、地圖準確性、
-  支援範圍、使用者責任、無擔保）。
+
 
 **v1.9.4**（2026-05）
 
