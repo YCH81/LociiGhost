@@ -222,8 +222,9 @@ by LocWarp; several source files in this repository keep explicit "ported
 from LocWarp" comments where the design parity is intentional.
 
 LociiGhost itself (the new Swift app, Apple-Silicon-native daemon,
-SwiftData schema, native MapKit integration, SOU·SOU-style icon set, and
-any feature work since v1.0) is the original work of **YCH81 (Jeff Hu)**.
+SwiftData schema, native MapKit integration, sage-palette paper-plane
+icon set, and any feature work since v1.0) is the original work of
+**YCH81 (Jeff Hu)**.
 
 ## License
 

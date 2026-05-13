@@ -190,8 +190,8 @@ LociiGhost 是 [LocWarp](https://github.com/keezxc1223/locwarp)（**keezxc1223**
 的明確註解，以註明設計對齊處。
 
 LociiGhost 本體（新的 Swift app、Apple-Silicon-native daemon、SwiftData
-schema、原生 MapKit 整合、SOU·SOU-style 圖示集，以及 v1.0 之後的所有功能
-開發）為 **YCH81（Jeff Hu）** 的原創作品。
+schema、原生 MapKit 整合、sage 配色的紙飛機 icon set，以及 v1.0 之後的所有
+功能開發）為 **YCH81（Jeff Hu）** 的原創作品。
 
 ## 授權
 
