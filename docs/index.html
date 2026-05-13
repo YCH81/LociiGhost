@@ -83,6 +83,25 @@
     color: var(--ink);
     border-bottom-color: var(--ink);
   }
+  .kofi-button {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 11px 22px;
+    background: #FF5E5B;
+    color: white !important;
+    border-radius: 8px;
+    border: none;
+    font-weight: 600;
+    font-size: 15px;
+    letter-spacing: 0.01em;
+    transition: background 0.15s, transform 0.05s;
+  }
+  .kofi-button:hover {
+    background: #e54541;
+    color: white !important;
+    border: none;
+  }
+  .kofi-button:active { transform: translateY(1px); }
   code {
     background: rgba(0,0,0,0.05);
     padding: 1px 6px;
@@ -125,7 +144,10 @@
      —— 詳細 build 步驟見 repo 內的 <code>README.md</code>。</p>
 
   <h2>支持作者</h2>
-  <p>抖內 / 贊助管道籌備中，稍後補上。</p>
+  <p>如果 LociiGhost 對你有幫助，歡迎透過 Ko-fi 請我喝一杯咖啡，
+     是支持我繼續維護、修 bug、追新 iOS 版本的最直接方式。</p>
+  <p><a href="https://ko-fi.com/jflociighost" class="kofi-button"
+        target="_blank" rel="noopener">在 Ko-fi 上支持 jflociighost</a></p>
 
   <h2>聯絡</h2>
   <p>Bug 回報、使用問題、合作詢問請走 GitHub Issues：
