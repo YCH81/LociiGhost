@@ -4,13 +4,16 @@ import SwiftUI
 /// Hooks into AppKit's app-lifecycle so the app behaves like a normal Mac
 /// utility:
 ///
-/// 1. Closing the last window quits the process. SwiftUI's default keeps the
-///    app alive in the Dock with no window, which here just means a stale
-///    socket connection nobody can interact with -- not useful.
+/// 1. Closing the last window (red X) hides it but keeps the process
+///    alive in the Dock — standard Mac convention. Cmd-Q (or the menu
+///    Quit) is what actually terminates. Keeping the process around
+///    means the daemon socket stays connected, so re-opening the
+///    window is instant instead of paying the bootstrap + reconnect
+///    cost every time.
 /// 2. Re-clicking the Dock icon (or Spotlight) when no window is open
-///    re-creates the main window so the user can come back without quitting
-///    and re-launching.
-/// 3. `applicationWillTerminate` waits for the AppState to flush its
+///    re-creates the main window so the user can come back without
+///    quitting and re-launching.
+/// 3. `applicationShouldTerminate` waits for the AppState to flush its
 ///    socket connection cleanly. The daemon itself is left alone if it was
 ///    attached to externally (sudo-launched), so the user doesn't pay the
 ///    sudo prompt on the next launch.
@@ -19,7 +22,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor static weak var sharedAppState: AppState?
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        true
+        // false = standard Mac behaviour: closing the last window hides it
+        // but leaves the app running in the Dock. Re-opening is handled by
+        // `applicationShouldHandleReopen` below; real teardown only happens
+        // on explicit Cmd-Q (which routes through `applicationShouldTerminate`).
+        false
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows visible: Bool) -> Bool {
