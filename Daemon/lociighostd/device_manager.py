@@ -1103,24 +1103,13 @@ class DeviceManager:
             if key in seen:
                 continue
             seen.add(key)
-            # Promote the cached friendly name when we have one for
-            # ANY paired UDID — this is purely cosmetic, but in the
-            # common single-iPhone case it labels every tcp_scan hit
-            # with the user's actual device name instead of just the
-            # IP, which reads much better in the GUI.
-            #
-            # v1.9 fix: only apply the promotion when there's exactly
-            # ONE cached name. With multiple paired iPhones, the
-            # previous "pick the first cached name" heuristic
-            # labelled EVERY tcp_scan hit with the same name (e.g.
-            # all 5 LAN candidates would show as "Weeeee"), so the
-            # user couldn't tell which row was which iPhone. When
-            # there's ambiguity, keep the IP as the displayed name
-            # — that's at least uniquely identifying.
-            if r["method"] == "tcp_scan" and len(self._device_names) == 1:
-                best = next(iter(self._device_names.values()), None)
-                if best:
-                    r = {**r, "name": best}
+            # tcp_scan hits keep their default name=ip (set above) so
+            # each row in the GUI is uniquely identifying. The earlier
+            # "promote to the single cached friendly name" heuristic
+            # made every tcp_scan row read identical when one iPhone
+            # was reachable via multiple LAN paths (DHCP floats,
+            # multi-NIC, VPN-routed subnets), which defeated the point
+            # of a candidate list.
             unique.append(r)
 
         log.info("wifi_discover: %d candidate(s)", len(unique))

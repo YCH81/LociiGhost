@@ -32,7 +32,14 @@ enum RoutesJSONService {
             let name: String?
             let category: String?
             let icon: String?
+            // `points` is LociiGhost's native key. `waypoints` is the
+            // key LocWarp (upstream) uses — accepting both lets users
+            // import a `locwarp-routes.json` export directly without
+            // a schema conversion step.
             let points: [Point]?
+            let waypoints: [Point]?
+
+            var coords: [Point] { points ?? waypoints ?? [] }
         }
         let routes: [Route]?
     }
@@ -55,7 +62,7 @@ enum RoutesJSONService {
         var out: [Imported] = []
         out.reserveCapacity(payload.routes?.count ?? 0)
         for r in payload.routes ?? [] {
-            let coords: [Coordinate] = (r.points ?? []).compactMap { p in
+            let coords: [Coordinate] = r.coords.compactMap { p in
                 guard (-90.0...90.0).contains(p.lat),
                       (-180.0...180.0).contains(p.lng)
                 else { return nil }

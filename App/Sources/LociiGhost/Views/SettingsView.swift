@@ -14,6 +14,12 @@ struct SettingsView: View {
 
     @State private var googleKeyDraft: String = ""
     @State private var showingBulkPasteSheet: Bool = false
+    /// Sheet-local toast for routes import / export results. The
+    /// global `state.lastError` toast lives in MainView and is hidden
+    /// behind this Settings sheet, so without this inline echo the user
+    /// gets zero feedback when they hit Import/Export JSON. Auto-clears
+    /// ~5 s after each result.
+    @State private var routesIOMessage: String?
 
     var body: some View {
         // NB: We can't shadow-bind `@Bindable var state = state` at
@@ -363,7 +369,11 @@ struct SettingsView: View {
                     }
                 }
                 Button {
-                    Task { @MainActor in await state.importRoutesJSON() }
+                    Task { @MainActor in
+                        if let msg = await state.importRoutesJSON() {
+                            routesIOMessage = msg
+                        }
+                    }
                 } label: {
                     Label {
                         Text("Import JSON…",
@@ -373,7 +383,11 @@ struct SettingsView: View {
                     }
                 }
                 Button {
-                    Task { @MainActor in await state.exportRoutesJSON() }
+                    Task { @MainActor in
+                        if let msg = await state.exportRoutesJSON() {
+                            routesIOMessage = msg
+                        }
+                    }
                 } label: {
                     Label {
                         Text("Export JSON…",
@@ -385,6 +399,25 @@ struct SettingsView: View {
                 Spacer()
             }
             .buttonStyle(.bordered)
+
+            if let msg = routesIOMessage {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "info.circle.fill")
+                        .foregroundStyle(.tint)
+                        .font(.caption)
+                    Text(msg)
+                        .font(.caption)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                .padding(8)
+                .background(.blue.opacity(0.12), in: .rect(cornerRadius: 6))
+                .transition(.opacity)
+                .task(id: msg) {
+                    try? await Task.sleep(for: .seconds(5))
+                    if routesIOMessage == msg { routesIOMessage = nil }
+                }
+            }
         }
     }
 

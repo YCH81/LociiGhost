@@ -61,6 +61,47 @@ final class LocationProxyService: NSObject, CLLocationManagerDelegate {
         manager.requestLocation()
     }
 
+    /// Continuations waiting for the next `didUpdateLocations` callback.
+    /// Keyed by UUID so the timeout side of `fetchFreshFix` can resume
+    /// only the entry it owns without disturbing other concurrent waiters.
+    /// Drained on every successful fix.
+    private var fixWaiters: [UUID: CheckedContinuation<CLLocationCoordinate2D?, Never>] = [:]
+
+    /// Request a fresh fix and `await` until either a new one lands or
+    /// `timeout` elapses. Returns the coordinate on success, `nil` if
+    /// the timeout fired, the user denied permission, or the system has
+    /// yet to determine authorisation. Safe to call concurrently — every
+    /// waiter receives the same next fix.
+    ///
+    /// Existing fix in `coordinate` is intentionally ignored: callers
+    /// who want "use what we already have, then refresh in the
+    /// background" can read `coordinate` and call `refresh()` directly.
+    /// This method exists for the opposite case — caller needs the
+    /// answer to be fresh before proceeding (e.g. Restore-Real-GPS,
+    /// which flies the map to the user's *current* location).
+    func fetchFreshFix(timeout: TimeInterval) async -> CLLocationCoordinate2D? {
+        guard status == .authorized || status == .authorizedAlways else {
+            // Either user hasn't decided yet or they denied. Surface
+            // the prompt if undetermined; either way bail so the caller
+            // can show a "needs permission" message rather than hanging
+            // for the full timeout window.
+            requestPermissionAndFetch()
+            return nil
+        }
+        manager.requestLocation()
+        let myId = UUID()
+        return await withCheckedContinuation { cont in
+            fixWaiters[myId] = cont
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(timeout))
+                guard let self else { return }
+                if let pending = self.fixWaiters.removeValue(forKey: myId) {
+                    pending.resume(returning: nil)
+                }
+            }
+        }
+    }
+
     // MARK: - CLLocationManagerDelegate
 
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
@@ -83,6 +124,15 @@ final class LocationProxyService: NSObject, CLLocationManagerDelegate {
             self.coordinate = coord
             self.accuracy = acc
             self.lastFixAt = Date()
+            // Drain anyone awaiting `fetchFreshFix`. Snapshot the dict
+            // before resuming so a continuation that synchronously
+            // chains another fetchFreshFix() during its resume doesn't
+            // see itself in the queue.
+            let waiters = self.fixWaiters
+            self.fixWaiters.removeAll()
+            for (_, cont) in waiters {
+                cont.resume(returning: coord)
+            }
         }
     }
 

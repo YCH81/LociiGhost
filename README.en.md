@@ -29,7 +29,7 @@ if you're in Taiwan.
 
 ## Download
 
-- **Latest version**: v1.10.5
+- **Latest version**: v1.10.6
 - **Release date**: 2026-05-14
 - **Download**: [Google Drive folder](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) — DMG is Apple-Developer-ID-signed and notarised, so it opens with a double-click without the Gatekeeper warning. **Use the DMG, not a zip**: extracting a signed .app into an iCloud-synced folder (Documents, Desktop) lets the File Provider attach extra xattrs that break the signature and show "LociiGhost is damaged".
 
@@ -60,6 +60,43 @@ if you're in Taiwan.
   under 200 MB.
 
 ## What's new
+
+**v1.10.6** (2026-05-14)
+
+- **Restore Real GPS actually returns to your current location now.**
+  Earlier revisions flew the map to whatever CoreLocation fix was lying
+  around at startup, or did nothing at all when the fix was nil. Restore
+  now `await`s a fresh Mac CoreLocation fix (2 s timeout) *before*
+  flying, and Connect re-requests location permission so a deferred
+  grant doesn't strand Restore forever. If no fix lands, the toast tells
+  you to open System Settings → Privacy & Security → Location Services
+  instead of silently no-op'ing.
+- **WiFi device list no longer collapses multi-path candidates into one
+  name.** When a single iPhone is reachable via several LAN paths (DHCP
+  floats, multi-NIC, VPN-routed subnets), all four tcp_scan rows used to
+  show the same friendly name. The promotion logic that did that is
+  gone — tcp_scan candidates keep their IP as the primary label so each
+  row is uniquely identifying.
+- **Route import accepts LocWarp's JSON format.** LociiGhost's internal
+  schema uses `points`; LocWarp exports use `waypoints`. `Optional`
+  decoding silently dropped every LocWarp route. Both keys are now
+  accepted so a `locwarp-routes.json` export imports cleanly.
+- **Settings → Routes Import / Export JSON results surface inline in
+  the sheet.** The shared `lastError` toast lives in MainView, which the
+  Settings sheet hides — leaving users with the impression that "Export
+  JSON does nothing". The sheet now has its own auto-dismiss status row
+  (clears after ~5 s).
+- **Navigation ETA panel lays out flat.** A leftover `frame(width: 180)`
+  on the inner ProgressView was pinning the whole VStack to 180 pt and
+  wrapping the distance/ETA text onto three cramped lines. The fixed
+  width is gone, distance and ETA are on their own lines, and the
+  progress bar takes the full width of the bottom bar.
+- **New internal tool: `Scripts/test-clean-install.sh`.** Reproduces a
+  clean-Mac install — moves the source tree to `.devbak.test`, clears
+  `~/Library/com.lociighost.*` state, copies the DMG to `~/Downloads/`
+  with `com.apple.quarantine` set, and restores everything via `trap`
+  on exit. Guards against the v1.10.0–v1.10.4 "works on the dev's Mac,
+  broken everywhere else" failure mode.
 
 **v1.10.5** (2026-05-14)
 

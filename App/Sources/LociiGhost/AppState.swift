@@ -1107,8 +1107,13 @@ final class AppState {
     /// bulk-insert each entry as a Route record. Mirrors
     /// `importBookmarksJSON()` for the routes table. Surfaces errors
     /// / "nothing imported" via `lastError`.
+    /// Open NSOpenPanel for a JSON routes file, parse + bulk-insert. Returns
+    /// a user-facing result string (success or failure) so callers presented
+    /// in a sheet (Settings → Routes) can surface it inline — the
+    /// MainView-mounted `lastError` toast is hidden behind the sheet.
+    /// Returns `nil` only when the user cancels the open dialog.
     @MainActor
-    func importRoutesJSON() async {
+    func importRoutesJSON() async -> String? {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.init(filenameExtension: "json")!]
         panel.canChooseFiles = true
@@ -1118,15 +1123,16 @@ final class AppState {
             localized: "Import routes from JSON",
             comment: "Title of the open-file dialog for routes JSON import",
         )
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard panel.runModal() == .OK, let url = panel.url else { return nil }
         do {
             let entries = try RoutesJSONService.parse(url: url)
             guard !entries.isEmpty else {
-                lastError = String(
+                let msg = String(
                     localized: "JSON parsed, but no routes were found.",
                     comment: "Toast when route JSON import finds zero records",
                 )
-                return
+                lastError = msg
+                return msg
             }
             for e in entries {
                 saveImportedRoute(
@@ -1137,25 +1143,33 @@ final class AppState {
                         ?? "point.bottomleft.forward.to.point.topright.scurvepath.fill",
                 )
             }
-            lastError = String(
+            let msg = String(
                 format: String(
                     localized: "Imported %lld routes.",
                     comment: "Toast after a successful route JSON import",
                 ),
                 entries.count,
             )
+            lastError = msg
+            return msg
         } catch {
-            lastError = error.localizedDescription
+            let msg = error.localizedDescription
+            lastError = msg
+            return msg
         }
     }
 
     /// NSSavePanel → JSON for every saved Route. Default filename
     /// includes today's date so successive exports don't clobber.
+    /// Returns a user-facing result string for sheet-local rendering
+    /// (Settings → Routes); `nil` only when the user cancels the save
+    /// dialog.
     @MainActor
-    func exportRoutesJSON() async {
+    func exportRoutesJSON() async -> String? {
         guard let ctx = modelContext else {
-            lastError = String(localized: "Database not ready yet — try again in a second.")
-            return
+            let msg = String(localized: "Database not ready yet — try again in a second.")
+            lastError = msg
+            return msg
         }
         let all: [Route]
         do {
@@ -1163,15 +1177,17 @@ final class AppState {
                 sortBy: [SortDescriptor(\Route.name)]
             ))
         } catch {
-            lastError = "Couldn't read routes: \(error.localizedDescription)"
-            return
+            let msg = "Couldn't read routes: \(error.localizedDescription)"
+            lastError = msg
+            return msg
         }
         guard !all.isEmpty else {
-            lastError = String(
+            let msg = String(
                 localized: "No routes to export.",
                 comment: "Toast when route export is invoked on an empty list",
             )
-            return
+            lastError = msg
+            return msg
         }
 
         let date = DateFormatter()
@@ -1185,20 +1201,24 @@ final class AppState {
             localized: "Export routes to JSON",
             comment: "Title of the save-file dialog for routes JSON export",
         )
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard panel.runModal() == .OK, let url = panel.url else { return nil }
 
         do {
             let data = try RoutesJSONService.encodeExport(routes: all)
             try data.write(to: url, options: .atomic)
-            lastError = String(
+            let msg = String(
                 format: String(
                     localized: "Exported %lld routes.",
                     comment: "Toast after a successful route JSON export",
                 ),
                 all.count,
             )
+            lastError = msg
+            return msg
         } catch {
-            lastError = "Export failed: \(error.localizedDescription)"
+            let msg = "Export failed: \(error.localizedDescription)"
+            lastError = msg
+            return msg
         }
     }
 
@@ -1604,6 +1624,14 @@ final class AppState {
             }
             _ = try await client.callRaw("device.connect", params: params)
             await refreshDevices()
+            // Kick a Mac CoreLocation fix now that a device session is
+            // live — Restore-Real-GPS reads this proxy to fly the map
+            // back to the user's actual location, and a stale startup-
+            // time fix (or none at all, if permission was deferred) is
+            // what kept Restore visually no-op'ing on disposable
+            // installs. Re-asks for permission if the user denied
+            // before; harmless if already granted.
+            macLocation.requestPermissionAndFetch()
             // Successful Connect → tunnel built → daemon clearly has
             // enough privilege. Drop both "needs admin" signals so the
             // banner cannot reappear from a stale daemon.info that
@@ -1733,6 +1761,9 @@ final class AppState {
             _ = try await client.callRaw("wifi.connect_ip", params: params)
             lastError = nil
             await refreshDevices()
+            // Same rationale as `connect()` — refresh the Mac
+            // CoreLocation proxy now so Restore has a fresh fix.
+            macLocation.requestPermissionAndFetch()
             // Successful Connect → full developer tunnel up → daemon is
             // exercising root utun, so admin signals are stale-clear.
             needsAdminElevation = false
@@ -2307,7 +2338,7 @@ final class AppState {
     /// Bumped every time the daemon source breaks ABI or behaviour in
     /// a way that requires an in-place restart. Must match the
     /// `__version__` in `Daemon/lociighostd/__init__.py`.
-    static let expectedDaemonVersion = "1.10.5"
+    static let expectedDaemonVersion = "1.10.6"
 
     // MARK: - Update check (v1.5)
 
@@ -2516,18 +2547,38 @@ final class AppState {
             // slot. Other devices' trips are unaffected.
             clearActiveTrip(for: udid)
 
-            // Phone is back on real GPS. We can't read iPhone GPS over DVT,
-            // but the Mac's location is a sensible stand-in. Fly there now
-            // using whatever fix we already have, and ask CoreLocation for
-            // a fresh one in the background — when that lands the user can
-            // tap the quick-recenter button to update.
-            if let mac = macLocation.coordinate {
+            // Fly map back to the iPhone's real-GPS proxy. Apple doesn't
+            // expose iPhone CoreLocation over DVT, so the Mac's own
+            // CoreLocation is our single source of truth. Earlier
+            // revisions flew to whatever `macLocation.coordinate`
+            // happened to hold (often a stale startup-time fix or nil)
+            // and called `refresh()` afterwards — by which time the
+            // map had already settled on the wrong spot. Now we
+            // explicitly *await* a fresh fix before flying.
+            if let fresh = await macLocation.fetchFreshFix(timeout: 2.0) {
                 pendingMapFly = MapFlyRequest(
-                    coordinate: Coordinate(lat: mac.latitude, lng: mac.longitude),
+                    coordinate: Coordinate(lat: fresh.latitude, lng: fresh.longitude),
                     spanMeters: 2_000
                 )
+            } else if let cached = macLocation.coordinate {
+                // Permission OK but the fresh fix didn't land within
+                // the timeout window. Flying to the most recent value
+                // is still better than leaving the map frozen on the
+                // now-stale simulated trail.
+                pendingMapFly = MapFlyRequest(
+                    coordinate: Coordinate(lat: cached.latitude, lng: cached.longitude),
+                    spanMeters: 2_000
+                )
+            } else {
+                // No fix at all — typically means location permission
+                // isn't granted (or the radio is cold and the request
+                // is still inflight). Tell the user explicitly instead
+                // of silently leaving the map where it was.
+                lastError = String(
+                    localized: "Can't read Mac location. Open System Settings → Privacy & Security → Location Services and allow LociiGhost.",
+                    comment: "Error toast after Restore when CoreLocation has no fix"
+                )
             }
-            macLocation.refresh()
 
             // DVT clear() stops the fake feed instantly, but the iPhone
             // GPS chip still has to re-acquire a real fix — typically

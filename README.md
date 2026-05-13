@@ -27,7 +27,7 @@
 
 ## 下載
 
-- **最新版本**：v1.10.5
+- **最新版本**：v1.10.6
 - **發布日期**：2026-05-14
 - **下載連結**：[Google Drive 下載資料夾](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) —— DMG 已通過 Apple Developer ID 簽名 + Apple notarize，雙擊即可開啟，不會被 Gatekeeper 擋下。**請務必用 DMG 安裝**，不要把 .app 解壓到 iCloud 同步的資料夾（Documents、Desktop），File Provider 會蓋上額外 xattr 把簽章弄壞
 
@@ -50,6 +50,15 @@
 - **Apple Silicon 原生** —— 閒置 CPU 0%、無 Chromium 開銷、Bundle < 200 MB
 
 ## 最新更新
+
+**v1.10.6**（2026-05-14）
+
+- **「還原真實 GPS」終於真的飛回你當下的位置**。以前點還原會飛到 app 啟動時抓的舊 Mac 位置（permission 沒給時更是靜默無事）。現在還原會先 await Mac CoreLocation 新 fix（2 秒 timeout）再飛地圖；連線時也會主動再請求一次位置權限。拿不到 fix 時顯示「請至系統設定 → 隱私 → 位置服務開啟 LociiGhost」訊息，不再靜默。
+- **WiFi 裝置列表多 IP 路徑不再撞同名**。以前單一 iPhone 透過多個 LAN 路徑被掃到時，4 個 row 全顯示 `Frankie's iPhone`，只能靠 subtitle 的 IP 區分。現在 tcp_scan 候選保留 IP 作為主名稱，每個 row 直接看名稱就能分。
+- **支援匯入 LocWarp 路線 JSON**。LociiGhost 內部 schema 用 `points`、LocWarp 用 `waypoints`，`Optional` 解碼把所有 LocWarp route 都 silently 跳過了；現在兩種 key 都接受。
+- **Settings → Routes 的 Import / Export JSON 結果直接顯示在 sheet 內**。原本走 `state.lastError` toast 但只在 MainView 渲染，Settings sheet 把它整個蓋掉，造成「點 Export 完全沒反應」的錯覺。Sheet 裡現在有自家的訊息列，5 秒後自動消失。
+- **導航 ETA 面板平鋪展開**。`frame(width: 180)` 把整個 VStack 寬度釘死在 180 pt，距離 + ETA 文字被擠成 3 行 wrap。現在距離一行、ETA 一行、進度條全寬撐滿。
+- **新增內部工具 `Scripts/test-clean-install.sh`**。強制乾淨環境驗 DMG：mv source → `.devbak.test`、清 `/Applications/LociiGhost.app` + `~/Library/com.lociighost.*`、ditto DMG 到 `~/Downloads/` 加 quarantine xattr，trap 確保 source 一定還原。防止 v1.10.0–v1.10.4 那種「dev 機跑得通、別人裝就壞」的 cascade 重演。
 
 **v1.10.5**（2026-05-14）
 

@@ -203,7 +203,7 @@ struct BottomBar: View {
                 .font(.title3)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text("\(progressLabel(nav)) · ETA \(formatDuration(nav.etaSeconds))")
+                    Text(progressLabel(nav))
                         .font(.callout.monospacedDigit())
                     if nav.laps > 1 {
                         HStack(spacing: 3) {
@@ -217,10 +217,14 @@ struct BottomBar: View {
                         .foregroundStyle(Color.lociSage)
                     }
                 }
+                Text("ETA \(formatDuration(nav.etaSeconds))")
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
                 ProgressView(value: nav.progress)
                     .progressViewStyle(.linear)
-                    .frame(width: 180)
+                    .frame(maxWidth: .infinity)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 

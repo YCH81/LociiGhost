@@ -209,17 +209,17 @@
 
   <section class="card">
     <div class="version-line">
-      <strong>v1.10.5</strong>
+      <strong>v1.10.6</strong>
       <span class="status-pill">已發佈</span>
     </div>
-    <p>發布日期：2026-05-14。<strong>修好 v1.10.4 雖然不閃退、但
-       daemon 抓不到的 bug</strong>。Swift Foundation 的
-       <code>URL.appending(path:)</code> 在 <code>Bundle.main.resourceURL</code>
-       上產出 base+relative URL，新 API
-       <code>URL.path(percentEncoded:)</code> 不會 resolve 這種結構，
-       daemon 路徑被當成相對路徑解析。修法是加 <code>.absoluteURL</code>。
+    <p>發布日期：2026-05-14。<strong>6 個修復一次出</strong>：
+       「還原真實 GPS」改用 fresh CoreLocation fix 飛回 Mac 當下位置；
+       WiFi 裝置列表多 IP 路徑不再撞同名；支援匯入 LocWarp 路線 JSON；
+       Settings 的 Routes Import/Export 結果直接在 sheet 內顯示；
+       導航 ETA 面板拆三行平鋪；新增
+       <code>Scripts/test-clean-install.sh</code> 防 v1.10.0–v1.10.4 cascade 重演。
        完整變更紀錄見
-       <a href="https://github.com/YCH81/LociiGhost/releases/tag/v1.10.5">v1.10.5 release notes</a>。</p>
+       <a href="https://github.com/YCH81/LociiGhost/releases/tag/v1.10.6">v1.10.6 release notes</a>。</p>
     <p class="meta">DMG 已通過 Apple Developer ID 簽名 + Apple notarize，
        雙擊即可開啟，不會被 Gatekeeper 擋下。<strong>請務必用 DMG 安裝</strong>，
        不要把 .app 解壓到 iCloud 同步的資料夾（Documents、Desktop），

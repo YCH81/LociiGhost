@@ -209,19 +209,19 @@
 
   <section class="card">
     <div class="version-line">
-      <strong>v1.10.5</strong>
+      <strong>v1.10.6</strong>
       <span class="status-pill">Released</span>
     </div>
-    <p>Released 2026-05-14. <strong>Fixes the v1.10.4 "Could not locate
-       lociighostd" error</strong> — the app launched cleanly but the daemon
-       never spawned. Root cause: Swift Foundation's
-       <code>URL.appending(path:)</code> on a
-       <code>Bundle.main.resourceURL</code> produces a base+relative URL,
-       and the modern <code>URL.path(percentEncoded:)</code> API
-       <em>does not resolve relative URLs against their base</em>. The fix
-       is one line — insert <code>.absoluteURL</code> before reading the
-       path. See
-       <a href="https://github.com/YCH81/LociiGhost/releases/tag/v1.10.5">v1.10.5 release notes</a>
+    <p>Released 2026-05-14. <strong>Six fixes shipped together</strong>:
+       Restore Real GPS now awaits a fresh CoreLocation fix and flies the
+       map to your current Mac location; WiFi device list keeps the IP as
+       primary label so multi-path candidates no longer collapse into one
+       name; route import accepts LocWarp's JSON (<code>waypoints</code> key);
+       Settings → Routes Import/Export results surface inline in the sheet;
+       navigation ETA panel lays out flat instead of wrapping to three
+       lines; new <code>Scripts/test-clean-install.sh</code> reproduces a
+       clean-Mac install to guard against the v1.10.0–v1.10.4 cascade. See
+       <a href="https://github.com/YCH81/LociiGhost/releases/tag/v1.10.6">v1.10.6 release notes</a>
        for the full diagnosis.</p>
     <p class="meta">The DMG is Apple-Developer-ID-signed and notarised,
        so it opens with a double-click without a Gatekeeper warning.

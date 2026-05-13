@@ -1,5 +1,5 @@
 {
-  "version": "1.10.5",
+  "version": "1.10.6",
   "url": "https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing",
-  "notes": "v1.10.5 — 修好 v1.10.4 daemon 抓不到的 bug。Swift Foundation URL.appending(path:) 在 Bundle.main.resourceURL 上產出 base+relative URL，新 API URL.path(percentEncoded:) 不會 resolve；修法是加 .absoluteURL。v1.10.0 → v1.10.5 是 end-user 終於可以正常使用的版本。"
+  "notes": "v1.10.6 — 6 個修復：(1) 還原真實 GPS 改 await Mac CoreLocation fresh fix，飛回當下位置而非啟動時舊值；連線時也會請求位置權限，拿不到 fix 時顯示提示而非靜默；(2) WiFi 裝置列表多 IP 路徑不再撞同名，tcp_scan 候選保留 IP 作為主名稱；(3) 支援匯入 LocWarp 路線 JSON (接受 waypoints key)；(4) Settings → Routes 的 Import/Export 結果直接在 sheet 內顯示；(5) 導航 ETA 面板拆三行平鋪，進度條全寬；(6) 新增 Scripts/test-clean-install.sh，乾淨環境 DMG 驗證，防 v1.10.0-v1.10.4 cascade 重演。"
 }
