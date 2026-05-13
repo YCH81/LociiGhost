@@ -1,5 +1,5 @@
 {
-  "version": "1.9.4",
-  "url": "https://ych81.github.io/LociiGhost/",
-  "notes": "v1.9.4 — Apple Developer ID 證書到位前不發佈二進位。當前可從原始碼自行 build；詳情見 LociiGhost 官網。"
+  "version": "1.10.0",
+  "url": "https://github.com/YCH81/LociiGhost/releases/tag/v1.10.0",
+  "notes": "v1.10.0 — Apple MapKit routing (新預設)、Sidebar 固定支持作者區、標準 Mac X 關視窗行為、自適應 UI、LICENSE 品牌條款。第一個 Developer ID 簽名 + Apple notarize 通過的公開發佈版。"
 }
