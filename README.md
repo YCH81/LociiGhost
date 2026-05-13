@@ -177,21 +177,8 @@ schema、原生 MapKit 整合、sage 配色的紙飛機 icon set，以及 v1.0 �
 
 LociiGhost 程式碼以 **MIT License** 散佈 —— 完整條款見 [`LICENSE`](LICENSE)。
 
-> ⚠️ **品牌 / 支持管道為個人保留，不在 MIT 範圍**：
-> 「LociiGhost」這個名稱、icon、以及 app 內預設的支持管道（Ko-fi
-> [ko-fi.com/jflociighost](https://ko-fi.com/jflociighost)、LINE 官方帳號
-> `@382ydavk`、LINE 社群「LociiGhost Mac/iOS 飛人」）為 YCH81 (Jeff Hu)
-> 個人保留。**fork 必須改名 + 換 icon + 把上述支持管道換成你自己的**
-> （或拿掉，不能保留我的繼續收）。完整條款見
-> [`LICENSE`](LICENSE) 的 **Brand & Support Channels** 段。
-
-LICENSE 檔案依 MIT License 條款保留了兩份 copyright notice（LociiGhost 自己
-與 LocWarp 上游）：
-
-```
-Copyright (c) 2026 YCH81 (Jeff Hu)
-Copyright (c) 2026 keezxc1223 (LocWarp upstream)
-```
+> ⚠️ **品牌為個人保留，不在 MIT 範圍。** 完整條款見 [`LICENSE`](LICENSE)
+> 的 **Brand & Support Channels** 段。
 
 ## 免責聲明
 

@@ -202,28 +202,9 @@ icon set, and any feature work since v1.0) is the original work of
 LociiGhost's source code is distributed under the **MIT License** —
 see [`LICENSE`](LICENSE) for the full text.
 
-> ⚠️ **Brand & personal support channels are reserved, NOT covered
-> by MIT**: the name "LociiGhost", the icon, and the in-app default
-> support channels (Ko-fi
-> [ko-fi.com/jflociighost](https://ko-fi.com/jflociighost), LINE
-> Official Account `@382ydavk`, LINE community "LociiGhost Mac/iOS 飛人")
-> are reserved to YCH81 (Jeff Hu) personally. **If you fork, you must
-> rename + use a different icon + replace those support channels with
-> your own** (or remove them — keeping mine in your fork to receive
-> support is not allowed). See the **Brand & Support Channels** section
-> in [`LICENSE`](LICENSE).
-
-The LICENSE file preserves both copyright notices (LociiGhost's and the
-upstream LocWarp's) as required by the MIT License terms:
-
-```
-Copyright (c) 2026 YCH81 (Jeff Hu)
-Copyright (c) 2026 keezxc1223 (LocWarp upstream)
-```
-
-If you fork or redistribute LociiGhost (modified or not), you only need to
-preserve the [`LICENSE`](LICENSE) file. Everything else — proprietary use,
-commercial use, sublicensing, rebranding — is allowed by MIT.
+> ⚠️ **Brand is reserved, NOT covered by MIT.** See the **Brand &
+> Support Channels** section in [`LICENSE`](LICENSE) for the full
+> terms.
 
 ## Disclaimer
 
