@@ -1,10 +1,13 @@
 #!/usr/bin/env swift
 // Generates the DMG background image used by Scripts/make-dmg.sh.
 //
-// The output is a 1080×760 PNG at Scripts/dmg-assets/background.png.
-// 1080×760 is exactly 2× the 540×380 Finder window content area, so
-// the same image looks crisp on both regular and Retina displays
-// without needing separate @1x / @2x assets.
+// The output is a 540×380 PNG at Scripts/dmg-assets/background.png.
+// Finder treats DMG background images as 1× — pixels map directly to
+// points, no auto-scaling. A 540×380 image therefore matches the
+// 540×380 Finder window content area exactly. On Retina displays
+// the image is upscaled with linear interpolation; the slight
+// softness is unavoidable without @2x asset support (which Finder
+// doesn't reliably honour for DMG backgrounds even in 2024+).
 //
 // Visual:
 //
@@ -41,8 +44,8 @@ try? FileManager.default.createDirectory(at: assetsDir, withIntermediateDirector
 
 // MARK: - Canvas
 
-let width: CGFloat  = 1080
-let height: CGFloat = 760
+let width: CGFloat  = 540
+let height: CGFloat = 380
 
 let image = NSImage(size: NSSize(width: width, height: height))
 image.lockFocus()
@@ -66,34 +69,36 @@ let mutedText = NSColor(red: 0.42,  green: 0.45,  blue: 0.48,  alpha: 1.0)
 // MARK: - Arrow
 
 // The .app and Applications icons are positioned at roughly
-// (left=280, right=800, y≈480) in 1080×760 space — i.e., centred
+// (left=140, right=400, y≈240) in 540×380 space — i.e., centred
 // vertically a touch above the middle so the hint text below has
 // room to breathe. The arrow runs between them at the same y.
+// These coordinates match the AppleScript icon positions in
+// make-dmg.sh: {140, 140} and {400, 140}. NSImage's bottom-left
+// origin means NSImage y=240 corresponds to Finder y=140 from top.
 
-let arrowStartX: CGFloat = 380   // just right of the .app icon
-let arrowEndX:   CGFloat = 700   // just left of the Applications icon
-let arrowY:      CGFloat = 480
+let arrowStartX: CGFloat = 190   // just right of the .app icon
+let arrowEndX:   CGFloat = 350   // just left of the Applications icon
+let arrowY:      CGFloat = 240
 
 let arrowPath = NSBezierPath()
 arrowPath.move(to: NSPoint(x: arrowStartX, y: arrowY))
-// Subtle upward arc to make the arrow feel less rigid. The two
-// control points lift the midpoint by ~28 pt above the baseline.
+// Subtle upward arc to make the arrow feel less rigid.
 arrowPath.curve(
     to: NSPoint(x: arrowEndX, y: arrowY),
-    controlPoint1: NSPoint(x: arrowStartX + 80, y: arrowY + 28),
-    controlPoint2: NSPoint(x: arrowEndX   - 80, y: arrowY + 28),
+    controlPoint1: NSPoint(x: arrowStartX + 40, y: arrowY + 14),
+    controlPoint2: NSPoint(x: arrowEndX   - 40, y: arrowY + 14),
 )
-arrowPath.lineWidth = 6
+arrowPath.lineWidth = 3
 arrowPath.lineCapStyle = .round
 sage.setStroke()
 arrowPath.stroke()
 
 // Arrow head — solid sage triangle pointing right.
 let headPath = NSBezierPath()
-let headLen: CGFloat = 22
+let headLen: CGFloat = 11
 headPath.move(to: NSPoint(x: arrowEndX + headLen, y: arrowY))
-headPath.line(to: NSPoint(x: arrowEndX - 4,       y: arrowY + headLen * 0.7))
-headPath.line(to: NSPoint(x: arrowEndX - 4,       y: arrowY - headLen * 0.7))
+headPath.line(to: NSPoint(x: arrowEndX - 2,       y: arrowY + headLen * 0.7))
+headPath.line(to: NSPoint(x: arrowEndX - 2,       y: arrowY - headLen * 0.7))
 headPath.close()
 sage.setFill()
 headPath.fill()
@@ -107,18 +112,18 @@ func ghostCircle(at center: NSPoint, radius: CGFloat) {
                    width: radius * 2,    height: radius * 2)
     let path = NSBezierPath(ovalIn: r)
     sageLight.setStroke()
-    path.lineWidth = 1.5
-    path.setLineDash([6, 5], count: 2, phase: 0)
+    path.lineWidth = 1
+    path.setLineDash([3, 2.5], count: 2, phase: 0)
     path.stroke()
 }
 
-let iconRadius: CGFloat = 90
-ghostCircle(at: NSPoint(x: 280, y: arrowY), radius: iconRadius)
-ghostCircle(at: NSPoint(x: 800, y: arrowY), radius: iconRadius)
+let iconRadius: CGFloat = 45
+ghostCircle(at: NSPoint(x: 140, y: arrowY), radius: iconRadius)
+ghostCircle(at: NSPoint(x: 400, y: arrowY), radius: iconRadius)
 
 // MARK: - Hint text along the bottom
 
-let hintFont = NSFont.systemFont(ofSize: 26, weight: .medium)
+let hintFont = NSFont.systemFont(ofSize: 13, weight: .medium)
 let hint = "Drag LociiGhost.app to Applications to install"
 let hintAttrs: [NSAttributedString.Key: Any] = [
     .font:            hintFont,
@@ -127,7 +132,7 @@ let hintAttrs: [NSAttributedString.Key: Any] = [
 let hintSize = (hint as NSString).size(withAttributes: hintAttrs)
 let hintRect = NSRect(
     x: (width - hintSize.width) / 2,
-    y: 130,
+    y: 65,
     width:  hintSize.width,
     height: hintSize.height,
 )
