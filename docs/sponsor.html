@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>贊助作者 — LociiGhost</title>
+<meta name="description" content="贊助 LociiGhost 作者 YCH81 (Jeff Hu)。台灣使用者可走 Portaly（台幣），海外使用者可走 Ko-fi。">
+<style>
+  :root {
+    --bg: #f5f4ee;
+    --ink: #2d3748;
+    --sage: #7fa389;
+    --sage-dark: #5f836a;
+    --muted: #6b7280;
+    --hairline: #d4d4c8;
+    --card-bg: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font: 16px/1.7 -apple-system, BlinkMacSystemFont, "Helvetica Neue",
+          "PingFang TC", "Heiti TC", "Microsoft JhengHei", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  .container {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 64px 24px 96px;
+    position: relative;
+  }
+  .lang-switcher {
+    position: absolute;
+    top: 24px;
+    right: 24px;
+    font-size: 13px;
+  }
+  .lang-switcher a {
+    color: var(--muted);
+    border: none;
+    padding: 4px 10px;
+    border-radius: 6px;
+    margin-left: 2px;
+  }
+  .lang-switcher a.active {
+    color: var(--ink);
+    background: rgba(127,163,137,0.18);
+    font-weight: 600;
+    border: none;
+  }
+  .lang-switcher a:hover {
+    color: var(--ink);
+    border: none;
+  }
+  .lang-switcher .sponsor-link {
+    color: var(--sage-dark);
+    margin-right: 4px;
+  }
+  .lang-switcher .sponsor-link.active {
+    color: var(--ink);
+    background: rgba(127,163,137,0.18);
+    font-weight: 600;
+  }
+  .lang-switcher .sponsor-link:hover {
+    color: var(--ink);
+    background: rgba(127,163,137,0.18);
+  }
+  .lang-switcher .sep {
+    color: var(--hairline);
+    margin: 0 4px;
+  }
+  .breadcrumb {
+    font-size: 13px;
+    color: var(--muted);
+    margin: 0 0 24px;
+  }
+  .breadcrumb a {
+    color: var(--muted);
+    border-bottom-color: rgba(0,0,0,0.15);
+  }
+  header { margin-bottom: 32px; }
+  h1 {
+    margin: 0 0 10px;
+    font-size: 40px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .tagline {
+    color: var(--muted);
+    margin: 0;
+    font-size: 17px;
+  }
+  p { margin: 8px 0; }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+    padding: 22px 26px;
+    margin: 16px 0;
+  }
+  .card h2 { margin-top: 0; color: var(--sage-dark); font-size: 18px; }
+  .meta { color: var(--muted); font-size: 14px; margin-top: 12px; }
+  a {
+    color: var(--sage-dark);
+    text-decoration: none;
+    border-bottom: 1px solid rgba(127,163,137,0.4);
+    transition: border-color 0.15s, color 0.15s;
+  }
+  a:hover {
+    color: var(--ink);
+    border-bottom-color: var(--ink);
+  }
+  .kofi-button {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 11px 22px;
+    background: #FF5E5B;
+    color: white !important;
+    border-radius: 8px;
+    border: none;
+    font-weight: 600;
+    font-size: 15px;
+    letter-spacing: 0.01em;
+    transition: background 0.15s, transform 0.05s;
+  }
+  .kofi-button:hover {
+    background: #e54541;
+    color: white !important;
+    border: none;
+  }
+  .kofi-button:active { transform: translateY(1px); }
+  .portaly-button {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 11px 22px;
+    background: var(--sage);
+    color: white !important;
+    border-radius: 8px;
+    border: none;
+    font-weight: 600;
+    font-size: 15px;
+    letter-spacing: 0.01em;
+    transition: background 0.15s, transform 0.05s;
+  }
+  .portaly-button:hover {
+    background: var(--sage-dark);
+    color: white !important;
+    border: none;
+  }
+  .portaly-button:active { transform: translateY(1px); }
+  .attribution {
+    margin-top: 56px;
+    padding-top: 24px;
+    border-top: 1px solid var(--hairline);
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.8;
+  }
+  .attribution a { color: var(--muted); border-bottom-color: rgba(0,0,0,0.15); }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <nav class="lang-switcher">
+    <a href="sponsor.html" class="sponsor-link active">♥ 贊助</a>
+    <span class="sep">|</span>
+    <a href="sponsor.html" class="active">繁體中文</a>
+    <a href="sponsor.en.html">English</a>
+  </nav>
+
+  <p class="breadcrumb"><a href="index.html">← 回 LociiGhost 首頁</a></p>
+
+  <header>
+    <h1>贊助作者</h1>
+    <p class="tagline">謝謝你願意支持 LociiGhost 的開發。請依所在地選擇方便的支付方式。</p>
+  </header>
+
+  <section class="card">
+    <h2>Portaly（台灣 / 台幣）</h2>
+    <p>適合在台灣的使用者，支援信用卡支付，金流走台幣不需匯兌。</p>
+    <p><a href="https://portaly.cc/jflociighost/support" class="portaly-button"
+          target="_blank" rel="noopener">在 Portaly 贊助（台灣）</a></p>
+  </section>
+
+  <section class="card">
+    <h2>Ko-fi（海外 / USD）</h2>
+    <p>適合海外使用者，支援信用卡與 PayPal，金流以美元結算。</p>
+    <p><a href="https://ko-fi.com/jflociighost" class="kofi-button"
+          target="_blank" rel="noopener">在 Ko-fi 贊助（International）</a></p>
+  </section>
+
+  <p class="meta">兩個連結都會把贊助直接送到作者 YCH81 (Jeff Hu)，與上游 LocWarp 專案無關。</p>
+
+  <div class="attribution">
+    LociiGhost © 2026 YCH81 (Jeff Hu) · MIT License
+  </div>
+
+</div>
+</body>
+</html>

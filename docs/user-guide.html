@@ -57,6 +57,18 @@
     color: var(--ink);
     border: none;
   }
+  .lang-switcher .sponsor-link {
+    color: var(--sage-dark);
+    margin-right: 4px;
+  }
+  .lang-switcher .sponsor-link:hover {
+    color: var(--ink);
+    background: rgba(127,163,137,0.18);
+  }
+  .lang-switcher .sep {
+    color: var(--hairline);
+    margin: 0 4px;
+  }
   .breadcrumb {
     font-size: 13px;
     color: var(--muted);
@@ -206,6 +218,8 @@
 <div class="container">
 
   <nav class="lang-switcher">
+    <a href="sponsor.html" class="sponsor-link">♥ 贊助</a>
+    <span class="sep">|</span>
     <a href="user-guide.html" class="active">繁體中文</a>
     <a href="user-guide.en.html">English</a>
   </nav>
