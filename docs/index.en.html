@@ -3,6 +3,36 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-HHZLEVX8XC"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-HHZLEVX8XC');
+
+  // Outbound click tracking (download / LINE)
+  document.addEventListener('click', function(e) {
+    var a = e.target.closest('a');
+    if (!a || !a.href) return;
+    var href = a.href;
+    var label = (a.textContent || '').trim().slice(0, 100);
+    if (href.indexOf('drive.google.com') !== -1) {
+      gtag('event', 'click_download', {
+        link_url: href,
+        link_text: label
+      });
+    } else if (href.indexOf('line.me') !== -1) {
+      var lineType = href.indexOf('/ti/g2/') !== -1 ? 'community' : 'oa';
+      gtag('event', 'click_join_line', {
+        line_type: lineType,
+        link_url: href,
+        link_text: label
+      });
+    }
+  });
+</script>
 <title>LociiGhost — iPhone GPS Spoofing Tool</title>
 <meta name="description" content="iPhone GPS spoofing tool — Apple-Silicon-native macOS app, a complete Swift rewrite informed by LocWarp's concept and partial code reference (keezxc1223, MIT).">
 <style>
