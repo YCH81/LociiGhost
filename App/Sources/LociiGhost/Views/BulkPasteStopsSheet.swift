@@ -28,7 +28,7 @@ struct BulkPasteStopsSheet: View {
                 Spacer()
             }
 
-            Text("Paste one coordinate per line — `lat, lng`. Comma, tab, or semicolon all work as separators. Lines starting with # are ignored. Stops are appended in the order pasted (Stop 1 = first line) to the end of your current list.",
+            Text("Paste one coordinate per line — `lat, lng`. Comma, tab, or semicolon all work as separators; lines starting with # are ignored. The iPhone teleports to the first pasted coordinate so path-planning starts locally; any previously staged stops are cleared.",
                  comment: "Helper text in the multi-stop bulk-paste sheet")
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -67,8 +67,10 @@ struct BulkPasteStopsSheet: View {
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Button {
-                    let n = state.bulkAppendStops(from: pastedText)
-                    if n > 0 { dismiss() }
+                    Task { @MainActor in
+                        let n = await state.bulkAppendStops(from: pastedText)
+                        if n > 0 { dismiss() }
+                    }
                 } label: {
                     Text("Add \(previewCount)",
                          comment: "Stops bulk-paste primary button — adds N stops")

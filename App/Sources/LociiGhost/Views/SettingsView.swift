@@ -566,19 +566,27 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
 
-            HStack(spacing: 4) {
-                Image(systemName: "heart.fill")
-                    .foregroundStyle(Color(red: 1.0, green: 0.369, blue: 0.357))
-                    .font(.caption2)
-                Link(
-                    String(localized: "Support the developer",
-                           comment: "Settings — sponsor page link"),
-                    destination: URL(string: "https://ych81.github.io/LociiGhost/sponsor.html")!
+            // Sponsor link rendered as a prominent CTA button — same
+            // coral tone as the sidebar footer's "Buy me a bubble tea"
+            // so the support gesture reads at a glance instead of
+            // hiding inside the tiny-caption About text.
+            Link(destination: URL(string: "https://ych81.github.io/LociiGhost/sponsor.html")!) {
+                HStack(spacing: 8) {
+                    Image(systemName: "heart.fill")
+                    Text("Support the developer",
+                         comment: "Settings — sponsor page CTA button")
+                        .lineLimit(1)
+                }
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .background(
+                    Color(red: 1.0, green: 0.369, blue: 0.357),
+                    in: .rect(cornerRadius: 7),
                 )
-                .font(.caption)
-                Spacer()
             }
-            .fixedSize(horizontal: false, vertical: true)
+            .padding(.top, 4)
 
             HStack(spacing: 4) {
                 Image(systemName: "message.fill")

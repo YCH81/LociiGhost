@@ -5,11 +5,15 @@ import SwiftUI
 /// SwiftUI's standard alert only takes buttons + a plain `Text`
 /// message, no inline controls.
 ///
-/// The "Loop until I stop" checkbox is the v1.10.7 addition. When
-/// ticked, `runRoute(loop: true)` raises `routeLaps` to 9 999 for
-/// the duration of the navigate-RPC call, which the daemon then
-/// uses as its session lap count — effectively unlimited replays
-/// until the user hits Stop.
+/// v1.10.7 hotfix: the Loop checkbox gains a "Total laps" companion
+/// field. Empty (or any non-Int input) means "until I press Stop";
+/// a parseable Int ≥ 2 means "loop exactly N times total". The lap
+/// count travels to `AppState.runRoute(lapCount:)` where lap
+/// orchestration lives — each lap runs as a fresh single-trip
+/// navigate, and `applyStateEvent`'s natural "idle" transition fires
+/// the next teleport-back-to-start + navigate until the counter
+/// drains. User Stop emits `stopped` (not `idle`), which clears
+/// `loopContext` and breaks the cycle.
 struct StartRouteSheet: View {
     @Environment(AppState.self) private var state
     @Environment(\.dismiss) private var dismiss
@@ -17,6 +21,20 @@ struct StartRouteSheet: View {
     let route: Route
 
     @State private var loop: Bool = false
+    /// Empty string = "until I press Stop" (sentinel `0` at the
+    /// AppState boundary). "2"+ = fixed lap count. "1" or any other
+    /// non-parseable input falls back to until-stop — looping with
+    /// exactly one lap is meaningless and the toggle shouldn't be
+    /// on in that case anyway.
+    @State private var lapText: String = ""
+
+    private var resolvedLapCount: Int {
+        guard loop else { return 1 }
+        let trimmed = lapText.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty { return 0 }
+        if let n = Int(trimmed), n >= 2 { return n }
+        return 0
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -44,10 +62,10 @@ struct StartRouteSheet: View {
 
             Toggle(isOn: $loop) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Loop until I stop",
+                    Text("Loop the route",
                          comment: "Start-route sheet — auto-replay checkbox label")
                         .font(.callout)
-                    Text("After the iPhone reaches the last point, automatically restart from the beginning and keep going. Hit Stop to end.",
+                    Text("After reaching the last point, teleport back to the start and walk the route again.",
                          comment: "Start-route sheet — auto-replay checkbox explanation")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -55,6 +73,27 @@ struct StartRouteSheet: View {
                 }
             }
             .toggleStyle(.checkbox)
+
+            if loop {
+                HStack(spacing: 8) {
+                    Text("Total laps:",
+                         comment: "Start-route sheet — lap-count field label")
+                        .font(.callout)
+                    TextField(
+                        String(localized: "Until I press Stop",
+                               comment: "Start-route sheet — lap-count placeholder for until-stop"),
+                        text: $lapText
+                    )
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 140)
+                    Text("(leave blank for until Stop)",
+                         comment: "Start-route sheet — lap-count helper text")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(.leading, 22)
+            }
 
             HStack {
                 Spacer()
@@ -70,11 +109,11 @@ struct StartRouteSheet: View {
                         return
                     }
                     let r = route
-                    let loopFlag = loop
+                    let lapCount = resolvedLapCount
                     state.routePendingConfirm = nil
                     dismiss()
                     Task { @MainActor in
-                        await state.runRoute(r, udid: udid, loop: loopFlag)
+                        await state.runRoute(r, udid: udid, lapCount: lapCount)
                     }
                 } label: {
                     Text("Start",
@@ -84,6 +123,6 @@ struct StartRouteSheet: View {
             }
         }
         .padding(24)
-        .frame(minWidth: 440)
+        .frame(minWidth: 460)
     }
 }

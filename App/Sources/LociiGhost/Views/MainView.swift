@@ -1544,6 +1544,21 @@ private struct Overlay: View {
                     .font(.caption)
                     .padding(8)
                     .background(.red.opacity(0.15), in: .rect(cornerRadius: 6))
+                    .transition(.opacity)
+                    // Auto-dismiss the error toast after ~10 s. v1.10.7
+                    // hotfix: earlier behaviour was "set lastError once,
+                    // sits forever" — so a preflight error ("Connect a
+                    // device first.") stayed visible long after the user
+                    // had actually connected. `.task(id: err)` restarts
+                    // the timer whenever a new error arrives, and the
+                    // `state.lastError == err` guard before clearing
+                    // means a fresher error written mid-sleep isn't
+                    // wiped.
+                    .task(id: err) {
+                        try? await Task.sleep(for: .seconds(10))
+                        guard !Task.isCancelled else { return }
+                        if state.lastError == err { state.lastError = nil }
+                    }
             }
             // Non-error informational toast. Tinted blue so it doesn't
             // get confused with the red error toast above. Auto-dismisses

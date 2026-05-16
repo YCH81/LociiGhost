@@ -433,6 +433,15 @@ final class AppState {
     /// last route + destination visible on the map.
     var navigation: NavigationVM?
 
+    /// Set by `runRoute` when the user requested looping, cleared by
+    /// `stopNavigation` (explicit Stop) or by the loop counter
+    /// reaching zero in `applyStateEvent`. When a navigation reaches
+    /// "idle" naturally with this populated, the event handler
+    /// teleports back to `routePoints[0]` and fires another navigate
+    /// — that's the actual "loop" mechanism (the daemon plays each
+    /// lap as a single trip).
+    private var loopContext: LoopContext?
+
     /// The most recent navigation's full route polyline. Persists across
     /// pause / stop / arrival so the user can still see where they were
     /// going. Cleared explicitly by Restore, by starting a new navigation,
@@ -1075,14 +1084,27 @@ final class AppState {
     /// the returned count being zero + lastError; the caller should
     /// dismiss its paste sheet either way.
     /// Parse one coord per line (`lat, lng` — comma / tab / semicolon
-    /// separators) and append each to `pendingStops` so the user can
-    /// build a long multi-stop route by paste instead of by clicking
-    /// the map dozens of times. Reuses `BookmarksJSONService.parseBulkPaste`
-    /// for the line parser since the format overlaps; we just discard
-    /// the bookmark-only name/category fields.
+    /// separators) and seed the multi-stop list with them so the user
+    /// can build a long route by paste instead of clicking the map
+    /// dozens of times. Reuses `BookmarksJSONService.parseBulkPaste`
+    /// for the actual line parser since the format overlaps; we just
+    /// discard the bookmark-only name / category fields.
+    ///
+    /// **Side-effect: teleports the iPhone to the first parsed coord
+    /// BEFORE seeding the stops.** Without that, path-planning would
+    /// route from wherever the iPhone currently is (often a different
+    /// country entirely when the user is planning a trip abroad), and
+    /// OSRM / MapKit either fail to plan an inter-continental polyline
+    /// or render a useless straight line across the ocean. Teleporting
+    /// to the first stop first makes path-planning a local problem.
+    /// `teleport()` clears `pendingStops` as part of its single-action
+    /// semantics, so we refill from `coords` after the teleport
+    /// returns. The full parsed list (including the first coord) is
+    /// staged so the user sees what they pasted; the first leg of
+    /// the eventual Navigate is a zero-distance no-op.
     @MainActor
     @discardableResult
-    func bulkAppendStops(from rawText: String) -> Int {
+    func bulkAppendStops(from rawText: String) async -> Int {
         let entries = BookmarksJSONService.parseBulkPaste(rawText)
         guard !entries.isEmpty else {
             lastError = String(
@@ -1092,7 +1114,18 @@ final class AppState {
             return 0
         }
         let coords = entries.map { Coordinate(lat: $0.lat, lng: $0.lng) }
-        pendingStops.append(contentsOf: coords)
+
+        if let first = coords.first,
+           let udid = selectedUDID,
+           devices.first(where: { $0.udid == udid })?.connected == true {
+            await teleport(udid: udid, lat: first.lat, lng: first.lng)
+        }
+
+        // Replace, not append: teleport just wiped pendingStops, and
+        // the user's intent on a bulk paste is "this is my new route",
+        // not "tack these onto whatever was staged before".
+        pendingStops = coords
+
         lastError = String(
             format: String(
                 localized: "Added %lld stops from paste.",
@@ -1371,14 +1404,22 @@ final class AppState {
     /// before the click so a subsequent ad-hoc multi-stop trip
     /// doesn't inherit straight-line mode they never asked for.
     @MainActor
-    /// `loop`: when true, the iPhone keeps replaying the route from the
-    /// start until the user hits Stop. Implemented by temporarily
-    /// raising `routeLaps` to 9 999 (the daemon copies the lap count
-    /// into the running session at navigate-RPC time, so restoring
-    /// `routeLaps` immediately after the call doesn't shorten the
-    /// already-started trip). 9 999 laps on any realistic route is
-    /// "forever" — a 100 km loop at 5 m/s is ~6 years.
-    func runRoute(_ route: Route, udid: String, loop: Bool = false) async {
+    /// `lapCount`: how many times to walk the full route.
+    /// * `1` (default) — single trip, no loop. Original behaviour.
+    /// * `0` — loop forever; only `stopNavigation` ends it.
+    /// * `>=2` — loop exactly `lapCount` times total.
+    ///
+    /// Loop semantics differ from the daemon's built-in `laps` param,
+    /// which closes the route and *walks* the closure leg from end back
+    /// to start. Users wanted instant teleport between laps (same as
+    /// the initial "fly to route start" jump), so v1.10.7 moves the
+    /// lap orchestration onto the Mac side: each lap runs as a fresh
+    /// single-trip navigate, and a `loopContext` snapshot + the
+    /// `applyStateEvent` "idle → idle" transition handler fires the
+    /// next teleport-and-navigate when the previous lap completes
+    /// naturally. User-Stop emits `stopped` (not `idle`), which clears
+    /// `loopContext` and breaks the cycle cleanly.
+    func runRoute(_ route: Route, udid: String, lapCount: Int = 1) async {
         let coords = route.points
         guard !coords.isEmpty else {
             lastError = String(localized: "GPX file has no waypoints or track points.")
@@ -1389,9 +1430,33 @@ final class AppState {
             lastError = String(localized: "Connect a device first.")
             return
         }
-        let savedLaps = routeLaps
-        if loop { routeLaps = 9_999 }
-        defer { routeLaps = savedLaps }
+        let speed = customSpeedMps ?? travelProfile.defaultSpeedMps
+
+        // Stash the loop plan for the event-handler-driven
+        // continuation. `lapCount == 0` is the "until I press Stop"
+        // sentinel and maps to Int.max here — every Stop press
+        // clears `loopContext`, so leaving it ridiculously large is
+        // safe.
+        if lapCount == 0 {
+            loopContext = LoopContext(
+                routePoints: coords, udid: udid, profile: travelProfile, speed: speed,
+                remainingLaps: Int.max,
+            )
+        } else if lapCount >= 2 {
+            loopContext = LoopContext(
+                routePoints: coords, udid: udid, profile: travelProfile, speed: speed,
+                remainingLaps: lapCount - 1,
+            )
+        } else {
+            loopContext = nil
+        }
+
+        // Each Mac-orchestrated lap runs as `daemon laps = 1`; the
+        // existing per-AppState `routeLaps` (which the user may have
+        // set for non-route trips) gets restored on return.
+        let savedRouteLaps = routeLaps
+        routeLaps = 1
+        defer { routeLaps = savedRouteLaps }
         // Auto-teleport to the start so the navigate origin is the
         // recorded route's beginning regardless of where the user
         // last looked on the map.
@@ -1418,11 +1483,14 @@ final class AppState {
         // The first point is now the teleport origin; navigate
         // through everything AFTER it. If a one-point GPX somehow
         // landed here, the teleport above already did the right
-        // thing — bail.
+        // thing — bail (and drop the loop context, since a one-point
+        // "route" can't be replayed meaningfully).
         let stops = Array(coords.dropFirst())
-        guard !stops.isEmpty else { return }
+        guard !stops.isEmpty else {
+            loopContext = nil
+            return
+        }
 
-        let speed = customSpeedMps ?? travelProfile.defaultSpeedMps
         await navigate(udid: udid,
                        through: stops,
                        profile: travelProfile,
@@ -2127,6 +2195,11 @@ final class AppState {
 
     func stopNavigation(udid: String) async {
         guard let client else { return }
+        // Explicit Stop cancels any auto-loop in flight. Clearing
+        // before the RPC means an `applyStateEvent` arriving
+        // mid-stop already sees the empty context and won't fire a
+        // fresh lap.
+        if loopContext?.udid == udid { loopContext = nil }
         _ = try? await client.callRaw("location.stop", params: ["udid": AnyCodable(udid)])
         navigation = nil
         // Stop cancels THIS device's trip — wipe just its slot
@@ -2799,7 +2872,48 @@ final class AppState {
         // which doesn't merit a celebration sound. We trigger BEFORE
         // we clear `navigation` below so the guard reads cleanly.
         let wasRunning = navigation?.state == .moving || navigation?.state == .paused
-        if stateRaw == "idle", wasRunning, alertSoundEnabled {
+
+        // v1.10.7 auto-loop continuation. When state goes
+        // moving/paused → idle (natural completion, NOT "stopped"
+        // which is user-driven), and we still owe laps on the
+        // current `loopContext`, fire the next teleport-and-
+        // navigate. The route-complete ding and the `navigation =
+        // nil` reset below are suppressed while another lap is in
+        // flight so the BottomBar progress doesn't flicker between
+        // laps.
+        var willLoopAgain = false
+        if stateRaw == "idle", wasRunning, var ctx = loopContext {
+            if ctx.remainingLaps > 0 {
+                ctx.remainingLaps -= 1
+                loopContext = ctx
+                willLoopAgain = true
+                let snap = ctx
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    await self.teleport(udid: snap.udid,
+                                        lat: snap.routePoints[0].lat,
+                                        lng: snap.routePoints[0].lng)
+                    let stops = Array(snap.routePoints.dropFirst())
+                    guard !stops.isEmpty else { return }
+                    let savedLaps = self.routeLaps
+                    let savedStraight = self.useStraightLine
+                    self.routeLaps = 1
+                    self.useStraightLine = true
+                    defer {
+                        self.routeLaps = savedLaps
+                        self.useStraightLine = savedStraight
+                    }
+                    await self.navigate(udid: snap.udid,
+                                        through: stops,
+                                        profile: snap.profile,
+                                        speed: snap.speed)
+                }
+            } else {
+                loopContext = nil
+            }
+        }
+
+        if stateRaw == "idle", wasRunning, alertSoundEnabled, !willLoopAgain {
             Task { @MainActor in AlertSoundService.playRouteComplete() }
         }
 
@@ -2808,9 +2922,12 @@ final class AppState {
                 nav.state = mapped
                 navigation = nav
             }
-        } else {
+        } else if !willLoopAgain {
             navigation = nil
         }
+        // When `willLoopAgain` is true we leave `navigation` alone:
+        // the next `navigate(...)` call from the queued Task will
+        // overwrite it with the fresh lap's state.
     }
 
     private func doubleValue(_ wrapped: AnyCodable?) -> Double? {
@@ -3150,6 +3267,23 @@ enum TravelProfile: String, CaseIterable, Identifiable, Sendable {
     }
 
     var defaultSpeedKmh: Double { defaultSpeedMps * 3.6 }
+}
+
+/// Snapshot of the parameters needed to replay a route on auto-loop.
+/// Owned by `AppState.loopContext`; populated by `runRoute(lapCount:)`
+/// when looping is requested, drained by `applyStateEvent` on each
+/// natural "idle" transition until `remainingLaps` hits zero.
+///
+/// We snapshot `routePoints` (not the SwiftData `Route` itself) so a
+/// concurrent edit / delete of the underlying record can't crash the
+/// loop. `remainingLaps == Int.max` is the sentinel for "until user
+/// presses Stop".
+struct LoopContext: Sendable, Equatable {
+    let routePoints: [Coordinate]
+    let udid: String
+    let profile: TravelProfile
+    let speed: Double
+    var remainingLaps: Int
 }
 
 struct NavigationVM: Sendable, Equatable {

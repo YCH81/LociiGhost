@@ -266,3 +266,68 @@
 "LINE Official Account @382ydavk" = "LINE 官方帳號 @382ydavk";
 "Buy me a bubble tea" = "一杯珍珠奶茶支持作者";
 "Join LINE community" = "加入 LINE 社群";
+
+// ── v1.10.7 ─────────────────────────────────────────────────
+
+// StartRouteSheet
+"Teleport to the start of \"%1$@\" and navigate %2$lld points?" = "瞬移到「%1$@」的起點並導航 %2$lld 個點？";
+"Loop the route" = "重複跑路線";
+"After reaching the last point, teleport back to the start and walk the route again." = "跑到最後一個點後自動瞬移回起點，再走一次。";
+"Total laps:" = "總圈數：";
+"Until I press Stop" = "我按停止前一直重複";
+"(leave blank for until Stop)" = "（留空 = 我按停止前一直重複）";
+
+// BulkPasteStopsSheet + MultiStopPanel
+"Bulk-add stops" = "批次加入停靠點";
+"Paste one coordinate per line — `lat, lng`. Comma, tab, or semicolon all work as separators; lines starting with # are ignored. The iPhone teleports to the first pasted coordinate so path-planning starts locally; any previously staged stops are cleared." = "每行一組座標 `lat, lng`。逗號、tab、分號皆可作分隔；`#` 開頭視為註解。iPhone 會先瞬移到第一個座標，讓後續路徑規劃在當地進行；原本已堆疊的停靠點會被清除。";
+"Waiting for valid coordinates…" = "等待有效座標…";
+"%lld valid stops detected." = "已偵測到 %lld 個有效停靠點。";
+"No valid coordinates found in the pasted text." = "貼上的文字裡找不到有效座標。";
+"Added %lld stops from paste." = "已從貼上文字加入 %lld 個停靠點。";
+"Bulk-add coordinates…" = "批次加入座標…";
+"Paste many coordinates at once — each line becomes the next stop" = "一次貼上多個座標，每一行依序成為下一個停靠點";
+
+// SettingsView — section headers
+"Logs" = "紀錄";
+"Geocoding" = "地理編碼";
+"Alerts" = "提示音";
+"Routing engine" = "路線引擎";
+"Troubleshooting" = "疑難排解";
+"About" = "關於";
+
+// SettingsView — short labels / buttons
+"Language:" = "語言：";
+"Theme:" = "外觀模式：";
+"Google API key:" = "Google API 金鑰：";
+"Engine:" = "引擎：";
+"Reveal in Finder" = "在 Finder 顯示";
+"Open folder" = "開啟資料夾";
+"Force-kill & restart daemon" = "強制終止並重啟 daemon";
+"Restarting…" = "重啟中…";
+"Import from JSON…" = "從 JSON 匯入…";
+"Export to JSON…" = "匯出為 JSON…";
+"Bulk paste…" = "批次貼上…";
+"Import GPX…" = "匯入 GPX…";
+"Import JSON…" = "匯入 JSON…";
+"Export JSON…" = "匯出 JSON…";
+"Play system sound on route complete" = "路線跑完時播放系統提示音";
+"How to get a Google Geocoding API key" = "如何取得 Google Geocoding API 金鑰";
+"Test" = "測試";
+"Paste your key here" = "貼上你的金鑰";
+
+// SettingsView — longer help text
+"Default appearance uses the sage palette from the LociiGhost icon. System appearance reverts every tinted element to macOS's accent colour. Switching is live — no restart needed." = "預設外觀使用 LociiGhost icon 的鼠尾草綠配色。切換到「系統」會讓所有上色元素改用 macOS 系統強調色。即時切換，不需重啟。";
+"Move bookmarks between machines or paste many at once." = "在不同 Mac 間搬移書籤，或一次貼上多筆。";
+"Open the LociiGhost log folder in Finder. Attach these files when you report a problem." = "在 Finder 中開啟 LociiGhost 的紀錄資料夾。回報問題時請附上這些檔案。";
+"When MapKit can't find a place (common for Chinese store / landmark names), LociiGhost can fall back to Google Geocoding using your own API key. Leave blank to disable." = "當 MapKit 找不到地點時（中文店名、地標常見），LociiGhost 可以用你自己的 API 金鑰退而求其次走 Google Geocoding。留空即停用此 fallback。";
+"No key configured — search uses Apple MapKit only." = "未設定金鑰 — 搜尋只走 Apple MapKit。";
+"Key configured — Google is used as a fallback when MapKit returns no matches." = "已設定金鑰 — MapKit 找不到結果時會 fallback 到 Google。";
+"Play the macOS system alert when a navigation, route loop, or random walk reaches its destination naturally. Explicit stops won't trigger the sound." = "導航、路線循環、隨機漫步自然抵達終點時播放 macOS 系統提示音。使用者主動按停止不會觸發。";
+"Multi-point tracks (GPX recordings or LociiGhost JSON exports). Use Import → GPX for trip files from other apps; JSON for round-tripping between LociiGhost machines." = "多點路線（GPX 紀錄檔或 LociiGhost JSON 匯出）。其他 app 的路線用「匯入 GPX」；LociiGhost 之間互傳用 JSON。";
+"Which service plans your navigation routes. Pick the OSRM Public Demo to revert to the default." = "由哪個服務規劃導航路線。選「OSRM Public Demo」即回到預設。";
+"If LociiGhost stops responding (the daemon hangs, devices won't appear, navigation freezes), use this button to kill the daemon with admin privileges and start a clean one — no Terminal required." = "如果 LociiGhost 無回應（daemon hang、裝置不顯示、導航凍結），按這個按鈕用管理者權限砍掉 daemon 並重啟一個乾淨的 — 不用開終端機。";
+"You'll see a standard macOS authentication dialog. LociiGhost itself never reads your password." = "你會看到 macOS 標準的驗證對話框。LociiGhost 本身不會讀取你的密碼。";
+"Copyright © 2026 YCH81 (Jeff Hu). Licensed under the MIT License." = "Copyright © 2026 YCH81 (Jeff Hu)。授權於 MIT License。";
+"Inspired by " = "致敬 ";
+" by keezxc1223 (MIT). LociiGhost is a complete native-Swift rewrite." = "（作者 keezxc1223，MIT 授權）。LociiGhost 為 native Swift 完整重寫版本。";
+"Run `cat LICENSE` from the project root for the full MIT text with both copyright notices." = "在專案根目錄執行 `cat LICENSE` 可看到完整 MIT 授權文與兩段 copyright 標示。";

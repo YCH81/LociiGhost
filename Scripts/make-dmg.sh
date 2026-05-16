@@ -96,6 +96,20 @@ RW_DMG="$STAGE_DIR/LociiGhost-rw.dmg"
 # read-write phase exists only so the AppleScript layout block below
 # can set the Finder window's view options — those settings live in
 # the DMG's .DS_Store, which the OS only writes to a mounted volume.
+# Detach any leftover /Volumes/LociiGhost* mount from a previous
+# build OR from someone double-mounting the shipped DMG. macOS will
+# happily mount a second copy of the same volume under "/Volumes/
+# LociiGhost 1" / " 2" etc. — but `tell disk "LociiGhost"` in the
+# AppleScript below resolves to the FIRST such disk, which is the
+# read-only leftover, so the layout writes go to a frozen volume and
+# `.DS_Store` never lands on our fresh read-write disk. This bit us
+# between v1.10.6 and v1.10.7's first attempt.
+for vol in /Volumes/LociiGhost /Volumes/LociiGhost\ [0-9]* ; do
+    [[ -d "$vol" ]] || continue
+    echo "==> detaching leftover mount $vol"
+    hdiutil detach "$vol" -force >/dev/null 2>&1 || true
+done
+
 echo "==> building read-write DMG (for Finder layout pass)"
 APP_SIZE_MB="$(du -sm "$APP" | awk '{print $1}')"
 RW_SIZE_MB=$((APP_SIZE_MB + 50))
@@ -140,8 +154,14 @@ echo "==> applying Finder layout via AppleScript"
 # asked for. Structuring with `tell container window` blocks and
 # multi-second delays after each significant write reliably gets
 # the layout into .DS_Store before unmount.
+#
+# Capture osascript output explicitly so a silent Finder-automation
+# permission denial (macOS TCC reset, version mismatch, etc.) doesn't
+# produce a layout-less DMG with no warning — that bit us once
+# between v1.10.6 and v1.10.7. `osascript` exit code is checked
+# below, and `.DS_Store` presence is verified before unmount.
 BG_POSIX="$MOUNT_DIR/.dmg-bg/bg.png"
-osascript <<APPLESCRIPT
+OSA_OUT="$(osascript 2>&1 <<APPLESCRIPT
 tell application "Finder"
     tell disk "LociiGhost"
         open
@@ -186,8 +206,34 @@ tell application "Finder"
     end tell
 end tell
 APPLESCRIPT
+)" || OSA_RC=$?
+if [[ -n "${OSA_RC:-}" && "$OSA_RC" -ne 0 ]]; then
+    echo "    ❌ osascript exited $OSA_RC" >&2
+    echo "$OSA_OUT" >&2
+    echo "    Likely cause: Finder Automation permission denied." >&2
+    echo "    Fix: System Settings → Privacy & Security → Automation, allow this terminal to control Finder." >&2
+    exit 1
+fi
+if [[ -n "$OSA_OUT" ]]; then
+    echo "    osascript output:"
+    printf '    %s\n' "$OSA_OUT"
+fi
 sleep 3
 sync
+
+# Verify the .DS_Store actually got written. If it didn't, the DMG
+# will mount as a plain folder window — no background image, no
+# arranged icons — which defeats the whole layout pass. Silently
+# happened in one v1.10.7 build; from now on we fail loud.
+if [[ ! -f "$MOUNT_DIR/.DS_Store" ]]; then
+    echo "    ❌ .DS_Store missing from mount after AppleScript pass." >&2
+    echo "    The DMG would ship without the Finder layout." >&2
+    echo "    Try: macOS Settings → Privacy & Security → Automation," >&2
+    echo "    grant Terminal (or whichever shell is running this) Finder access." >&2
+    hdiutil detach "$MOUNT_DIR" -force >/dev/null 2>&1 || true
+    exit 1
+fi
+echo "    .DS_Store present ($(stat -f%z "$MOUNT_DIR/.DS_Store") bytes)"
 
 echo "==> unmounting"
 # `-force` fallback in case Finder is still holding a reference.

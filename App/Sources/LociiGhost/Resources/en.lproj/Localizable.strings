@@ -267,3 +267,68 @@
 "LINE Official Account @382ydavk" = "LINE Official Account @382ydavk";
 "Buy me a bubble tea" = "Buy me a bubble tea";
 "Join LINE community" = "Join LINE community";
+
+// ── v1.10.7 ─────────────────────────────────────────────────
+
+// StartRouteSheet
+"Teleport to the start of \"%1$@\" and navigate %2$lld points?" = "Teleport to the start of \"%1$@\" and navigate %2$lld points?";
+"Loop the route" = "Loop the route";
+"After reaching the last point, teleport back to the start and walk the route again." = "After reaching the last point, teleport back to the start and walk the route again.";
+"Total laps:" = "Total laps:";
+"Until I press Stop" = "Until I press Stop";
+"(leave blank for until Stop)" = "(leave blank for until Stop)";
+
+// BulkPasteStopsSheet + MultiStopPanel
+"Bulk-add stops" = "Bulk-add stops";
+"Paste one coordinate per line — `lat, lng`. Comma, tab, or semicolon all work as separators; lines starting with # are ignored. The iPhone teleports to the first pasted coordinate so path-planning starts locally; any previously staged stops are cleared." = "Paste one coordinate per line — `lat, lng`. Comma, tab, or semicolon all work as separators; lines starting with # are ignored. The iPhone teleports to the first pasted coordinate so path-planning starts locally; any previously staged stops are cleared.";
+"Waiting for valid coordinates…" = "Waiting for valid coordinates…";
+"%lld valid stops detected." = "%lld valid stops detected.";
+"No valid coordinates found in the pasted text." = "No valid coordinates found in the pasted text.";
+"Added %lld stops from paste." = "Added %lld stops from paste.";
+"Bulk-add coordinates…" = "Bulk-add coordinates…";
+"Paste many coordinates at once — each line becomes the next stop" = "Paste many coordinates at once — each line becomes the next stop";
+
+// SettingsView — section headers
+"Logs" = "Logs";
+"Geocoding" = "Geocoding";
+"Alerts" = "Alerts";
+"Routing engine" = "Routing engine";
+"Troubleshooting" = "Troubleshooting";
+"About" = "About";
+
+// SettingsView — short labels / buttons
+"Language:" = "Language:";
+"Theme:" = "Theme:";
+"Google API key:" = "Google API key:";
+"Engine:" = "Engine:";
+"Reveal in Finder" = "Reveal in Finder";
+"Open folder" = "Open folder";
+"Force-kill & restart daemon" = "Force-kill & restart daemon";
+"Restarting…" = "Restarting…";
+"Import from JSON…" = "Import from JSON…";
+"Export to JSON…" = "Export to JSON…";
+"Bulk paste…" = "Bulk paste…";
+"Import GPX…" = "Import GPX…";
+"Import JSON…" = "Import JSON…";
+"Export JSON…" = "Export JSON…";
+"Play system sound on route complete" = "Play system sound on route complete";
+"How to get a Google Geocoding API key" = "How to get a Google Geocoding API key";
+"Test" = "Test";
+"Paste your key here" = "Paste your key here";
+
+// SettingsView — longer help text
+"Default appearance uses the sage palette from the LociiGhost icon. System appearance reverts every tinted element to macOS's accent colour. Switching is live — no restart needed." = "Default appearance uses the sage palette from the LociiGhost icon. System appearance reverts every tinted element to macOS's accent colour. Switching is live — no restart needed.";
+"Move bookmarks between machines or paste many at once." = "Move bookmarks between machines or paste many at once.";
+"Open the LociiGhost log folder in Finder. Attach these files when you report a problem." = "Open the LociiGhost log folder in Finder. Attach these files when you report a problem.";
+"When MapKit can't find a place (common for Chinese store / landmark names), LociiGhost can fall back to Google Geocoding using your own API key. Leave blank to disable." = "When MapKit can't find a place (common for Chinese store / landmark names), LociiGhost can fall back to Google Geocoding using your own API key. Leave blank to disable.";
+"No key configured — search uses Apple MapKit only." = "No key configured — search uses Apple MapKit only.";
+"Key configured — Google is used as a fallback when MapKit returns no matches." = "Key configured — Google is used as a fallback when MapKit returns no matches.";
+"Play the macOS system alert when a navigation, route loop, or random walk reaches its destination naturally. Explicit stops won't trigger the sound." = "Play the macOS system alert when a navigation, route loop, or random walk reaches its destination naturally. Explicit stops won't trigger the sound.";
+"Multi-point tracks (GPX recordings or LociiGhost JSON exports). Use Import → GPX for trip files from other apps; JSON for round-tripping between LociiGhost machines." = "Multi-point tracks (GPX recordings or LociiGhost JSON exports). Use Import → GPX for trip files from other apps; JSON for round-tripping between LociiGhost machines.";
+"Which service plans your navigation routes. Pick the OSRM Public Demo to revert to the default." = "Which service plans your navigation routes. Pick the OSRM Public Demo to revert to the default.";
+"If LociiGhost stops responding (the daemon hangs, devices won't appear, navigation freezes), use this button to kill the daemon with admin privileges and start a clean one — no Terminal required." = "If LociiGhost stops responding (the daemon hangs, devices won't appear, navigation freezes), use this button to kill the daemon with admin privileges and start a clean one — no Terminal required.";
+"You'll see a standard macOS authentication dialog. LociiGhost itself never reads your password." = "You'll see a standard macOS authentication dialog. LociiGhost itself never reads your password.";
+"Copyright © 2026 YCH81 (Jeff Hu). Licensed under the MIT License." = "Copyright © 2026 YCH81 (Jeff Hu). Licensed under the MIT License.";
+"Inspired by " = "Inspired by ";
+" by keezxc1223 (MIT). LociiGhost is a complete native-Swift rewrite." = " by keezxc1223 (MIT). LociiGhost is a complete native-Swift rewrite.";
+"Run `cat LICENSE` from the project root for the full MIT text with both copyright notices." = "Run `cat LICENSE` from the project root for the full MIT text with both copyright notices.";

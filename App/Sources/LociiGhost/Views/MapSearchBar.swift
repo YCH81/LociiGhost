@@ -33,15 +33,21 @@ struct MapSearchBar: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                field
-                    .frame(maxWidth: 280)
-                actionButtons
-            }
+        // Layout: search field on top, action-button cluster on a
+        // second row underneath. Earlier versions sat the four
+        // buttons inline next to the field, but that made the whole
+        // bar wide enough to collide with MapKit's scale indicator
+        // at narrow window widths even when the bar itself was
+        // centred. Stacking field over buttons cuts the bar's width
+        // roughly in half so the centred layout has clearance even
+        // on smaller windows.
+        VStack(alignment: .center, spacing: 6) {
+            field
+                .frame(maxWidth: 320)
+            actionButtons
             if dropdownIsVisible {
                 suggestionsList
-                    .frame(maxWidth: 280)
+                    .frame(maxWidth: 320)
             }
             if let msg = statusMessage {
                 Text(msg)
@@ -52,10 +58,10 @@ struct MapSearchBar: View {
                     .background(.regularMaterial, in: .rect(cornerRadius: 5))
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .frame(maxWidth: 700, alignment: .leading)
+                    .frame(maxWidth: 540, alignment: .leading)
             }
         }
-        .frame(maxWidth: 700)
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     /// Four buttons next to the field: Paste / Teleport / Preview /
@@ -67,6 +73,12 @@ struct MapSearchBar: View {
     /// used `.controlSize(.small)` plain on the map and users reported
     /// the buttons visually melted into the underlying tile.
     private var actionButtons: some View {
+        // Each `Text` carries `.fixedSize()` so SwiftUI can't truncate
+        // long labels like "Preview" when the parent VStack thinks
+        // horizontal space is tight. The cluster as a whole carries
+        // `.fixedSize(horizontal:)` for the same reason at HStack level
+        // — guarantees natural width regardless of the search field's
+        // 320 pt cap one row up.
         HStack(spacing: 6) {
             Button {
                 pasteFromClipboard()
@@ -74,6 +86,7 @@ struct MapSearchBar: View {
                 Label {
                     Text("Paste",
                          comment: "Search bar button — paste clipboard into the search field")
+                        .fixedSize()
                 } icon: {
                     Image(systemName: "doc.on.clipboard")
                 }
@@ -86,6 +99,7 @@ struct MapSearchBar: View {
                 Label {
                     Text("Teleport",
                          comment: "Search bar button — move iPhone instantly")
+                        .fixedSize()
                 } icon: {
                     Image(systemName: "wand.and.stars")
                 }
@@ -99,6 +113,7 @@ struct MapSearchBar: View {
                 Label {
                     Text("Preview",
                          comment: "Search bar button — show on map without affecting iPhone")
+                        .fixedSize()
                 } icon: {
                     Image(systemName: "eye")
                 }
@@ -112,6 +127,7 @@ struct MapSearchBar: View {
                 Label {
                     Text("Navigate",
                          comment: "Search bar button — start navigation with current settings")
+                        .fixedSize()
                 } icon: {
                     Image(systemName: "location.north.fill")
                 }
@@ -122,6 +138,7 @@ struct MapSearchBar: View {
         .controlSize(.regular)
         .buttonStyle(.bordered)
         .labelStyle(.titleAndIcon)
+        .fixedSize(horizontal: true, vertical: false)
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .background(.regularMaterial, in: .rect(cornerRadius: 10))
