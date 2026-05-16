@@ -2450,7 +2450,7 @@ final class AppState {
     /// Bumped every time the daemon source breaks ABI or behaviour in
     /// a way that requires an in-place restart. Must match the
     /// `__version__` in `Daemon/lociighostd/__init__.py`.
-    static let expectedDaemonVersion = "1.10.7"
+    static let expectedDaemonVersion = "1.10.8"
 
     // MARK: - Update check (v1.5)
 
@@ -2805,6 +2805,48 @@ final class AppState {
                 nav.etaSeconds = eta
             }
             navigation = nav
+        } else if stringValue(params["state"]) == "moving",
+                  let distanceM = doubleValue(params["distance_m"]),
+                  let etaS = doubleValue(params["eta_s"]) {
+            // v1.10.8 self-healing: resurrect navigation from a
+            // position-update payload when it's nil but the daemon
+            // reports state="moving". This catches the race where
+            // a stale `state="idle"` from a previous handler's
+            // `_stop_all_movement` (or any other source) clears
+            // `navigation` AFTER the navigate-RPC reply already set
+            // it up. Without this fallback the BottomBar ETA panel
+            // silently disappears for the rest of the route even
+            // though the daemon keeps playing — observed by users
+            // as "有機會點完路線下方狀態欄消失".
+            //
+            // Position events ship the full Navigator.status JSON
+            // (state / profile / speed_mps / distance_m / eta_s /
+            // progress / cumulative_m), so we can fully reconstruct
+            // NavigationVM. `routeCoordinates` isn't actually read
+            // by BottomBar — the on-map polyline comes from
+            // `activeRoute`, so empty is fine here.
+            let profileStr = stringValue(params["profile"]) ?? travelProfile.rawValue
+            let profile = TravelProfile(rawValue: profileStr) ?? travelProfile
+            let speedMps = doubleValue(params["speed_mps"])
+                ?? customSpeedMps
+                ?? profile.defaultSpeedMps
+            let cumulativeM = doubleValue(params["cumulative_m"]) ?? 0
+            let progress: Double = {
+                if let p = doubleValue(params["progress"]) { return max(0, min(1, p)) }
+                if distanceM > 0 { return max(0, min(1, cumulativeM / distanceM)) }
+                return 0
+            }()
+            navigation = NavigationVM(
+                state: .moving,
+                profile: profile,
+                speedMps: speedMps,
+                routeCoordinates: [],
+                distanceM: distanceM,
+                etaSeconds: etaS,
+                currentLocation: coord,
+                progress: progress,
+                laps: max(1, routeLaps),
+            )
         }
         if var rw = randomWalk {
             rw.current = coord

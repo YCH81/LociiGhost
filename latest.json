@@ -1,5 +1,5 @@
 {
-  "version": "1.10.7",
+  "version": "1.10.8",
   "url": "https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing",
-  "notes": "v1.10.7 — 5 個 UX / 功能改進：(1) 路線確認彈窗新增「我按停止前一直重複」勾選欄，跑完一輪自動從頭開始直到按 Stop；(2) 多點面板支援批次貼上座標，一行一組 lat,lng 依序成為下一個停靠點；(3) 地圖搜尋欄改置中，視窗大小改變時自適應、不再蓋到比例尺；(4) 搜尋欄右側 4 顆按鈕變大、外加半透明底色框；(5) 贊助按鈕統一指向 https://ych81.github.io/LociiGhost/sponsor.html。"
+  "notes": "v1.10.8 — 兩個修復：(1) macOS 14 Sonoma 兼容性 — daemon 改用 Python.org universal2 Python 3.13 build（MACOSX_DEPLOYMENT_TARGET=10.13），取代 Homebrew Python（link 到 macOS 15 才加的 expat 2.6 symbol，Sonoma 起不來）。(2) BottomBar ETA panel 偶爾消失 — daemon `_stop_all_movement` 不再多餘 emit state=idle；Mac 端 applyPositionEvent 在 navigation 為 nil 但 daemon 報 moving 時重建 NavigationVM。雙端對症，整段路線 ETA 不再失蹤。執行時耗能 / DMG 大小皆不變。"
 }

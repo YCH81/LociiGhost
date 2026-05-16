@@ -274,17 +274,19 @@
 
   <section class="card">
     <div class="version-line">
-      <strong>v1.10.7</strong>
+      <strong>v1.10.8</strong>
       <span class="status-pill">已發佈</span>
     </div>
-    <p>發布日期：2026-05-16。<strong>5 個 UX / 功能改進</strong>：
-       路線確認彈窗新增「我按停止前一直重複」勾選欄，跑完一輪自動從頭開始；
-       多點面板支援批次貼上座標，一行一組 <code>lat, lng</code> 依序成為下一個停靠點；
-       地圖搜尋欄改置中、視窗大小改變時自適應，不再蓋到比例尺；
-       搜尋欄右側 4 顆按鈕變大、外加半透明底色框；
-       贊助按鈕統一指向 <a href="sponsor.html">sponsor 頁</a>。
+    <p>發布日期：2026-05-16。<strong>兩個修復一次出</strong>：
+       (1) macOS 14 Sonoma 兼容性 — daemon 改用 Python.org universal2 Python 3.13
+       build（<code>MACOSX_DEPLOYMENT_TARGET=10.13</code>），取代原本 Homebrew Python
+       link 到 macOS 15.0 才加的 expat 2.6 symbol，Sonoma 14.x 正常啟動。
+       (2) BottomBar ETA panel 偶爾消失 — daemon <code>_stop_all_movement</code> 不再
+       多餘 emit <code>state=idle</code>；Mac 端 <code>applyPositionEvent</code> 在
+       <code>navigation</code> 為 nil 但 daemon 報 moving 時重建 NavigationVM。
+       執行時無耗能差異；DMG 大小幾乎不變（45.9 MB）。
        完整變更紀錄見
-       <a href="https://github.com/YCH81/LociiGhost/releases/tag/v1.10.7">v1.10.7 release notes</a>。</p>
+       <a href="https://github.com/YCH81/LociiGhost/releases/tag/v1.10.8">v1.10.8 release notes</a>。</p>
     <p class="meta">DMG 已通過 Apple Developer ID 簽名 + Apple notarize，
        雙擊即可開啟，不會被 Gatekeeper 擋下。<strong>請務必用 DMG 安裝</strong>，
        不要把 .app 解壓到 iCloud 同步的資料夾（Documents、Desktop），

@@ -29,7 +29,7 @@ if you're in Taiwan.
 
 ## Download
 
-- **Latest version**: v1.10.7
+- **Latest version**: v1.10.8
 - **Release date**: 2026-05-16
 - **Download**: [Google Drive folder](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) — DMG is Apple-Developer-ID-signed and notarised, so it opens with a double-click without the Gatekeeper warning. **Use the DMG, not a zip**: extracting a signed .app into an iCloud-synced folder (Documents, Desktop) lets the File Provider attach extra xattrs that break the signature and show "LociiGhost is damaged".
 
@@ -60,6 +60,43 @@ if you're in Taiwan.
   under 200 MB.
 
 ## What's new
+
+**v1.10.8** (2026-05-16)
+
+- **macOS 14 Sonoma now actually launches.** The bundled daemon was
+  rebuilt with the python.org universal2 Python 3.13 installer
+  (`MACOSX_DEPLOYMENT_TARGET=10.13`) instead of Homebrew Python.
+  Homebrew Python on macOS 15.6 linked the bundled
+  `pyexpat.cpython-313-darwin.so` against macOS 15.0's libexpat 2.6,
+  pulling in the new symbol `XML_SetReparseDeferralEnabled` — which
+  Sonoma's `/usr/lib/libexpat.1.dylib` doesn't have. So the daemon
+  hit `ImportError: dlopen(...): Symbol not found` the moment
+  `pymobiledevice3.lockdown` reached `plistlib` (which loads
+  pyexpat), and the whole .app refused to boot. New daemon minOS
+  drops from 15.0 to 11.0; Sonoma 14.x launches normally.
+- **Fixed the BottomBar ETA panel disappearing mid-route.** The
+  daemon's `_stop_all_movement` helper was unconditionally
+  broadcasting `state="idle"` at the end of every
+  `location.teleport` and `location.navigate` call — even when
+  nothing was actually running. If that spurious idle event reached
+  the Mac after the navigate-RPC reply had already populated
+  `AppState.navigation`, it would clear navigation back to nil and
+  the ETA panel would silently vanish for the rest of the route
+  (daemon still playing, map markers still moving, but the bottom
+  status row blank). Fixed at both ends: the daemon now only emits
+  idle when it actually stopped a mover; the Mac's
+  `applyPositionEvent` resurrects `NavigationVM` from the position
+  payload when the event reports `state="moving"` but our
+  `navigation` happens to be nil (the payload ships full
+  `distance_m` / `eta_s` / `speed_mps` / `profile` / `progress`
+  so reconstruction is exact).
+- DMG size essentially unchanged (45.9 MB → 45.9 MB). Most native
+  deps wheels are still arm64-only on PyPI; only the Python
+  interpreter itself swapped. **Runtime memory, CPU, and battery
+  are unchanged** by design. The Python.org switch also paves the
+  way for actual Intel support in a future release.
+- No UI changes, no other feature changes. All saved bookmarks,
+  routes, device pairings, and preferences carry over from v1.10.7.
 
 **v1.10.7** (2026-05-16)
 

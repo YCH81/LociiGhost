@@ -27,7 +27,7 @@
 
 ## 下載
 
-- **最新版本**：v1.10.7
+- **最新版本**：v1.10.8
 - **發布日期**：2026-05-16
 - **下載連結**：[Google Drive 下載資料夾](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) —— DMG 已通過 Apple Developer ID 簽名 + Apple notarize，雙擊即可開啟，不會被 Gatekeeper 擋下。**請務必用 DMG 安裝**，不要把 .app 解壓到 iCloud 同步的資料夾（Documents、Desktop），File Provider 會蓋上額外 xattr 把簽章弄壞
 
@@ -50,6 +50,13 @@
 - **Apple Silicon 原生** —— 閒置 CPU 0%、無 Chromium 開銷、Bundle < 200 MB
 
 ## 最新更新
+
+**v1.10.8**（2026-05-16）
+
+- **macOS 14 Sonoma 終於可以開了**。daemon 改用 Python.org universal2 Python 3.13 build（`MACOSX_DEPLOYMENT_TARGET=10.13`）取代原本的 Homebrew Python — Homebrew Python 在 macOS 15.6 上 build，把 `pyexpat.cpython-313-darwin.so` link 到 macOS 15.0 才加的 expat 2.6 symbol `XML_SetReparseDeferralEnabled`，導致 Sonoma 14.x 系統 `/usr/lib/libexpat.1.dylib` 找不到該 symbol，daemon import pyexpat 直接 `ImportError: Symbol not found`，整個 .app 起不來。新 build minOS 從 15.0 降到 11.0，Sonoma 14.x 正常啟動。
+- **修好點路線時下方 ETA panel 偶爾消失的 bug**。daemon 的 `_stop_all_movement` 原本在每次 `location.teleport` / `location.navigate` 進來時都 broadcast `state="idle"`，就算根本沒任何 mover 在跑。這個多餘的 idle 事件如果在 navigate 的 RPC reply 之後才抵達 Mac，會把 `AppState.navigation` 清成 nil，BottomBar 的 ETA panel 就此消失整段路線（daemon 還在跑、地圖 marker 還在動，但下方狀態列空白）。雙端對症修：daemon 只在真有 mover 停了才 emit idle；Mac 端 `applyPositionEvent` 在收到 position event 但 `navigation == nil` 且事件聲明 `state="moving"` 時，從 payload 自動重建 NavigationVM（payload 含完整 distance_m / eta_s / speed_mps / profile / progress）。
+- DMG 大小幾乎沒變（45.9 MB → 45.9 MB），native deps wheel 大多還是 arm64-only — Python.org Python 換的是 Python 自己的 minOS。執行時 **CPU / 記憶體 / 電池耗能完全不變**。順帶為未來 Intel 支援鋪好底層。
+- 沒有 UI 或新功能改動，所有設定、書籤、路線、裝置配對皆延續 v1.10.7。
 
 **v1.10.7**（2026-05-16）
 

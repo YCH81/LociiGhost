@@ -721,21 +721,37 @@ async def _stop_all_movement(
 ) -> None:
     """Tear down every active mover on the session — navigator, random
     walker, joystick. Used by every `location.*` entry point that wants
-    to be the *only* mover for a device."""
+    to be the *only* mover for a device.
+
+    v1.10.8 fix: only emit `state="idle"` when we actually stopped
+    something. Earlier behaviour was to emit the idle event
+    unconditionally at the end, which races against the very next
+    handler call (`location.navigate` calls `_stop_all_movement` first
+    thing, then immediately starts a fresh navigator and emits
+    `state="moving"`). If the spurious `state="idle"` reached the Mac
+    after the new `navigate` RPC reply had already set up
+    `AppState.navigation`, it would clear `navigation` back to nil and
+    the BottomBar's ETA panel would silently disappear for the rest of
+    the route — even though the daemon kept playing. Now the idle
+    event only fires when there really was a runner to stop.
+    """
     try:
         sess = await manager.session_for(udid)
     except errors.RpcError:
         return
+    stopped_any = False
     for attr in ("navigator", "walker", "joystick"):
         runner = getattr(sess, attr, None)
         if runner is None:
             continue
+        stopped_any = True
         try:
             await runner.stop()
         except Exception:
             pass
         setattr(sess, attr, None)
-    await server.broadcast_event("event.state_changed", {
-        "udid": udid,
-        "state": "idle",
-    })
+    if stopped_any:
+        await server.broadcast_event("event.state_changed", {
+            "udid": udid,
+            "state": "idle",
+        })
