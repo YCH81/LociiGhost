@@ -57,20 +57,24 @@ struct MainView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 10) {
-                        // Top strip: search bar on the left (over
-                        // the scale indicator's column), then a
-                        // spacer, then the right-side cluster:
-                        // recenter + layer picker. The layer picker
-                        // sits BELOW QuickRecenterButton so neither
-                        // collides with MapKit's compass + zoom.
+                        // Top strip: search bar centred between the
+                        // left scale-indicator reserve and the right
+                        // cluster (recenter / recent places / layer
+                        // picker). Earlier versions anchored the
+                        // search bar hard-left (immediately after
+                        // the 160 pt scale reserve), which still
+                        // overlapped the "0 — 2.5 km" ruler at some
+                        // zoom levels and looked off-balance on
+                        // wider windows. The two flex spacers
+                        // distribute remaining horizontal space
+                        // equally so the search bar tracks the
+                        // midpoint of the *usable* map area as the
+                        // window resizes — never colliding with the
+                        // scale indicator on the left or the right
+                        // cluster on the right.
                         HStack(alignment: .top, spacing: 12) {
-                            // MapKit's scale indicator lives in the
-                            // top-left corner of the map (≈ 150 pt
-                            // wide depending on zoom). Reserve room
-                            // for it so the search bar's leading
-                            // edge sits clear of the "0 — 2.5 km"
-                            // ruler instead of crashing into it.
                             Spacer().frame(width: 160)
+                            Spacer(minLength: 12)
                             MapSearchBar()
                             Spacer(minLength: 12)
                             VStack(alignment: .trailing, spacing: 8) {
@@ -180,48 +184,20 @@ struct MainView: View {
                  comment: "Sync-mode confirm explanation")
         }
         // Route-start confirmation. Clicking a sidebar route parks it
-        // in `routePendingConfirm`; the alert here is what actually
-        // turns that into a teleport + navigate. Cancel just clears
-        // the field so a second click on the same route re-prompts.
-        .alert(
-            Text("Start route?",
-                 comment: "Title of the confirm-start-route alert"),
-            isPresented: Binding(
-                get: { state.routePendingConfirm != nil },
-                set: { isOpen in
-                    if !isOpen { state.routePendingConfirm = nil }
-                },
-            ),
-            presenting: state.routePendingConfirm,
-        ) { route in
-            Button(role: .cancel) {
-                state.routePendingConfirm = nil
-            } label: {
-                Text("Cancel")
+        // in `routePendingConfirm`; this sheet is what actually turns
+        // that into a teleport + navigate. v1.10.7 swapped the prior
+        // `.alert(presenting:)` for a `.sheet` so the "Loop until I
+        // stop" Toggle can live inline — SwiftUI's standard alert
+        // doesn't accept inline controls.
+        .sheet(isPresented: Binding(
+            get: { state.routePendingConfirm != nil },
+            set: { isOpen in
+                if !isOpen { state.routePendingConfirm = nil }
+            },
+        )) {
+            if let route = state.routePendingConfirm {
+                StartRouteSheet(route: route)
             }
-            Button {
-                let r = route
-                guard let udid = state.selectedUDID else {
-                    state.routePendingConfirm = nil
-                    return
-                }
-                state.routePendingConfirm = nil
-                Task { @MainActor in
-                    await state.runRoute(r, udid: udid)
-                }
-            } label: {
-                Text("Start",
-                     comment: "Confirm button on the start-route alert")
-            }
-        } message: { route in
-            Text(String(
-                format: String(
-                    localized: "Teleport to the start of \"%1$@\" and navigate %2$lld points?",
-                    comment: "Body of the confirm-start-route alert",
-                ),
-                route.name,
-                route.pointCount,
-            ))
         }
     }
 
@@ -546,7 +522,7 @@ private struct Sidebar: View {
 private struct SidebarSupportFooter: View {
     var body: some View {
         VStack(spacing: 8) {
-            Link(destination: URL(string: "https://ko-fi.com/jflociighost")!) {
+            Link(destination: URL(string: "https://ych81.github.io/LociiGhost/sponsor.html")!) {
                 HStack(spacing: 8) {
                     Image(systemName: "cup.and.saucer.fill")
                     Text("Buy me a bubble tea",

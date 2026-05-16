@@ -29,8 +29,8 @@ if you're in Taiwan.
 
 ## Download
 
-- **Latest version**: v1.10.6
-- **Release date**: 2026-05-14
+- **Latest version**: v1.10.7
+- **Release date**: 2026-05-16
 - **Download**: [Google Drive folder](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) — DMG is Apple-Developer-ID-signed and notarised, so it opens with a double-click without the Gatekeeper warning. **Use the DMG, not a zip**: extracting a signed .app into an iCloud-synced folder (Documents, Desktop) lets the File Provider attach extra xattrs that break the signature and show "LociiGhost is damaged".
 
 ## New here?
@@ -60,6 +60,36 @@ if you're in Taiwan.
   under 200 MB.
 
 ## What's new
+
+**v1.10.7** (2026-05-16)
+
+- **Auto-loop routes.** The start-route confirm sheet now has a
+  "Loop until I stop" checkbox. Tick it and the iPhone keeps replaying
+  the route from the beginning after each lap — until you hit Stop.
+  Implemented by raising `routeLaps` to 9,999 during the navigate-RPC
+  call (the daemon copies the value into its session state at start
+  time, so 9,999 laps is effectively forever for any realistic route).
+- **Bulk-add multi-stop coordinates.** New "Bulk-add coordinates…"
+  button on the Multi-stop panel. Paste one `lat, lng` per line — comma,
+  tab, or semicolon as separators, `#` lines ignored — and each line
+  becomes the next staged stop in order. Reuses the same parser as the
+  bookmarks bulk-paste, so 30-stop routes don't need 30 map clicks.
+- **Search bar centred, no longer obscures the scale ruler.** The
+  address search bar plus its 4 action buttons now float at the
+  midpoint of the usable map area and re-centre live as the window
+  resizes. Always clear of MapKit's scale indicator on the left and
+  the right-side cluster (recenter / recent places / layers) on the
+  right.
+- **Search-bar action buttons bigger + framed.** Paste / Teleport /
+  Preview / Navigate jumped from `.controlSize(.small)` to `.regular`
+  and now sit inside a translucent material capsule with a thin border.
+  The cluster reads as a single floating control instead of melting
+  into the underlying map tile.
+- **Sponsor links unified onto the sponsor page.** The sidebar
+  "Buy me a bubble tea" button and the Settings support link both now
+  point at <https://ych81.github.io/LociiGhost/sponsor.html> — a
+  single landing that lists Ko-fi, LINE Official Account, and any
+  future support channels. One file to edit when adding a new option.
 
 **v1.10.6** (2026-05-14)
 

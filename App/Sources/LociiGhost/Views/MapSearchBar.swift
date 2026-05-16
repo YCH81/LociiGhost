@@ -62,8 +62,12 @@ struct MapSearchBar: View {
     /// Navigate. Each shows BOTH icon and text so a new user doesn't
     /// have to hover-and-wait to learn what each glyph does.
     /// `.bordered` style gives macOS-native hover feedback for free.
+    /// Wrapped in a translucent material capsule so the cluster reads
+    /// as a single floating control over the map — earlier versions
+    /// used `.controlSize(.small)` plain on the map and users reported
+    /// the buttons visually melted into the underlying tile.
     private var actionButtons: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 6) {
             Button {
                 pasteFromClipboard()
             } label: {
@@ -115,9 +119,16 @@ struct MapSearchBar: View {
             .disabled(!hasResolvableTarget || state.isVirtualMapSelected)
             .help(LocalizedStringKey("Navigate to this location with current settings"))
         }
-        .controlSize(.small)
+        .controlSize(.regular)
         .buttonStyle(.bordered)
         .labelStyle(.titleAndIcon)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(.regularMaterial, in: .rect(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color.secondary.opacity(0.20), lineWidth: 0.5)
+        )
     }
 
     /// True when there's something we can resolve to coords:

@@ -1074,6 +1074,35 @@ final class AppState {
     /// Returns the count actually inserted. Errors are surfaced via
     /// the returned count being zero + lastError; the caller should
     /// dismiss its paste sheet either way.
+    /// Parse one coord per line (`lat, lng` — comma / tab / semicolon
+    /// separators) and append each to `pendingStops` so the user can
+    /// build a long multi-stop route by paste instead of by clicking
+    /// the map dozens of times. Reuses `BookmarksJSONService.parseBulkPaste`
+    /// for the line parser since the format overlaps; we just discard
+    /// the bookmark-only name/category fields.
+    @MainActor
+    @discardableResult
+    func bulkAppendStops(from rawText: String) -> Int {
+        let entries = BookmarksJSONService.parseBulkPaste(rawText)
+        guard !entries.isEmpty else {
+            lastError = String(
+                localized: "No valid coordinates found in the pasted text.",
+                comment: "Toast when multi-stop bulk paste finds zero usable coords",
+            )
+            return 0
+        }
+        let coords = entries.map { Coordinate(lat: $0.lat, lng: $0.lng) }
+        pendingStops.append(contentsOf: coords)
+        lastError = String(
+            format: String(
+                localized: "Added %lld stops from paste.",
+                comment: "Toast after a successful multi-stop bulk-paste insert",
+            ),
+            coords.count,
+        )
+        return coords.count
+    }
+
     @MainActor
     @discardableResult
     func bulkAddBookmarks(from rawText: String, defaultCategory: String = "") -> Int {
@@ -1342,7 +1371,14 @@ final class AppState {
     /// before the click so a subsequent ad-hoc multi-stop trip
     /// doesn't inherit straight-line mode they never asked for.
     @MainActor
-    func runRoute(_ route: Route, udid: String) async {
+    /// `loop`: when true, the iPhone keeps replaying the route from the
+    /// start until the user hits Stop. Implemented by temporarily
+    /// raising `routeLaps` to 9 999 (the daemon copies the lap count
+    /// into the running session at navigate-RPC time, so restoring
+    /// `routeLaps` immediately after the call doesn't shorten the
+    /// already-started trip). 9 999 laps on any realistic route is
+    /// "forever" — a 100 km loop at 5 m/s is ~6 years.
+    func runRoute(_ route: Route, udid: String, loop: Bool = false) async {
         let coords = route.points
         guard !coords.isEmpty else {
             lastError = String(localized: "GPX file has no waypoints or track points.")
@@ -1353,6 +1389,9 @@ final class AppState {
             lastError = String(localized: "Connect a device first.")
             return
         }
+        let savedLaps = routeLaps
+        if loop { routeLaps = 9_999 }
+        defer { routeLaps = savedLaps }
         // Auto-teleport to the start so the navigate origin is the
         // recorded route's beginning regardless of where the user
         // last looked on the map.
@@ -2338,7 +2377,7 @@ final class AppState {
     /// Bumped every time the daemon source breaks ABI or behaviour in
     /// a way that requires an in-place restart. Must match the
     /// `__version__` in `Daemon/lociighostd/__init__.py`.
-    static let expectedDaemonVersion = "1.10.6"
+    static let expectedDaemonVersion = "1.10.7"
 
     // MARK: - Update check (v1.5)
 

@@ -27,8 +27,8 @@
 
 ## 下載
 
-- **最新版本**：v1.10.6
-- **發布日期**：2026-05-14
+- **最新版本**：v1.10.7
+- **發布日期**：2026-05-16
 - **下載連結**：[Google Drive 下載資料夾](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) —— DMG 已通過 Apple Developer ID 簽名 + Apple notarize，雙擊即可開啟，不會被 Gatekeeper 擋下。**請務必用 DMG 安裝**，不要把 .app 解壓到 iCloud 同步的資料夾（Documents、Desktop），File Provider 會蓋上額外 xattr 把簽章弄壞
 
 ## 第一次使用？
@@ -50,6 +50,14 @@
 - **Apple Silicon 原生** —— 閒置 CPU 0%、無 Chromium 開銷、Bundle < 200 MB
 
 ## 最新更新
+
+**v1.10.7**（2026-05-16）
+
+- **路線「自動重複」**。點側邊欄路線時跳出的確認彈窗多了一個「我按停止前一直重複」勾選欄。勾起來後，路線跑到終點會自動從起點再來一次，直到使用者按 Stop。實作上是把 `routeLaps` 暫時拉到 9 999；daemon 把這個 lap 數抄進 session state，9 999 圈對任何實際 GPS 路線都等同於「永遠」。
+- **多點批次貼上座標**。多點面板新增「Bulk-add coordinates…」按鈕，貼上一行一組 `lat, lng`（逗號 / tab / 分號皆可，`#` 開頭視為註解），每一行依序變成下一個停靠點。一次規劃 30 個點不用再點 30 下地圖。
+- **搜尋欄改為置中、不再蓋到比例尺**。地址搜尋欄與右側 4 個按鈕一起浮在地圖中央，視窗大小改變時自動跟著重新置中。永遠不會擋到左上角的「0 — 2.5 km」比例尺，也不會跟右上角的控制群衝突。
+- **搜尋欄右側按鈕變大 + 有底色框**。貼上 / 瞬移 / 預覽 / 導航 4 個按鈕從 `.small` 升到 `.regular`，並用一個半透明的圓角材質框住整組，從此不會跟地圖底圖混在一起找不到按鍵。
+- **贊助按鈕統一導到 sponsor 頁**。側邊欄的「Buy me a bubble tea」跟 Settings 裡的支持作者連結都改為指向 [https://ych81.github.io/LociiGhost/sponsor.html](https://ych81.github.io/LociiGhost/sponsor.html)，集中展示 Ko-fi、LINE 等多種支持管道；未來新增支持選項只要改 sponsor.html 一個檔。
 
 **v1.10.6**（2026-05-14）
 

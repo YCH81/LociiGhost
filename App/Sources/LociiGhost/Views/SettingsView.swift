@@ -567,13 +567,13 @@ struct SettingsView: View {
                 .textSelection(.enabled)
 
             HStack(spacing: 4) {
-                Image(systemName: "cup.and.saucer.fill")
+                Image(systemName: "heart.fill")
                     .foregroundStyle(Color(red: 1.0, green: 0.369, blue: 0.357))
                     .font(.caption2)
                 Link(
-                    String(localized: "Support YCH81 (aka Jeff Hu) on Ko-fi",
-                           comment: "Settings — Ko-fi support link"),
-                    destination: URL(string: "https://ko-fi.com/jflociighost")!
+                    String(localized: "Support the developer",
+                           comment: "Settings — sponsor page link"),
+                    destination: URL(string: "https://ych81.github.io/LociiGhost/sponsor.html")!
                 )
                 .font(.caption)
                 Spacer()

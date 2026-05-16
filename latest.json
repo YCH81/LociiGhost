@@ -1,5 +1,5 @@
 {
-  "version": "1.10.6",
+  "version": "1.10.7",
   "url": "https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing",
-  "notes": "v1.10.6 — 6 個修復：(1) 還原真實 GPS 改 await Mac CoreLocation fresh fix，飛回當下位置而非啟動時舊值；連線時也會請求位置權限，拿不到 fix 時顯示提示而非靜默；(2) WiFi 裝置列表多 IP 路徑不再撞同名，tcp_scan 候選保留 IP 作為主名稱；(3) 支援匯入 LocWarp 路線 JSON (接受 waypoints key)；(4) Settings → Routes 的 Import/Export 結果直接在 sheet 內顯示；(5) 導航 ETA 面板拆三行平鋪，進度條全寬；(6) 新增 Scripts/test-clean-install.sh，乾淨環境 DMG 驗證，防 v1.10.0-v1.10.4 cascade 重演。"
+  "notes": "v1.10.7 — 5 個 UX / 功能改進：(1) 路線確認彈窗新增「我按停止前一直重複」勾選欄，跑完一輪自動從頭開始直到按 Stop；(2) 多點面板支援批次貼上座標，一行一組 lat,lng 依序成為下一個停靠點；(3) 地圖搜尋欄改置中，視窗大小改變時自適應、不再蓋到比例尺；(4) 搜尋欄右側 4 顆按鈕變大、外加半透明底色框；(5) 贊助按鈕統一指向 https://ych81.github.io/LociiGhost/sponsor.html。"
 }

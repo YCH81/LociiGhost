@@ -15,6 +15,7 @@ import SwiftUI
 struct MultiStopPanel: View {
     @Environment(AppState.self) private var state
     @State private var draggingStopID: StagedStop.ID?
+    @State private var showingBulkPaste: Bool = false
 
     /// Wrap each stop in a struct with a stable id so SwiftUI's
     /// drag-and-drop machinery can match the dragged item to the
@@ -58,6 +59,22 @@ struct MultiStopPanel: View {
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
 
+            // Always-visible Bulk-add affordance. Click-by-click stop
+            // entry is fine for 3–5 stops but breaks down for a long
+            // pre-planned route; this button opens a paste sheet that
+            // accepts one `lat, lng` per line and appends each to the
+            // end of pendingStops in order.
+            Button {
+                showingBulkPaste = true
+            } label: {
+                Label("Bulk-add coordinates…",
+                      systemImage: "doc.on.clipboard")
+            }
+            .controlSize(.small)
+            .buttonStyle(.bordered)
+            .hoverHighlight(cornerRadius: 5)
+            .help(LocalizedStringKey("Paste many coordinates at once — each line becomes the next stop"))
+
             if state.pendingStops.isEmpty {
                 Text("No stops staged yet.")
                     .font(.caption2)
@@ -66,6 +83,9 @@ struct MultiStopPanel: View {
             } else {
                 stopsSummary
             }
+        }
+        .sheet(isPresented: $showingBulkPaste) {
+            BulkPasteStopsSheet()
         }
     }
 
