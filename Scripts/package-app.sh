@@ -116,12 +116,47 @@ cp "$ICNS_SRC" "$OUT/Contents/Resources/AppIcon.icns"
 # the bundle isn't present (which happens when building from source
 # without first running build-daemon.sh).
 DAEMON_DIST="$ROOT/Daemon/dist/lociighostd"
+
+# Tahoe FS workaround: macOS 26 sometimes auto-splits PyInstaller
+# output trees: a directory X gets paired with a sibling "X 2" that
+# silently holds half the files. Auto-rename has been observed at
+# both _internal/ and lociighostd/ levels. Sweep any "<name> 2"
+# directory under $base and rsync it back into the un-suffixed
+# sibling. Idempotent — no-op when no split exists.
+merge_internal_dup() {
+    local root="$1"
+    local pass
+    for pass in 1 2 3; do
+        local found_any=0
+        while IFS= read -r dup; do
+            [[ -z "$dup" ]] && continue
+            local b="${dup% 2}"
+            if [[ -e "$b" ]]; then
+                echo "==> merging Tahoe FS split: $dup → $b"
+                rsync -a "$dup/" "$b/"
+                rm -rf "$dup"
+                found_any=1
+            fi
+        done < <(find "$root" -depth -name "* 2" 2>/dev/null)
+        [[ $found_any -eq 0 ]] && break
+    done
+}
+
 if [[ -d "$DAEMON_DIST" ]]; then
+    # Defensive merge on the source side — ditto might re-read the
+    # split or carry it forward into OUT otherwise.
+    merge_internal_dup "$DAEMON_DIST"
     echo "==> bundling daemon: $DAEMON_DIST → Contents/Resources/lociighostd/"
     ditto --norsrc --noextattr --noacl \
         "$DAEMON_DIST" \
         "$OUT/Contents/Resources/lociighostd"
     chmod +x "$OUT/Contents/Resources/lociighostd/lociighostd"
+    # And on the destination side — the ditto itself sometimes
+    # triggers the split on the new copy. Verify clean before
+    # codesigning (a Mach-O sign on a split tree leaves the .app
+    # bundle silently broken — the signature is valid but loading
+    # the daemon at runtime fails).
+    merge_internal_dup "$OUT/Contents/Resources/lociighostd"
 else
     echo "==> WARNING: daemon dist not found at $DAEMON_DIST" >&2
     echo "    Run Scripts/build-daemon.sh first if you want a self-contained" >&2
@@ -156,7 +191,7 @@ cat >"$OUT/Contents/Info.plist" <<'PLIST'
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.10.8</string>
+    <string>1.11.0</string>
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>NSHumanReadableCopyright</key>
@@ -370,6 +405,9 @@ if [[ -n "$SIGN_IDENTITY" ]]; then
     ditto --norsrc --noextattr --noacl "$OUT" "$ORIGINAL_OUT"
     rm -rf "$SIGN_WORK"
     OUT="$ORIGINAL_OUT"
+    # Final defensive merge — the ditto back out of /tmp also has a
+    # chance of triggering the Tahoe FS split.
+    merge_internal_dup "$OUT/Contents/Resources/lociighostd"
 else
     # Local-development ad-hoc fallback. No certificate needed,
     # but the .app only opens on this Mac (Gatekeeper warns

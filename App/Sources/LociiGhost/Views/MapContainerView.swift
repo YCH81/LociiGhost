@@ -123,6 +123,17 @@ struct MapContainerView: NSViewRepresentable {
         private var lastPreviewIsStraightLine: Bool = false
         private var lastRWPreviewSignature: (Coordinate, Double)?
         private var lastDestinationSignature: Coordinate?
+        // v1.11.0 perf — three blocks below previously rebuilt their
+        // pins on every `updateNSView` call (i.e. every 1 Hz position
+        // event from the daemon). For a 274-stop route, that's ~550
+        // MapKit add/remove operations per second on the main thread,
+        // starving gestures and button events. With these signatures,
+        // each block only rebuilds when its underlying state actually
+        // changes.
+        private var lastPendingStopsSig: [Coordinate] = []
+        private var lastActiveWaypointsSig: [Coordinate] = []
+        private var lastSimulatedSig: (Coordinate, Bool)?
+        private var lastMacSig: (Coordinate, Double?)?
         private var didCenterOnMac = false
         private var lastServicedFlyID: UUID?
 
@@ -185,24 +196,32 @@ struct MapContainerView: NSViewRepresentable {
                 longitude: req.coordinate.lng,
             )
             let region: MKCoordinateRegion
+            let animated: Bool
             if req.preserveZoom {
                 // Follow-puck path: keep the user's current span,
                 // only shift the centre. setRegion-with-current-
                 // span would jitter on rapid updates; passing the
                 // map's existing `region.span` keeps zoom stable.
+                // v1.11.0: animated=false here. The 1 Hz follow
+                // tick previously queued a 200-300 ms MapKit pan
+                // animation per update — on macOS 26 Tahoe these
+                // accumulate on the main thread and stall SwiftUI
+                // alerts/sheets/popovers that try to present mid-
+                // navigation. The simulated pin is already KVO-
+                // smooth so jumping the region instantly is barely
+                // perceptible visually but keeps the alert / mode-
+                // switch dialog snappy.
                 region = MKCoordinateRegion(center: center, span: map.region.span)
+                animated = false
             } else {
                 region = MKCoordinateRegion(
                     center: center,
                     latitudinalMeters: req.spanMeters,
                     longitudinalMeters: req.spanMeters,
                 )
+                animated = true
             }
-            // Animation length is fine for one-shot teleports
-            // (200-300 ms is unnoticed) and looks smooth for
-            // 1 Hz follow updates (the next animation overlaps
-            // the previous one — MKMapView coalesces).
-            map.setRegion(region, animated: true)
+            map.setRegion(region, animated: animated)
         }
 
         @objc func handleClick(_ gesture: NSClickGestureRecognizer) {
@@ -528,62 +547,123 @@ struct MapContainerView: NSViewRepresentable {
             }
 
             // --- Pending stops + active waypoints (numbered pins) ------
-            // Wipe the previous batch wholesale -- order matters and is
-            // encoded in the annotation index, so we'd rather rebuild than
-            // try to diff stop-by-stop.
-            //
             // Render BOTH the staging list (`pendingStops`, red, what the
             // user is composing right now) AND the captured waypoint list
             // (`activeWaypoints`, blue, what the iPhone is currently
             // walking through). After a Navigate kicks off, pendingStops
             // empties and activeWaypoints picks up the same coordinates;
             // the colour change tells the user "this trip is now live".
-            for old in pendingStopAnnotations {
-                map.removeAnnotation(old)
-            }
-            pendingStopAnnotations.removeAll(keepingCapacity: true)
-            for (index, stop) in state.pendingStops.enumerated() {
-                let pin = StopAnnotation(stopNumber: index + 1, isActive: false)
-                pin.coordinate = CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lng)
-                pin.title = "Stop \(index + 1)"
-                pin.subtitle = String(format: "%.5f, %.5f", stop.lat, stop.lng)
-                map.addAnnotation(pin)
-                pendingStopAnnotations.append(pin)
-            }
-            for (index, stop) in state.activeWaypoints.enumerated() {
-                let pin = StopAnnotation(stopNumber: index + 1, isActive: true)
-                pin.coordinate = CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lng)
-                pin.title = "Waypoint \(index + 1)"
-                pin.subtitle = String(format: "%.5f, %.5f", stop.lat, stop.lng)
-                map.addAnnotation(pin)
-                pendingStopAnnotations.append(pin)
+            //
+            // v1.11.0: dirty-check guard. Previously this block did a
+            // full wipe-and-rebuild on every `updateNSView` — fine for
+            // a handful of stops, catastrophic for a 274-stop route
+            // (548 MapKit add/remove ops per second, all on the main
+            // thread). Now we only touch MapKit when the underlying
+            // arrays actually change. Order matters within each list
+            // (the annotation index encodes the stop number), so we
+            // compare values + position via `!=`; same-content arrays
+            // skip the rebuild entirely.
+            // v1.11.0: once a Navigate fires, `activeWaypoints` carries
+            // the live blue waypoints — we suppress `pendingStops` on
+            // the map to avoid duplicate red+blue pins at every stop
+            // (the staging panel keeps the coords list visible in the
+            // sidebar regardless; this only affects map rendering).
+            let pendingSig: [Coordinate] =
+                state.activeWaypoints.isEmpty ? state.pendingStops : []
+            let waypointsSig = state.activeWaypoints
+            if pendingSig != lastPendingStopsSig || waypointsSig != lastActiveWaypointsSig {
+                // Batch MapKit ops: removeAnnotations(_:) / addAnnotations(_:)
+                // commit in a single map update, dramatically cheaper than
+                // looping individual remove/add for long routes. The old
+                // per-pin loop produced ~150 main-thread MapKit calls for a
+                // 78-stop route — visible UI freeze when the user switched
+                // mode (which clears activeWaypoints back to []) or hit
+                // Navigate / Cancel. Batch ops keep the main thread free.
+                if !pendingStopAnnotations.isEmpty {
+                    map.removeAnnotations(pendingStopAnnotations)
+                    pendingStopAnnotations.removeAll(keepingCapacity: true)
+                }
+                var batch: [MKAnnotation] = []
+                batch.reserveCapacity(pendingSig.count + waypointsSig.count)
+                for (index, stop) in pendingSig.enumerated() {
+                    let pin = StopAnnotation(stopNumber: index + 1, isActive: false)
+                    pin.coordinate = CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lng)
+                    pin.title = "Stop \(index + 1)"
+                    pin.subtitle = String(format: "%.5f, %.5f", stop.lat, stop.lng)
+                    batch.append(pin)
+                    pendingStopAnnotations.append(pin)
+                }
+                for (index, stop) in waypointsSig.enumerated() {
+                    let pin = StopAnnotation(stopNumber: index + 1, isActive: true)
+                    pin.coordinate = CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lng)
+                    pin.title = "Waypoint \(index + 1)"
+                    pin.subtitle = String(format: "%.5f, %.5f", stop.lat, stop.lng)
+                    batch.append(pin)
+                    pendingStopAnnotations.append(pin)
+                }
+                if !batch.isEmpty {
+                    map.addAnnotations(batch)
+                }
+                lastPendingStopsSig = pendingSig
+                lastActiveWaypointsSig = waypointsSig
             }
 
             // --- Simulated location (green) -----------------------------
-            if let old = simulatedAnnotation {
-                map.removeAnnotation(old)
-                simulatedAnnotation = nil
-            }
             // Pull from `currentMapFocus`, which automatically
             // resolves to `browseCursor` in browse mode and
             // `simulatedLocation` for a real iPhone. This is
             // what fixes the "browse-pin contaminates iPhone
             // pin" bug — the two sources never cross.
-            if let sim = state.currentMapFocus {
+            //
+            // Position-only updates (1 Hz tick during simulation)
+            // mutate the existing annotation's `coordinate` in place.
+            // MKPointAnnotation's coordinate is KVO-compliant, so
+            // MapKit smoothly slides the pin to the new lat/lng
+            // without destroying and re-creating the annotation view.
+            // The old "remove + add every tick" path showed a visible
+            // flicker on macOS 26 Tahoe and contended for the main
+            // thread during navigation — worse with longer routes
+            // because each tick competed with route-polyline redraws.
+            // Full rebuild fires only when the pin's KIND changes
+            // (browse-only ↔ iPhone-simulated): different title /
+            // colour / glyph applied in viewFor-annotation below.
+            let focus = state.currentMapFocus
+            let isVirtual = state.isVirtualMapSelected
+            let prevKind: Bool? = lastSimulatedSig?.1
+
+            if focus == nil {
+                if let old = simulatedAnnotation {
+                    map.removeAnnotation(old)
+                    simulatedAnnotation = nil
+                }
+                lastSimulatedSig = nil
+            } else if let existing = simulatedAnnotation, prevKind == isVirtual {
+                let lat = focus!.lat
+                let lng = focus!.lng
+                if existing.coordinate.latitude != lat || existing.coordinate.longitude != lng {
+                    existing.coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lng)
+                    existing.subtitle = String(format: "%.5f, %.5f", lat, lng)
+                }
+                lastSimulatedSig = (focus!, isVirtual)
+            } else {
+                if let old = simulatedAnnotation {
+                    map.removeAnnotation(old)
+                }
                 let pin = SimulatedAnnotation()
-                pin.coordinate = CLLocationCoordinate2D(latitude: sim.lat, longitude: sim.lng)
+                pin.coordinate = CLLocationCoordinate2D(latitude: focus!.lat, longitude: focus!.lng)
                 // Browse-only Map mode uses the pin to mean "where
                 // the user clicked" — there's no iPhone being
                 // simulated. Label it "You" instead. The
                 // viewFor-annotation switch below picks a different
                 // glyph + colour for the same reason.
-                pin.title = state.isVirtualMapSelected
+                pin.title = isVirtual
                     ? String(localized: "You",
                              comment: "Map pin label in browse-only Map mode — \"you are here\"")
                     : "iPhone (simulated)"
-                pin.subtitle = String(format: "%.5f, %.5f", sim.lat, sim.lng)
+                pin.subtitle = String(format: "%.5f, %.5f", focus!.lat, focus!.lng)
                 map.addAnnotation(pin)
                 simulatedAnnotation = pin
+                lastSimulatedSig = (focus!, isVirtual)
             }
 
             // --- Mac proxy location (blue dot) --------------------------
@@ -593,34 +673,56 @@ struct MapContainerView: NSViewRepresentable {
             // in two places at once. We check `currentMapFocus` (not
             // just `simulatedLocation`) so the Mac puck also hides
             // in browse mode after the user has clicked a point.
+            //
+            // v1.11.0 guard: same pattern as the simulated pin — skip
+            // MapKit work entirely when the visible coord + accuracy
+            // haven't changed since the last refresh. The first-fix
+            // recenter is hoisted out of the rebuild branch so it
+            // still fires on the initial appearance.
             let macHidden = state.currentMapFocus != nil
-            if let old = macAnnotation {
-                map.removeAnnotation(old)
-                macAnnotation = nil
-            }
-            if !macHidden, let mac = state.macLocation.coordinate {
-                let pin = MacAnnotation()
-                pin.coordinate = mac
-                pin.title = "Mac location (≈ iPhone real GPS)"
-                if let acc = state.macLocation.accuracy {
-                    pin.subtitle = String(format: "≈ %.0f m", acc)
+            let macCoord: Coordinate? = (!macHidden && state.macLocation.coordinate != nil)
+                ? Coordinate(lat: state.macLocation.coordinate!.latitude,
+                             lng: state.macLocation.coordinate!.longitude)
+                : nil
+            let macAcc: Double? = state.macLocation.accuracy
+            let macSig: (Coordinate, Double?)? = macCoord.map { ($0, macAcc) }
+            let macSigChanged: Bool = {
+                switch (macSig, lastMacSig) {
+                case (nil, nil): return false
+                case let (a?, b?): return a.0 != b.0 || a.1 != b.1
+                default: return true
                 }
-                map.addAnnotation(pin)
-                macAnnotation = pin
+            }()
+            if macSigChanged {
+                if let old = macAnnotation {
+                    map.removeAnnotation(old)
+                    macAnnotation = nil
+                }
+                if !macHidden, let mac = state.macLocation.coordinate {
+                    let pin = MacAnnotation()
+                    pin.coordinate = mac
+                    pin.title = "Mac location (≈ iPhone real GPS)"
+                    if let acc = macAcc {
+                        pin.subtitle = String(format: "≈ %.0f m", acc)
+                    }
+                    map.addAnnotation(pin)
+                    macAnnotation = pin
 
-                // Centre once on first fix so the user sees something useful
-                // instead of the default Taipei region. Subsequent updates
-                // do not recenter -- the user may have panned away on
-                // purpose.
-                if !didCenterOnMac {
-                    didCenterOnMac = true
-                    let region = MKCoordinateRegion(
-                        center: mac,
-                        latitudinalMeters: 2_500,
-                        longitudinalMeters: 2_500
-                    )
-                    map.setRegion(region, animated: true)
+                    // Centre once on first fix so the user sees something useful
+                    // instead of the default Taipei region. Subsequent updates
+                    // do not recenter -- the user may have panned away on
+                    // purpose.
+                    if !didCenterOnMac {
+                        didCenterOnMac = true
+                        let region = MKCoordinateRegion(
+                            center: mac,
+                            latitudinalMeters: 2_500,
+                            longitudinalMeters: 2_500
+                        )
+                        map.setRegion(region, animated: true)
+                    }
                 }
+                lastMacSig = macSig
             }
         }
 

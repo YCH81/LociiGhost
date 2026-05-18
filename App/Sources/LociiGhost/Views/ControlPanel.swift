@@ -14,6 +14,12 @@ import SwiftUI
 /// CoreLocation fix.
 struct ControlPanel: View {
     let udid: String
+    /// Click of the X button — caller hides the panel without
+    /// touching pendingStops. The sidebar list survives, and a small
+    /// "Show controls" button replaces the panel until the user
+    /// re-opens it. The Clear-all-stops action lives in the sidebar's
+    /// Multi-Stop panel; X here is purely a minimise gesture.
+    let onDismiss: () -> Void
 
     @Environment(AppState.self) private var state
 
@@ -33,13 +39,13 @@ struct ControlPanel: View {
                 }
                 Spacer()
                 Button {
-                    state.pendingStops = []
+                    onDismiss()
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
-                .help(LocalizedStringKey("Clear all stops"))
+                .help(LocalizedStringKey("Hide this panel — stops stay in the sidebar; click the floating chip on the map to bring it back"))
             }
 
             stopsList
@@ -82,6 +88,13 @@ struct ControlPanel: View {
                     Spacer(minLength: 0)
                 }
                 .disabled(isLockedDuringNavigation)
+
+                // v1.11.0: dwell-at-each-stop, also surfaced here so
+                // the user can flip it on while staring at the on-map
+                // ControlPanel without having to dig back to the
+                // sidebar Multi-Stop panel.
+                DwellModeRow()
+                    .disabled(isLockedDuringNavigation)
 
                 Toggle(isOn: $state.useStraightLine) {
                     HStack(spacing: 6) {
@@ -182,29 +195,36 @@ struct ControlPanel: View {
     private var stops: [Coordinate] { state.pendingStops }
 
     private var stopsList: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ForEach(Array(stops.enumerated()), id: \.offset) { idx, stop in
-                HStack(alignment: .center, spacing: 6) {
-                    Text("\(idx + 1).")
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.tint)
-                        .frame(width: 18, alignment: .trailing)
-                    Text(String(format: "%.5f, %.5f", stop.lat, stop.lng))
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                    Spacer(minLength: 0)
-                    Button {
-                        state.pendingStops.remove(at: idx)
-                    } label: {
-                        Image(systemName: "minus.circle")
+        // Cap the on-map control's stops list at ~280pt height so a
+        // long bulk-paste (50+ stops) doesn't stretch the ControlPanel
+        // off the bottom of the map with no way to scroll. ScrollView
+        // wraps the rows; the surrounding panel stays at a sane size.
+        ScrollView {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(stops.enumerated()), id: \.offset) { idx, stop in
+                    HStack(alignment: .center, spacing: 6) {
+                        Text("\(idx + 1).")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.tint)
+                            .frame(width: 18, alignment: .trailing)
+                        Text(String(format: "%.5f, %.5f", stop.lat, stop.lng))
+                            .font(.system(.caption, design: .monospaced))
                             .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                        Spacer(minLength: 0)
+                        Button {
+                            state.pendingStops.remove(at: idx)
+                        } label: {
+                            Image(systemName: "minus.circle")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Remove this stop")
                     }
-                    .buttonStyle(.plain)
-                    .help("Remove this stop")
                 }
             }
         }
+        .frame(maxHeight: 280)
     }
 
     private var connectedDevice: DeviceVM? {

@@ -29,7 +29,7 @@ if you're in Taiwan.
 
 ## Download
 
-- **Latest version**: v1.10.8
+- **Latest version**: v1.11.0
 - **Release date**: 2026-05-16
 - **Download**: [Google Drive folder](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) — DMG is Apple-Developer-ID-signed and notarised, so it opens with a double-click without the Gatekeeper warning. **Use the DMG, not a zip**: extracting a signed .app into an iCloud-synced folder (Documents, Desktop) lets the File Provider attach extra xattrs that break the signature and show "LociiGhost is damaged".
 
@@ -60,6 +60,47 @@ if you're in Taiwan.
   under 200 MB.
 
 ## What's new
+
+**v1.11.0** (2026-05-18)
+
+- **Fixed map-drag and button-click lag during long routes.**
+  `MapContainerView.updateNSView` was wiping and re-adding the
+  entire pin set on every 1 Hz position event — for a 274-stop
+  route that's ~550 MapKit add/remove ops per second hammering
+  the main thread. Map pans, Pause / Stop / Restore clicks, and
+  app-window-switch transitions all stalled behind that work.
+  Added dirty-check signatures for stops, waypoints, simulated
+  pin, and the Mac-proxy pin — each block only touches MapKit
+  when its underlying state actually changes. Idle main thread
+  during normal navigation now.
+- **Multi-Stop staged-stop list now persists across Navigate.**
+  Previously `pendingStops` was cleared the moment Navigate
+  kicked off, so the coordinate list disappeared from the panel
+  even though the iPhone was still walking through them. Now
+  the list stays visible until the user clicks "Clear all
+  stops" or switches `activeMovementMode` away from multi-stop.
+- **Bulk-paste sheet height is locked.** Previously the sheet
+  grew taller as the user pasted more lines; pasting 100+ rows
+  pushed the sheet off-screen. The TextEditor is now 280 pt
+  tall with internal scrolling and the sheet is fixed at
+  540×500.
+- **New: Stop presets ("favourites" for Multi-Stop).** Save the
+  current staged stops as a named preset; reload any time from
+  the Multi-Stop panel's saved-presets list. Clicking a preset
+  opens a confirmation sheet with three actions:
+  - **Display only** — load into staging + recentre map, leave
+    the iPhone where it is.
+  - **Teleport to first** — load + immediately teleport the
+    iPhone to the preset's first coordinate.
+  - **Cancel** — no-op.
+
+  Right-click a preset row to delete. Backed by a new SwiftData
+  `StopPreset` model alongside the existing `Route` model;
+  presets and routes are deliberately separate entities (see
+  StopPreset.swift's doc-comment for the rationale).
+
+Deferred to v1.11.1: per-stop dwell time (multi-stop pause
+mode) and the Random-Walk straight-line vs map-routed picker.
 
 **v1.10.8** (2026-05-16)
 

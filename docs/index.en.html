@@ -274,24 +274,24 @@
 
   <section class="card">
     <div class="version-line">
-      <strong>v1.10.8</strong>
+      <strong>v1.11.0</strong>
       <span class="status-pill">Released</span>
     </div>
-    <p>Released 2026-05-16. <strong>Two fixes shipped together</strong>:
-       (1) macOS 14 Sonoma compatibility — daemon rebuilt with python.org
-       universal2 Python 3.13 (<code>MACOSX_DEPLOYMENT_TARGET=10.13</code>),
-       replacing the Homebrew Python that had linked the bundled
-       <code>pyexpat.so</code> against macOS 15.0's expat 2.6
-       (<code>XML_SetReparseDeferralEnabled</code>); Sonoma 14.x now launches.
-       (2) Intermittent BottomBar ETA panel disappearance — the daemon's
-       <code>_stop_all_movement</code> helper no longer broadcasts a spurious
-       <code>state="idle"</code> when nothing was actually running, and the
-       Mac's <code>applyPositionEvent</code> resurrects <code>NavigationVM</code>
-       from a position-update payload when the event reports
-       <code>state="moving"</code> but our state happens to be nil.
-       Runtime CPU / memory / battery unchanged; DMG size essentially
-       unchanged (45.9 MB). See
-       <a href="https://github.com/YCH81/LociiGhost/releases/tag/v1.10.8">v1.10.8 release notes</a>
+    <p>Released 2026-05-18. <strong>Four Multi-Stop &amp; performance
+       improvements</strong>: (1) <strong>Map performance</strong> — the
+       274-stop route previously triggered ~550 MapKit annotation
+       add/remove ops per second; now down to zero via dirty-check
+       guards. Map drags, Pause/Stop/Restore clicks, and window-switch
+       transitions are no longer laggy.
+       (2) <strong>Staged stops persist after Navigate</strong> — the
+       Multi-Stop panel keeps the coordinate list visible until the
+       user clicks Clear or switches modes.
+       (3) <strong>Bulk-paste sheet height is locked</strong> (internal
+       scroll past 15 rows; no more sheet growing off-screen).
+       (4) <strong>New "Save as preset"</strong> — name a Multi-Stop set,
+       reload from the panel's preset list, confirm with Display Only
+       or Teleport to First. See
+       <a href="https://github.com/YCH81/LociiGhost/releases/tag/v1.11.0">v1.11.0 release notes</a>
        for the full diagnosis.</p>
     <p class="meta">The DMG is Apple-Developer-ID-signed and notarised,
        so it opens with a double-click without a Gatekeeper warning.

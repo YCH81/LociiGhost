@@ -88,6 +88,7 @@ struct LociiGhostApp: App {
         do {
             return try ModelContainer(
                 for: AppPreferences.self, Bookmark.self, Route.self, RecentPlace.self,
+                     StopPreset.self,
                 configurations: config,
             )
         } catch {
@@ -99,6 +100,7 @@ struct LociiGhostApp: App {
             let mem = ModelConfiguration(isStoredInMemoryOnly: true)
             return try! ModelContainer(
                 for: AppPreferences.self, Bookmark.self, Route.self, RecentPlace.self,
+                     StopPreset.self,
                 configurations: mem,
             )
         }

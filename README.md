@@ -27,7 +27,7 @@
 
 ## 下載
 
-- **最新版本**：v1.10.8
+- **最新版本**：v1.11.0
 - **發布日期**：2026-05-16
 - **下載連結**：[Google Drive 下載資料夾](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) —— DMG 已通過 Apple Developer ID 簽名 + Apple notarize，雙擊即可開啟，不會被 Gatekeeper 擋下。**請務必用 DMG 安裝**，不要把 .app 解壓到 iCloud 同步的資料夾（Documents、Desktop），File Provider 會蓋上額外 xattr 把簽章弄壞
 
@@ -50,6 +50,20 @@
 - **Apple Silicon 原生** —— 閒置 CPU 0%、無 Chromium 開銷、Bundle < 200 MB
 
 ## 最新更新
+
+**v1.11.0**（2026-05-18）
+
+- **修地圖拖動 + 按鈕點擊延遲**。MapContainerView 的 `updateNSView` 之前每秒都把所有 stop / waypoint pin 整批 remove + 重新 add，274 點路線等於每秒 ~550 個 MapKit annotation 操作壓在主執行緒上，造成地圖拖動卡、Pause / Stop / Restore 點下去沒反應、切回 LociiGhost 視窗卡很久。v1.11.0 加 4 個 signature dirty-check guard，stops / waypoints / 模擬 pin / Mac proxy pin 只有真的變動時才動 MapKit，平時主執行緒幾乎閒置。
+- **多點停靠點清單持久顯示**。Navigate 後 `pendingStops` 不再被清空，使用者可以一直看到剛剛排的座標 + 順序。要清就按「清空所有停靠點」，或切到非多點模式時自動清除。
+- **批次貼上座標 sheet 高度鎖定**。之前貼超過 15 行 sheet 會無限變高，現在 TextEditor 內部捲動，視窗 540×500 固定。
+- **新增「儲存為快選」功能**（多點面板我的最愛）。把當前 staged stops 存成命名 preset，多點面板下方列出所有 preset。點任一 preset 跳出確認對話框：
+  - **只顯示**：載入到 staging 並把地圖飛到第一個座標，iPhone 不動
+  - **瞬移到第一個**：載入 staging + 把 iPhone 瞬移到第一個 stop，按 Navigate 立刻乾淨啟動
+  - **取消**：什麼都不做
+
+  Preset 右鍵可刪除。存的是名稱 + 完整座標清單（SwiftData，自己機器留著）。
+
+延後到 v1.11.1 的：每停靠點停留時間（多點 dwell mode）、隨機漫步的「直線 vs 地圖路徑」選項。
 
 **v1.10.8**（2026-05-16）
 

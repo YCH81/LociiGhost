@@ -199,6 +199,28 @@ struct MainView: View {
                 StartRouteSheet(route: route)
             }
         }
+        // v1.11.0 stop-preset "Save as" sheet. Triggered from the
+        // bookmark-icon button in MultiStopPanel; asks the user for
+        // a name then writes a `StopPreset` SwiftData row.
+        .sheet(isPresented: Binding(
+            get: { state.presetPendingSave },
+            set: { state.presetPendingSave = $0 },
+        )) {
+            SavePresetSheet()
+        }
+        // v1.11.0 stop-preset "Load" confirmation sheet. Clicking a
+        // preset row parks it here; the sheet then offers Display
+        // Only / Teleport to First.
+        .sheet(isPresented: Binding(
+            get: { state.presetPendingLoad != nil },
+            set: { isOpen in
+                if !isOpen { state.presetPendingLoad = nil }
+            },
+        )) {
+            if let preset = state.presetPendingLoad {
+                LoadStopPresetSheet(preset: preset)
+            }
+        }
     }
 
     /// Frosted-grey panel that covers the map when the user
@@ -998,8 +1020,17 @@ private struct WiFiConnectSheet: View {
             Image(systemName: "wifi")
                 .foregroundStyle(.tint)
             VStack(alignment: .leading, spacing: 1) {
-                Text(c.name).font(.callout)
-                Text("\(c.ip):\(c.port) · \(c.method)")
+                // v1.11.0: surface IP:port as the primary label. The
+                // older title showed the mDNS instance name (a raw
+                // UUID like `00DB4249-…-1412BA132751`) which means
+                // nothing to the user; the IP is what they actually
+                // need to match against the iPhone's Settings →
+                // General → About → WiFi address. The `method` chip
+                // hint (mdns / tcp_scan) stays as the secondary line
+                // so the user knows how that row was discovered.
+                Text("\(c.ip):\(c.port)")
+                    .font(.callout.monospacedDigit())
+                Text("via \(c.method)")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -1537,7 +1568,27 @@ private struct Overlay: View {
             AdminPromptBanner()
             if !state.pendingStops.isEmpty,
                let udid = state.selectedUDID {
-                ControlPanel(udid: udid)
+                if state.navigationControlsHidden {
+                    Button {
+                        state.navigationControlsHidden = false
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "list.bullet.below.rectangle")
+                            Text("\(state.pendingStops.count) stops — show controls",
+                                 comment: "Floating chip shown when ControlPanel is minimised — click to bring it back")
+                                .font(.caption)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(.regularMaterial, in: .capsule)
+                    }
+                    .buttonStyle(.plain)
+                    .help(LocalizedStringKey("Reopen the route controls"))
+                } else {
+                    ControlPanel(udid: udid, onDismiss: {
+                        state.navigationControlsHidden = true
+                    })
+                }
             }
             if let err = state.lastError {
                 Text(err)
@@ -1575,6 +1626,13 @@ private struct Overlay: View {
                 .padding(8)
                 .background(.blue.opacity(0.12), in: .rect(cornerRadius: 6))
             }
+        }
+        .onChange(of: state.pendingStops.isEmpty) { _, isEmpty in
+            // Reset minimise state when stops drop to zero so the
+            // next planning session shows the full ControlPanel by
+            // default — the user shouldn't have to remember they
+            // hid it during a previous trip.
+            if isEmpty { state.navigationControlsHidden = false }
         }
     }
 }

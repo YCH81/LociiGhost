@@ -32,6 +32,14 @@ def _build_server(socket: str, manager: DeviceManager, osrm: OsrmClient) -> RpcS
             "time": datetime.now(timezone.utc).isoformat(),
         }
 
+    # Process start time — used by the app to detect when the running
+    # daemon predates the binary on disk (e.g. user upgraded the .app
+    # but the privileged daemon is still the previous build held in
+    # memory). The app stat()s the bundled lociighostd binary's mtime
+    # and compares: if start_time < binary_mtime → daemon is stale →
+    # surface the admin banner so the user can kick+restart.
+    _PROC_START_TIME = datetime.now(timezone.utc).timestamp()
+
     @server.method("daemon.info")
     async def info() -> dict[str, object]:
         import os
@@ -45,6 +53,7 @@ def _build_server(socket: str, manager: DeviceManager, osrm: OsrmClient) -> RpcS
             "socket": socket,
             "uid": os.geteuid(),
             "is_root": os.geteuid() == 0,
+            "start_time": _PROC_START_TIME,
         }
 
     @server.method("daemon.shutdown")

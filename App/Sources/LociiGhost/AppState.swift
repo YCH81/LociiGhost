@@ -1,4 +1,5 @@
 import AppKit
+import CoreLocation
 import Foundation
 import SwiftData
 import Observation
@@ -76,7 +77,20 @@ final class AppState {
     /// Lifted out of `MovementModesSection`'s local `@State` so the
     /// rest of the app (map click handler, control panel, etc.) can
     /// react. nil → no panel open, map click is inert.
-    var activeMovementMode: MovementMode? = nil
+    ///
+    /// v1.11.0: when the user switches AWAY from Multi-Stop, the
+    /// staged `pendingStops` list is cleared. Without this, stops
+    /// staged for one feature would linger in state after the user
+    /// moved on to Random Walk / Joystick / etc., visible in any
+    /// future Multi-Stop session. Spec ("跳到別的功能" should clear)
+    /// is exactly this transition.
+    var activeMovementMode: MovementMode? = nil {
+        didSet {
+            if oldValue == .multiStop && activeMovementMode != .multiStop {
+                pendingStops = []
+            }
+        }
+    }
 
     /// Snapshot of `pendingStops` captured at the moment a multi-
     /// stop Navigate fires. Per-device (see `tripsByDevice`) so
@@ -442,6 +456,33 @@ final class AppState {
     /// lap as a single trip).
     private var loopContext: LoopContext?
 
+    /// Active dwell-mode sequence. Populated by `navigate` when the
+    /// user has dwellEnabled + multi-stop staging; drained on each
+    /// natural idle event in `applyStateEvent`. Cleared by an
+    /// explicit Stop. nil when no dwell trip is in flight.
+    private var dwellContext: DwellContext?
+
+    /// Per-stop dwell mode (v1.11.0 Feat #3). When true, multi-stop
+    /// Navigate chops the trip into single-leg navigates separated
+    /// by a `dwellSeconds` pause at each waypoint. UserDefaults
+    /// persists across launches.
+    var dwellEnabled: Bool = UserDefaults.standard.bool(forKey: "dwell.enabled") {
+        didSet { UserDefaults.standard.set(dwellEnabled, forKey: "dwell.enabled") }
+    }
+    /// Seconds to dwell at each stop when `dwellEnabled` is true.
+    /// Clamped to a minimum of 1 because zero defeats the purpose
+    /// (it's equivalent to dwellEnabled = false).
+    var dwellSeconds: Int = max(1, UserDefaults.standard.integer(forKey: "dwell.seconds")) {
+        didSet { UserDefaults.standard.set(max(1, dwellSeconds), forKey: "dwell.seconds") }
+    }
+
+    /// User dismissed the on-map ControlPanel popup (via its X
+    /// button). When true, the popup is hidden and a floating chip
+    /// + a sidebar "Show route controls" button take over as the
+    /// re-open entry points. Cleared automatically when pendingStops
+    /// empties — the next planning session shows the panel by default.
+    var navigationControlsHidden: Bool = false
+
     /// The most recent navigation's full route polyline. Persists across
     /// pause / stop / arrival so the user can still see where they were
     /// going. Cleared explicitly by Restore, by starting a new navigation,
@@ -658,6 +699,85 @@ final class AppState {
     /// here instead of running immediately so a stray click doesn't
     /// hijack a navigation the user is mid-stream on.
     var routePendingConfirm: Route?
+
+    // MARK: - Stop presets (v1.11.0 — multi-stop "favourites")
+    //
+    // Save the current `pendingStops` as a named preset so the user
+    // can recall the same staging next session. Distinct from `Route`
+    // — see `StopPreset.swift` for the rationale. Click flow differs
+    // too: a preset opens `LoadStopPresetSheet` (Cancel / Display /
+    // Execute) instead of `Route`'s direct-run sheet.
+
+    /// Non-nil while the SavePresetSheet is up. Cleared by the sheet
+    /// on Cancel / Save.
+    var presetPendingSave: Bool = false
+
+    /// Non-nil while the LoadPresetSheet is up — clicking a preset
+    /// row parks the chosen entity here instead of running anything
+    /// immediately, just like `routePendingConfirm`.
+    var presetPendingLoad: StopPreset?
+
+    /// Save the current `pendingStops` as a new `StopPreset` with
+    /// the user-provided name. Empty name or empty stops both no-op
+    /// — the caller (SavePresetSheet) gates on these but a defensive
+    /// guard here keeps the storage clean.
+    @MainActor
+    func saveCurrentStopsAsPreset(name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !pendingStops.isEmpty,
+              let ctx = modelContext else { return }
+        let preset = StopPreset(name: trimmed, coordinates: pendingStops)
+        ctx.insert(preset)
+        try? ctx.save()
+    }
+
+    /// Load a saved preset back into `pendingStops`. The caller
+    /// (LoadStopPresetSheet) decides whether to also teleport the
+    /// iPhone to the first coordinate via the `teleport` flag.
+    ///
+    /// * `teleport == false` → just stage the coords + map-show them,
+    ///   user can inspect / re-arrange before pressing Navigate.
+    /// * `teleport == true` → stage the coords, then teleport the
+    ///   currently-selected iPhone to the first one. Like the start
+    ///   of `runRoute` minus the actual navigate; user still has to
+    ///   press Navigate to start moving.
+    @MainActor
+    func loadStopPreset(_ preset: StopPreset, teleport: Bool) async {
+        let coords = preset.coordinates
+        guard !coords.isEmpty else { return }
+        // Switch the user to Multi-Stop mode if they aren't already,
+        // so the staged stops are immediately visible in the right
+        // sidebar panel.
+        activeMovementMode = .multiStop
+        pendingStops = coords
+        if teleport,
+           let udid = selectedUDID,
+           devices.first(where: { $0.udid == udid })?.connected == true,
+           let first = coords.first {
+            await self.teleport(udid: udid, lat: first.lat, lng: first.lng)
+            // teleport clears `pendingStops` as part of its single-action
+            // reset — restore them right after so the staging list the
+            // user just loaded survives the teleport.
+            pendingStops = coords
+        }
+        // Re-centre map on the first coord so the user immediately
+        // sees where the preset is regardless of teleport mode.
+        if let first = coords.first {
+            pendingMapFly = MapFlyRequest(
+                coordinate: first,
+                spanMeters: 2_000,
+            )
+        }
+    }
+
+    /// Delete a saved preset. Defensive — caller (preset row context
+    /// menu) is the only path.
+    @MainActor
+    func deleteStopPreset(_ preset: StopPreset) {
+        guard let ctx = modelContext else { return }
+        ctx.delete(preset)
+        try? ctx.save()
+    }
 
     // MARK: - Internals
     //
@@ -1650,6 +1770,18 @@ final class AppState {
             // user has a one-click path to fix it.
             await refreshDaemonPrivilegeAfterConnect()
 
+            // v1.11.0: on macOS 26 Tahoe the system `usbmuxd` drops
+            // non-root subscribers with "socket connection broken"
+            // every few seconds — the daemon can subscribe but never
+            // receives a device-attach event, so the user sees no
+            // iPhone. The in-app AdminPromptBanner already offers
+            // one-click elevation, but Tahoe users won't know the
+            // banner is the answer — they'll think the app is broken.
+            // Auto-fire the elevation flow once per app launch when
+            // we land on Tahoe with an unprivileged daemon, so the
+            // system auth dialog appears on its own at startup.
+            await autoElevateOnTahoeIfNeeded()
+
             startEventLoop(client: client)
 
             await refreshDevices()
@@ -2066,6 +2198,26 @@ final class AppState {
         }
         guard !stops.isEmpty else { return }
 
+        // v1.11.0 Feat #3: per-stop dwell mode. When the user enabled
+        // "Dwell at each stop" and staged 2+ stops, split the trip
+        // into single-leg navigates. We set `dwellContext` to track
+        // the queue and recursively fire `navigate` with just the
+        // first stop — the recursive call has `stops.count == 1` so
+        // the guard below skips re-entry. `applyStateEvent` picks up
+        // the daemon's idle event for that leg, sleeps `dwellSeconds`,
+        // and fires the next leg the same way.
+        if dwellEnabled, stops.count > 1, dwellContext == nil {
+            dwellContext = DwellContext(
+                udid: udid,
+                remainingStops: stops,
+                profile: profile,
+                speed: speed,
+                dwellSeconds: max(1, dwellSeconds),
+            )
+            await navigate(udid: udid, through: [stops[0]], profile: profile, speed: speed)
+            return
+        }
+
         let waypoints = [origin] + stops
         // AnyCodable's encoder only walks the recursive shapes it knows
         // about: [AnyCodable] and [String: AnyCodable]. A bare
@@ -2118,7 +2270,19 @@ final class AppState {
                         ])
                     }
                 } catch {
-                    lastError = "Apple Maps routing failed: \(error.localizedDescription)"
+                    // Apple Maps routing data is region-dependent — rural
+                    // / mountainous areas (e.g. trails through Japan's
+                    // Yamanashi prefecture) often have no driving or
+                    // walking polylines available, and MKDirections
+                    // returns "no route". OSRM's OSM-backed data covers
+                    // these areas much better, so steer the user there
+                    // rather than leaving them with just a generic
+                    // failure message. The original error description
+                    // is appended so debugging stays possible.
+                    lastError = String(
+                        format: String(localized: "Apple Maps couldn't plan this route — its data may not cover this area. Try switching the routing engine to OSRM in Settings. (%@)",
+                                       comment: "Toast when MKDirections fails — suggests OSRM as the fallback engine"),
+                        error.localizedDescription)
                     return
                 }
             }
@@ -2163,7 +2327,14 @@ final class AppState {
                 for: udid,
             )
             setSimulatedLocation(origin, for: udid)
-            pendingStops = []
+            // v1.11.0: do NOT clear `pendingStops` after Navigate. Earlier
+            // versions wiped the staging list as soon as the trip started,
+            // which removed the on-panel coordinate list users wanted to
+            // keep referring to. Per the new spec, the staged stops stay
+            // visible (and continue to map-render as red pins on top of
+            // the blue activeWaypoints) until the user explicitly clicks
+            // Clear, or switches `activeMovementMode` away from
+            // .multiStop — both handled elsewhere.
             // Log the destination — for multi-stop the user usually
             // cares most about "where am I heading", so we record the
             // final stop, not every intermediate waypoint.
@@ -2195,11 +2366,12 @@ final class AppState {
 
     func stopNavigation(udid: String) async {
         guard let client else { return }
-        // Explicit Stop cancels any auto-loop in flight. Clearing
-        // before the RPC means an `applyStateEvent` arriving
-        // mid-stop already sees the empty context and won't fire a
-        // fresh lap.
+        // Explicit Stop cancels any auto-loop OR dwell-mode sequence
+        // in flight. Clearing before the RPC means an
+        // `applyStateEvent` arriving mid-stop already sees the empty
+        // context and won't fire a fresh lap or fresh dwell leg.
         if loopContext?.udid == udid { loopContext = nil }
+        if dwellContext?.udid == udid { dwellContext = nil }
         _ = try? await client.callRaw("location.stop", params: ["udid": AnyCodable(udid)])
         navigation = nil
         // Stop cancels THIS device's trip — wipe just its slot
@@ -2218,7 +2390,8 @@ final class AppState {
                          center: Coordinate,
                          radiusM: Double,
                          minSpeedMps: Double,
-                         maxSpeedMps: Double) async {
+                         maxSpeedMps: Double,
+                         routingEngine: String = "straight") async {
         if udid == Self.virtualMapUDID { return }
         guard let client else { return }
         do {
@@ -2226,14 +2399,22 @@ final class AppState {
                 struct Coord: Decodable { let lat: Double; let lng: Double }
                 let planned_path: [Coord]?
             }
-            let reply: StartReply = try await client.call("location.random_walk", params: [
-                "udid":          AnyCodable(udid),
-                "center_lat":    AnyCodable(center.lat),
-                "center_lng":    AnyCodable(center.lng),
-                "radius_m":      AnyCodable(radiusM),
-                "min_speed_mps": AnyCodable(minSpeedMps),
-                "max_speed_mps": AnyCodable(maxSpeedMps),
-            ])
+            // v1.11.0: pass dwell_seconds when the user has enabled
+            // per-stop dwell — same setting as multi-stop, so a single
+            // flip in either panel affects both modes.
+            var params: [String: AnyCodable] = [
+                "udid":           AnyCodable(udid),
+                "center_lat":     AnyCodable(center.lat),
+                "center_lng":     AnyCodable(center.lng),
+                "radius_m":       AnyCodable(radiusM),
+                "min_speed_mps":  AnyCodable(minSpeedMps),
+                "max_speed_mps":  AnyCodable(maxSpeedMps),
+                "routing_engine": AnyCodable(routingEngine),
+            ]
+            if dwellEnabled {
+                params["dwell_seconds"] = AnyCodable(Double(max(1, dwellSeconds)))
+            }
+            let reply: StartReply = try await client.call("location.random_walk", params: params)
             randomWalk = RandomWalkVM(
                 center: center,
                 radiusM: radiusM,
@@ -2413,6 +2594,41 @@ final class AppState {
         }
     }
 
+    /// True once we've already fired (or attempted) the Tahoe auto-
+    /// elevation flow this app launch. Prevents the system auth
+    /// dialog from re-triggering after every reconnect — once the
+    /// user has answered (yes or cancel) we leave them alone for the
+    /// rest of the session.
+    private var attemptedTahoeAutoElevate: Bool = false
+
+    /// On macOS 26 Tahoe, the system `usbmuxd` only delivers
+    /// device-attach events reliably to root subscribers; user-mode
+    /// daemons get their subscription torn down repeatedly with
+    /// "socket connection broken". The in-app AdminPromptBanner
+    /// offers one-click elevation, but new users may not understand
+    /// the banner is the fix — they expect a system prompt at first
+    /// launch. This helper fires `requestAdminElevation()` once per
+    /// session in either of two situations:
+    ///
+    /// 1. We land on Tahoe with an unprivileged daemon (the original
+    ///    Tahoe-only case).
+    /// 2. The running daemon is stale (binary on disk is newer than
+    ///    the running process). Without auto-elevation here, the user
+    ///    has no way to know their dev-time daemon swap didn't take
+    ///    effect — the in-process daemon keeps running the old code
+    ///    silently.
+    @MainActor
+    private func autoElevateOnTahoeIfNeeded() async {
+        guard !attemptedTahoeAutoElevate else { return }
+        let v = ProcessInfo.processInfo.operatingSystemVersion
+        let isTahoe = v.majorVersion >= 26
+        let isUnprivilegedOnTahoe = isTahoe && (daemonIsRoot == false)
+        let isStale = needsAdminElevation
+        guard isUnprivilegedOnTahoe || isStale else { return }
+        attemptedTahoeAutoElevate = true
+        await requestAdminElevation()
+    }
+
     /// Probe the connected daemon to see if it's running as root, so
     /// the UI knows whether to offer an "Authenticate as admin"
     /// affordance up front rather than waiting for a connect failure.
@@ -2426,31 +2642,85 @@ final class AppState {
         struct InfoReply: Decodable {
             let is_root: Bool?
             let version: String?
+            let start_time: Double?
         }
         guard let reply: InfoReply = try? await client.call("daemon.info") else {
             return
         }
         daemonIsRoot = reply.is_root
+
+        // v1.11.0: detect a daemon process whose binary has been
+        // overwritten on disk while the old process is still running.
+        // We can't bump `__version__` for every internal daemon change
+        // (would surface in About as `1.11.0-r5`), but we CAN compare
+        // process start time vs the bundled binary's mtime. If the on-
+        // disk binary is newer than the process start, the running
+        // daemon is stale and a kill + restart picks up the new code.
+        //
+        // A daemon that doesn't return `start_time` at all predates the
+        // version that added the field, which by definition means a
+        // newer daemon binary is sitting on disk waiting to replace it
+        // — also treat as stale.
+        var staleProcess = false
+        if let bundleDaemonMtime = bundledDaemonBinaryMtime() {
+            if let startTime = reply.start_time {
+                if bundleDaemonMtime > startTime + 5.0 {
+                    staleProcess = true
+                }
+            } else {
+                // Legacy daemon — pre-start_time field. The daemon
+                // bundled with this app build added start_time, so a
+                // missing field means the running process is older.
+                staleProcess = true
+            }
+        }
+
         if let liveVersion = reply.version,
            liveVersion != AppState.expectedDaemonVersion {
             // Daemon is alive but its bytecode predates this app
             // build's daemon source. Surface the auth banner; clicking
             // Authenticate will trigger the kill-and-restart flow.
             needsAdminElevation = true
+        } else if staleProcess {
+            // Same major version, but the binary on disk has been
+            // updated since the daemon process started (typical case:
+            // a dev cp-into-/Applications swap while the privileged
+            // daemon kept running). Surface the banner so the user
+            // can re-authenticate and pick up the new code.
+            needsAdminElevation = true
         } else if reply.version == AppState.expectedDaemonVersion {
-            // Versions match — the previous "stale daemon" condition
-            // (if any) has been resolved by the kill-and-restart flow.
-            // Without this clear, `needsAdminElevation` stays sticky-
-            // true forever and the banner reappears on every connect
-            // even though the daemon is already up to date.
+            // Versions match AND binary is up to date — the previous
+            // "stale daemon" condition (if any) has been resolved by
+            // the kill-and-restart flow. Without this clear,
+            // `needsAdminElevation` stays sticky-true forever and the
+            // banner reappears on every connect even though the daemon
+            // is already up to date.
             needsAdminElevation = false
         }
+    }
+
+    /// Path to the daemon binary inside the LociiGhost.app bundle.
+    /// `Bundle.main.resourceURL` resolves to `Contents/Resources/`
+    /// which is where `package-app.sh` lays the daemon out at build
+    /// time. Returns nil for unit-test / SwiftPM runs without an .app
+    /// bundle wrapper (where the comparison doesn't apply anyway).
+    private func bundledDaemonBinaryMtime() -> TimeInterval? {
+        guard let resourceURL = Bundle.main.resourceURL else { return nil }
+        let daemonPath = resourceURL
+            .appendingPathComponent("lociighostd")
+            .appendingPathComponent("lociighostd")
+            .path
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: daemonPath),
+              let mtime = attrs[.modificationDate] as? Date else {
+            return nil
+        }
+        return mtime.timeIntervalSince1970
     }
 
     /// Bumped every time the daemon source breaks ABI or behaviour in
     /// a way that requires an in-place restart. Must match the
     /// `__version__` in `Daemon/lociighostd/__init__.py`.
-    static let expectedDaemonVersion = "1.10.8"
+    static let expectedDaemonVersion = "1.11.0"
 
     // MARK: - Update check (v1.5)
 
@@ -2802,7 +3072,14 @@ final class AppState {
                 nav.progress = max(0, min(1, cum / nav.distanceM))
             }
             if let eta = doubleValue(params["eta_s"]) {
-                nav.etaSeconds = eta
+                // v1.11.0: in dwell mode the daemon only sees the
+                // current leg's polyline (single-stop navigate), so
+                // its eta_s covers just this leg. The UI's bottom-
+                // bar ETA should instead reflect the full remaining
+                // multi-stop journey: this leg + every remaining
+                // leg's haversine straight-line estimate at the
+                // chosen speed + a dwell pause at each stop.
+                nav.etaSeconds = dwellAdjustedEta(currentLegEta: eta, from: coord)
             }
             navigation = nav
         } else if stringValue(params["state"]) == "moving",
@@ -2842,7 +3119,7 @@ final class AppState {
                 speedMps: speedMps,
                 routeCoordinates: [],
                 distanceM: distanceM,
-                etaSeconds: etaS,
+                etaSeconds: dwellAdjustedEta(currentLegEta: etaS, from: coord),
                 currentLocation: coord,
                 progress: progress,
                 laps: max(1, routeLaps),
@@ -2955,7 +3232,36 @@ final class AppState {
             }
         }
 
-        if stateRaw == "idle", wasRunning, alertSoundEnabled, !willLoopAgain {
+        // v1.11.0 Feat #3: dwell-mode continuation. Same shape as the
+        // auto-loop above — on natural idle we pop the leg that just
+        // completed, sleep the configured dwell time, then fire the
+        // next leg. Explicit Stop clears dwellContext (see
+        // `stopNavigation`), which short-circuits the queued Task's
+        // guard and ends the sequence.
+        var willDwellNext = false
+        if stateRaw == "idle", wasRunning, var dctx = dwellContext {
+            if !dctx.remainingStops.isEmpty {
+                dctx.remainingStops.removeFirst()
+                dwellContext = dctx
+            }
+            if let nextStop = dctx.remainingStops.first {
+                willDwellNext = true
+                let snap = dctx
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    try? await Task.sleep(for: .seconds(snap.dwellSeconds))
+                    guard self.dwellContext != nil else { return }
+                    await self.navigate(udid: snap.udid,
+                                        through: [nextStop],
+                                        profile: snap.profile,
+                                        speed: snap.speed)
+                }
+            } else {
+                dwellContext = nil
+            }
+        }
+
+        if stateRaw == "idle", wasRunning, alertSoundEnabled, !willLoopAgain, !willDwellNext {
             Task { @MainActor in AlertSoundService.playRouteComplete() }
         }
 
@@ -2964,12 +3270,45 @@ final class AppState {
                 nav.state = mapped
                 navigation = nav
             }
-        } else if !willLoopAgain {
+        } else if !willLoopAgain, !willDwellNext {
             navigation = nil
         }
-        // When `willLoopAgain` is true we leave `navigation` alone:
-        // the next `navigate(...)` call from the queued Task will
-        // overwrite it with the fresh lap's state.
+        // When `willLoopAgain` or `willDwellNext` is true we leave
+        // `navigation` alone: the next `navigate(...)` call from the
+        // queued Task will overwrite it with the fresh leg's state.
+        // Clearing it here would make the BottomBar progress flicker
+        // between legs during a dwell sequence.
+    }
+
+    /// In dwell mode the daemon only knows about the current single-
+    /// leg navigate, so its emitted `eta_s` covers just that leg.
+    /// This helper extends that to the full remaining multi-stop
+    /// journey: current-leg ETA + every still-pending leg's haversine
+    /// straight-line time + a dwell pause at each stop. Returns the
+    /// raw leg ETA unchanged when no dwell sequence is active.
+    private func dwellAdjustedEta(currentLegEta: Double, from currentCoord: Coordinate) -> Double {
+        guard let dctx = dwellContext, !dctx.remainingStops.isEmpty else {
+            return currentLegEta
+        }
+        let speed = max(0.1, dctx.speed)
+        // Stops beyond the one we're currently walking toward. The
+        // first entry in remainingStops is THIS leg's destination
+        // (already covered by currentLegEta); subsequent entries are
+        // future legs that need straight-line estimating.
+        let upcomingStops = dctx.remainingStops.dropFirst()
+        var extra: Double = 0
+        // Dwell at this leg's destination once we arrive (still owed).
+        extra += Double(dctx.dwellSeconds)
+        // Walk and dwell for every remaining stop after that.
+        var prev = dctx.remainingStops.first ?? currentCoord
+        for stop in upcomingStops {
+            let from = CLLocation(latitude: prev.lat, longitude: prev.lng)
+            let to = CLLocation(latitude: stop.lat, longitude: stop.lng)
+            extra += from.distance(from: to) / speed
+            extra += Double(dctx.dwellSeconds)
+            prev = stop
+        }
+        return currentLegEta + extra
     }
 
     private func doubleValue(_ wrapped: AnyCodable?) -> Double? {
@@ -3326,6 +3665,21 @@ struct LoopContext: Sendable, Equatable {
     let profile: TravelProfile
     let speed: Double
     var remainingLaps: Int
+}
+
+/// Per-stop dwell sequence (Feat #3 / v1.11.0). When the user enables
+/// "Dwell at each stop", the public `navigate(udid:through:)` splits
+/// the multi-stop request into N single-leg navigates and stores the
+/// remaining queue here. `applyStateEvent` consumes one entry on each
+/// natural idle, sleeps `dwellSeconds`, then fires the next leg. The
+/// daemon is unaware — it just sees a normal sequence of single-target
+/// navigates separated by the dwell delays.
+struct DwellContext: Sendable, Equatable {
+    let udid: String
+    var remainingStops: [Coordinate]
+    let profile: TravelProfile
+    let speed: Double
+    let dwellSeconds: Int
 }
 
 struct NavigationVM: Sendable, Equatable {

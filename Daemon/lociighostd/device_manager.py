@@ -1050,12 +1050,33 @@ class DeviceManager:
         results: list[dict[str, Any]] = []
 
         # 1) mDNS browse — fastest path when the LAN cooperates.
+        # v1.11.0: recent pymobiledevice3 / zeroconf releases return
+        # typed `Address` objects (with `.ip` and `.iface` attrs) from
+        # `BonjourQueryResult.addresses`. Our IPv4-filter `":" not in
+        # addr` then raised "argument of type 'Address' is not
+        # iterable" and the whole browse silently failed, leaving us
+        # with only the /24 TCP-scan fallback. The Address object's
+        # `str()` returns the verbose repr `Address(ip='1.2.3.4',
+        # iface='en0')` — useless as an IP. Pull `.ip` explicitly so
+        # callers (connect_wifi_ip) receive a clean dotted-quad.
+        def _addr_to_ip(a) -> str:
+            if hasattr(a, "ip"):
+                return str(a.ip)
+            return str(a)
+
         try:
             from pymobiledevice3.bonjour import browse_remotepairing
             instances = await browse_remotepairing(timeout=3.0)
             for inst in instances:
-                ipv4s = [a for a in (inst.addresses or []) if ":" not in a]
-                addrs = ipv4s if ipv4s else list(inst.addresses or [])
+                raw_addrs = [_addr_to_ip(a) for a in (inst.addresses or [])]
+                # Drop link-local 169.254.x — those routes only work
+                # over a wired Thunderbolt bridge and are noisy in the
+                # picker. Keep WiFi-routable subnets.
+                routable = [
+                    a for a in raw_addrs
+                    if ":" not in a and not a.startswith("169.254.")
+                ]
+                addrs = routable or [a for a in raw_addrs if ":" not in a] or raw_addrs
                 for addr in addrs:
                     results.append({
                         "ip": addr,

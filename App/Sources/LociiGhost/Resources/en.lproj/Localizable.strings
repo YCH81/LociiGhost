@@ -332,3 +332,22 @@
 "Inspired by " = "Inspired by ";
 " by keezxc1223 (MIT). LociiGhost is a complete native-Swift rewrite." = " by keezxc1223 (MIT). LociiGhost is a complete native-Swift rewrite.";
 "Run `cat LICENSE` from the project root for the full MIT text with both copyright notices." = "Run `cat LICENSE` from the project root for the full MIT text with both copyright notices.";
+
+/* v1.11.0 additions */
+"Stop current route?" = "Stop current route?";
+"Stop current simulation?" = "Stop current simulation?";
+"Keep going" = "Keep going";
+"Stop & switch" = "Stop & switch";
+"Switching modes ends the current navigation. The iPhone halts at its current simulated position." = "Switching modes ends the current navigation. The iPhone halts at its current simulated position.";
+"Switching modes ends the current simulation. The iPhone halts at its current simulated position." = "Switching modes ends the current simulation. The iPhone halts at its current simulated position.";
+"Hide this panel — stops stay in the sidebar; click the floating chip on the map to bring it back" = "Hide this panel — stops stay in the sidebar; click the floating chip on the map to bring it back";
+"%lld stops — show controls" = "%lld stops — show controls";
+"Reopen the route controls" = "Reopen the route controls";
+"Apple Maps couldn't plan this route — its data may not cover this area. Try switching the routing engine to OSRM in Settings. (%@)" = "Apple Maps couldn't plan this route — its data may not cover this area. Try switching the routing engine to OSRM in Settings. (%@)";
+"Path style" = "Path style";
+"Straight line" = "Straight line";
+"Map path (OSRM)" = "Map path (OSRM)";
+"Dwell at each stop" = "Dwell at each stop";
+"%lld s" = "%lld s";
+"With dwell on, the iPhone pauses the chosen number of seconds at each stop before continuing to the next" = "With dwell on, the iPhone pauses the chosen number of seconds at each stop before continuing to the next";
+"Show route controls" = "Show route controls";

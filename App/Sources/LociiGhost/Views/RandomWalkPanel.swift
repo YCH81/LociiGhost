@@ -8,6 +8,10 @@ struct RandomWalkPanel: View {
     @Environment(AppState.self) private var state
 
     @State private var radiusM: Double = 200
+    /// Persisted across launches via @AppStorage — users who prefer
+    /// OSRM-routed wandering shouldn't have to reselect every time
+    /// they reopen the app.
+    @AppStorage("randomWalk.routingEngine") private var routingEngine: String = "straight"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -36,11 +40,32 @@ struct RandomWalkPanel: View {
                 Slider(value: $radiusM, in: 30...2_000, step: 10)
             }
 
+            // Path style picker ———————————————————————————————
+            // Straight: cheapest, ignores roads/water/fences — the pin
+            // teleports through buildings on a uniform-disc walk.
+            // Map: every leg becomes an OSRM route-resolved polyline so
+            // the meander follows real footpaths. v1.11.0.
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Path style").font(.caption.weight(.medium))
+                Picker("Path style", selection: $routingEngine) {
+                    Text(LocalizedStringKey("Straight line")).tag("straight")
+                    Text(LocalizedStringKey("Map path (OSRM)")).tag("map")
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .controlSize(.small)
+            }
+
             // Shared speed picker ——————————————————————————————
             VStack(alignment: .leading, spacing: 4) {
                 Text("Speed").font(.caption.weight(.medium))
                 SpeedPicker()
             }
+
+            // Per-target dwell — same toggle/stepper as the multi-stop
+            // panel. When on, RandomWalker pauses the configured N s
+            // at each target instead of the organic 1.5–4 s range.
+            DwellModeRow()
 
             // Action ——————————————————————————————————————————
             actionRow
@@ -146,7 +171,8 @@ struct RandomWalkPanel: View {
             center: center,
             radiusM: radiusM,
             minSpeedMps: minMps,
-            maxSpeedMps: maxMps
+            maxSpeedMps: maxMps,
+            routingEngine: routingEngine
         )
     }
 }

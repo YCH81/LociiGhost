@@ -493,6 +493,9 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
         radius_m: float,
         min_speed_mps: float = 0.8,
         max_speed_mps: float = 1.6,
+        routing_engine: str = "straight",
+        profile: str = "walking",
+        dwell_seconds: float | None = None,
     ) -> dict[str, Any]:
         _validate_coord(center_lat, center_lng)
         if radius_m <= 0 or radius_m > 50_000:
@@ -504,6 +507,16 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
             raise errors.RpcError(
                 code=errors.PYMD3_ERROR,
                 message="invalid speed band",
+            )
+        if routing_engine not in ("straight", "map"):
+            raise errors.RpcError(
+                code=errors.PYMD3_ERROR,
+                message=f"routing_engine must be 'straight' or 'map' (got {routing_engine!r})",
+            )
+        if dwell_seconds is not None and dwell_seconds <= 0:
+            raise errors.RpcError(
+                code=errors.PYMD3_ERROR,
+                message=f"dwell_seconds must be > 0 when set (got {dwell_seconds})",
             )
 
         await _stop_all_movement(manager, udid, server)
@@ -519,6 +532,10 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
             min_speed_mps=min_speed_mps,
             max_speed_mps=max_speed_mps,
             on_event=emit,
+            osrm=osrm,
+            routing_engine=routing_engine,
+            profile=profile,
+            dwell_seconds_override=dwell_seconds,
         )
         await manager.set_walker(udid, walker)
         walker.start()

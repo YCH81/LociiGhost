@@ -58,6 +58,27 @@ mkdir -p "$STAGE"
 # File Provider metadata does not follow into /tmp.
 ditto --norsrc --noextattr --noacl "$APP" "$STAGE/$(basename "$APP")"
 
+# Tahoe FS workaround: ditto can auto-split a directory X into a
+# sibling "X 2" holding files that should have been in X. Has been
+# observed at _internal/ and at lociighostd/ levels. Sweep any
+# "<name> 2" sibling under the staged .app and rsync it back into
+# the un-suffixed counterpart before sealing the DMG.
+STAGED_APP="$STAGE/$(basename "$APP")"
+for _pass in 1 2 3; do
+    _found_any=0
+    while IFS= read -r dup; do
+        [[ -z "$dup" ]] && continue
+        base="${dup% 2}"
+        if [[ -e "$base" ]]; then
+            echo "==> merging Tahoe FS split in DMG stage: $dup → $base"
+            rsync -a "$dup/" "$base/"
+            rm -rf "$dup"
+            _found_any=1
+        fi
+    done < <(find "$STAGED_APP" -depth -name "* 2" 2>/dev/null)
+    [[ $_found_any -eq 0 ]] && break
+done
+
 # Drag-target symlink. Finder shows it as "Applications" with the
 # standard folder icon; clicking through it lands in /Applications.
 ln -s /Applications "$STAGE/Applications"

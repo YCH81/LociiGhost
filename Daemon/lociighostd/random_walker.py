@@ -21,8 +21,9 @@ import random
 from dataclasses import dataclass
 from typing import Awaitable, Callable
 
-from .interpolator import haversine_m, route_length_m
+from .interpolator import haversine_m
 from .location_service import LocationService
+from .routing import NoRouteError, OsrmClient, RoutingError
 
 log = logging.getLogger(__name__)
 
@@ -67,7 +68,6 @@ class RandomWalker:
     TICK_S = 1.0
     DWELL_RANGE_S = (1.5, 4.0)            # pause between targets
     TARGET_DISTANCE_FRACTION = (0.15, 1.0) # what fraction of radius to aim for
-    PLANNED_DURATION_S = 5 * 60           # how far ahead we pre-plan targets
 
     def __init__(
         self,
@@ -77,11 +77,19 @@ class RandomWalker:
         min_speed_mps: float,
         max_speed_mps: float,
         on_event: EventEmitter | None = None,
+        osrm: OsrmClient | None = None,
+        routing_engine: str = "straight",
+        profile: str = "walking",
+        dwell_seconds_override: float | None = None,
     ) -> None:
         if radius_m <= 0:
             raise ValueError("radius_m must be > 0")
         if min_speed_mps <= 0 or max_speed_mps <= 0 or min_speed_mps > max_speed_mps:
             raise ValueError("invalid speed band")
+        if routing_engine not in ("straight", "map"):
+            raise ValueError(f"routing_engine must be 'straight' or 'map', got {routing_engine!r}")
+        if dwell_seconds_override is not None and dwell_seconds_override <= 0:
+            raise ValueError("dwell_seconds_override must be > 0 when set")
 
         self._location = location
         self._center = center
@@ -89,6 +97,15 @@ class RandomWalker:
         self._min_speed = min_speed_mps
         self._max_speed = max_speed_mps
         self._on_event = on_event
+        self._osrm = osrm
+        self._routing_engine = routing_engine if osrm is not None else "straight"
+        self._profile = profile
+        # Optional fixed dwell time between targets. When None we use
+        # the random 1.5-4 s range that gives the meander an organic
+        # feel; the user can override with a fixed N seconds via the
+        # multi-stop dwell control to make the walker pause longer at
+        # every target (useful for location-based event captures).
+        self._dwell_seconds_override = dwell_seconds_override
 
         self._current = center
         self._current_speed = 0.0
@@ -96,11 +113,16 @@ class RandomWalker:
         self._state: str = "idle"
         self._task: asyncio.Task[None] | None = None
         self._stop_event = asyncio.Event()
-        # Pre-generate the next ~5 minutes of targets so the GUI can
-        # draw the actual upcoming path on the map. We refresh this
-        # whenever the queue empties (every 5 minutes of walking).
-        self._planned_path: list[tuple[float, float]] = []
-        self._regenerate_planned_path()
+        # v1.11.0: per-leg JIT planning. Each iteration of `_run` picks
+        # ONE random target then resolves the polyline (OSRM in map
+        # mode, straight-line in straight mode) just for that leg.
+        # On arrival the walker dwells, then plans the next leg.
+        # The status emission's planned_path is therefore exactly the
+        # upcoming leg's polyline — what the GUI draws matches what
+        # the walker traverses, with no five-minute look-ahead tangle
+        # of crossing lines that confused users in the earlier model.
+        self._current_target: tuple[float, float] | None = None
+        self._current_polyline: list[tuple[float, float]] = []
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -126,10 +148,10 @@ class RandomWalker:
         self._state = "stopped"
 
     def status(self) -> RandomWalkStatus:
-        # The planned path the GUI should draw starts at the current
-        # position so the visual line connects to where the iPhone is
-        # right now, not back at the original center.
-        future = [self._current] + list(self._planned_path)
+        # The planned path the GUI should draw is the upcoming leg's
+        # polyline, prepended with the current position so the line
+        # visually anchors to where the iPhone is right now.
+        future = [self._current] + list(self._current_polyline)
         return RandomWalkStatus(
             state=self._state,
             center_lat=self._center[0],
@@ -151,22 +173,45 @@ class RandomWalker:
             await self._location.set(*self._center)
             await self._emit("event.position_update")
             while not self._stop_event.is_set():
-                if not self._planned_path:
-                    self._regenerate_planned_path()
-                    # Tell the GUI a new 5-minute slice has been planned
-                    # so it can redraw the upcoming-path polyline.
+                # Plan the next leg if we don't have one queued.
+                if not self._current_polyline:
+                    await self._plan_next_leg()
+                    # Tell the GUI the upcoming leg's polyline so it can
+                    # draw a clean "where I'm heading next" line.
                     await self._emit("event.state_changed")
-                target = self._planned_path.pop(0)
+                # Walk through every polyline waypoint of this leg
+                # at the same chosen speed, with no inter-waypoint
+                # dwell — they're just road shape points, not real
+                # destinations. The single dwell happens after we've
+                # consumed all polyline waypoints, i.e. on arrival
+                # at the target.
                 speed = random.uniform(self._min_speed, self._max_speed)
                 self._current_speed = speed
-                if not await self._walk_to(target, speed):
+                arrived = True
+                while self._current_polyline and not self._stop_event.is_set():
+                    waypoint = self._current_polyline[0]
+                    if not await self._walk_to(waypoint, speed):
+                        arrived = False
+                        break
+                    # Pop only after we've actually completed the segment
+                    # so a Stop mid-segment leaves the queue describing
+                    # what we still owe the user (not strictly needed for
+                    # walker correctness, but it keeps status emissions
+                    # accurate during the shutdown window).
+                    if self._current_polyline:
+                        self._current_polyline.pop(0)
+                if not arrived or self._stop_event.is_set():
                     break
-                if self._stop_event.is_set():
-                    break
-                # Brief dwell so the trajectory looks like a real meander
-                # rather than a continuous tour.
-                dwell = random.uniform(*self.DWELL_RANGE_S)
+                # Arrived at the leg's target. Dwell before planning the
+                # next one — fixed-N seconds if the user enabled the
+                # dwell control, otherwise a random 1.5–4 s for the
+                # organic-meander feel.
+                if self._dwell_seconds_override is not None:
+                    dwell = self._dwell_seconds_override
+                else:
+                    dwell = random.uniform(*self.DWELL_RANGE_S)
                 self._current_speed = 0.0
+                self._current_target = None
                 await self._emit("event.state_changed")
                 try:
                     await asyncio.wait_for(self._stop_event.wait(), timeout=dwell)
@@ -178,31 +223,38 @@ class RandomWalker:
             self._state = "stopped"
             await self._emit("event.state_changed")
 
-    def _regenerate_planned_path(self) -> None:
-        """Pre-pick enough random targets to cover the next
-        `PLANNED_DURATION_S` of walking at the average configured speed.
-        Stored verbatim so the GUI can render the same polyline the
-        walker will actually traverse — no hidden randomness between
-        what we show and what we walk."""
-        avg_speed = max((self._min_speed + self._max_speed) / 2.0, 0.01)
-        target_distance = avg_speed * self.PLANNED_DURATION_S
+    async def _plan_next_leg(self) -> None:
+        """Pick one random target inside the disc and (in map mode)
+        resolve its OSRM polyline. Populates `_current_target` and
+        `_current_polyline`; the latter is what `_run` walks through
+        and what `status()` exposes to the GUI."""
+        target = self._pick_target()
+        self._current_target = target
 
-        path: list[tuple[float, float]] = []
-        prev = self._current
-        travelled = 0.0
-        # Cap the segment count so a tiny radius can't lock us in a tight
-        # planning loop generating thousands of micro-jumps.
-        for _ in range(64):
-            if travelled >= target_distance:
-                break
-            t = self._pick_target()
-            path.append(t)
-            travelled += haversine_m(prev, t)
-            prev = t
-        if not path:
-            # Degenerate: at minimum give the walker one target to head to.
-            path = [self._pick_target()]
-        self._planned_path = path
+        if self._routing_engine == "map" and self._osrm is not None:
+            try:
+                route = await self._osrm.route(
+                    from_lat=self._current[0],
+                    from_lng=self._current[1],
+                    to_lat=target[0],
+                    to_lng=target[1],
+                    profile=self._profile,
+                )
+            except (NoRouteError, RoutingError) as exc:
+                log.info("osrm leg planning failed (%s); using straight target", exc)
+                self._current_polyline = [target]
+                return
+            except Exception:
+                log.exception("osrm leg planning raised unexpectedly")
+                self._current_polyline = [target]
+                return
+            # Drop the duplicate origin point — we're already at the
+            # first coord (we passed it in as `from_lat`/`from_lng`),
+            # so walking to it again would no-op the first tick.
+            pts = route.coordinates[1:] if route.coordinates else []
+            self._current_polyline = pts if pts else [target]
+        else:
+            self._current_polyline = [target]
 
     def _pick_target(self) -> tuple[float, float]:
         """Choose the next destination uniformly within the bounded disc."""
@@ -218,7 +270,14 @@ class RandomWalker:
         return (self._center[0] + dlat, self._center[1] + dlng)
 
     async def _walk_to(self, target: tuple[float, float], speed_mps: float) -> bool:
-        """Step toward `target` at `speed_mps`. Returns False if interrupted."""
+        """Step toward `target` at `speed_mps`. Returns False if interrupted.
+
+        In map mode, the `_planned_path` is already an expanded OSRM
+        polyline (dense road waypoints), so straight-line interpolation
+        between adjacent waypoints visually traces real roads. In
+        straight mode, the planned path is sparse random targets and
+        the same interpolator hops directly between them.
+        """
         while not self._stop_event.is_set():
             d = haversine_m(self._current, target)
             step = speed_mps * self.TICK_S

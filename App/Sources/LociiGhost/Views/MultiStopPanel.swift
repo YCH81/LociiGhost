@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 /// Inline multi-stop panel. Multi-stop is "click on the map a few
 /// times and press Navigate"; the work happens in the on-map
@@ -9,11 +10,16 @@ import SwiftUI
 ///   * the staged-stops list — each row carries a drag-handle so
 ///     the user can re-order stops to change visit order without
 ///     deleting and re-adding
-///   * `Clear all stops` (destructive) and `Save as new route`
-///     (saves the current staging as a SwiftData Route record so
-///     the user can replay this trip later without re-clicking)
+///   * `Clear all stops` (destructive), `Save as new route`, and
+///     `Save as preset` (v1.11.0 — multi-stop "favourites" the user
+///     can recall later via the Presets list below)
+///   * Presets list (v1.11.0): saved `StopPreset` entries, click to
+///     load via `LoadStopPresetSheet`'s Cancel / Display / Teleport
+///     confirmation
 struct MultiStopPanel: View {
     @Environment(AppState.self) private var state
+    @Query(sort: [SortDescriptor(\StopPreset.createdAt, order: .reverse)])
+    private var presets: [StopPreset]
     @State private var draggingStopID: StagedStop.ID?
     @State private var showingBulkPaste: Bool = false
 
@@ -50,6 +56,7 @@ struct MultiStopPanel: View {
     }
 
     var body: some View {
+        @Bindable var state = state
         VStack(alignment: .leading, spacing: 8) {
             Text("Click anywhere on the map to drop **Stop 1**, **Stop 2**, … in the order you want to visit them. Right-click also offers an Add-as-stop option.")
                 .font(.caption)
@@ -75,17 +82,101 @@ struct MultiStopPanel: View {
             .hoverHighlight(cornerRadius: 5)
             .help(LocalizedStringKey("Paste many coordinates at once — each line becomes the next stop"))
 
+            DwellModeRow()
+                .help(LocalizedStringKey("With dwell on, the iPhone pauses the chosen number of seconds at each stop before continuing to the next"))
+
             if state.pendingStops.isEmpty {
                 Text("No stops staged yet.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
+                // v1.11.0: sidebar mirror of the on-map "Show controls"
+                // chip. When the user X-dismissed the ControlPanel popup,
+                // they may not look back to the map to find the chip —
+                // surface the re-open entry here too so it's reachable
+                // wherever the user happens to be focused.
+                if state.navigationControlsHidden {
+                    Button {
+                        state.navigationControlsHidden = false
+                    } label: {
+                        Label("Show route controls",
+                              systemImage: "list.bullet.below.rectangle")
+                    }
+                    .controlSize(.small)
+                    .buttonStyle(.bordered)
+                    .hoverHighlight(cornerRadius: 5)
+                    .help(LocalizedStringKey("Reopen the route controls"))
+                }
                 stopsSummary
+            }
+
+            // v1.11.0: Presets list. Always visible (even with no
+            // staged stops yet) so the user can click a saved preset
+            // → LoadStopPresetSheet → load into staging.
+            if !presets.isEmpty {
+                presetsSection
             }
         }
         .sheet(isPresented: $showingBulkPaste) {
             BulkPasteStopsSheet()
+        }
+    }
+
+    /// Saved-presets list. Right-click on a row → Delete; left-click
+    /// parks the preset in `state.presetPendingLoad` which surfaces
+    /// the confirmation sheet (Cancel / Display / Teleport).
+    @ViewBuilder
+    private var presetsSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: "bookmark.fill")
+                    .foregroundStyle(.tint)
+                    .font(.caption2)
+                Text("Saved stop presets",
+                     comment: "Section header above the saved StopPreset list")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text("\(presets.count)")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                Spacer()
+            }
+            .padding(.top, 6)
+
+            ForEach(presets) { preset in
+                Button {
+                    state.presetPendingLoad = preset
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "bookmark")
+                            .font(.caption2)
+                            .foregroundStyle(.tint)
+                            .frame(width: 16)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(preset.name)
+                                .font(.caption)
+                                .lineLimit(1)
+                            Text("\(preset.stopCount) stops")
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 4)
+                    }
+                    .padding(.vertical, 2)
+                    .padding(.horizontal, 4)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .hoverHighlight(cornerRadius: 4, changesCursor: false)
+                .contextMenu {
+                    Button(role: .destructive) {
+                        state.deleteStopPreset(preset)
+                    } label: {
+                        Label("Delete preset", systemImage: "trash")
+                    }
+                }
+            }
         }
     }
 
@@ -95,10 +186,26 @@ struct MultiStopPanel: View {
             Text("\(state.pendingStops.count) stop\(state.pendingStops.count == 1 ? "" : "s") staged")
                 .font(.caption.weight(.medium))
 
-            ForEach(Array(stops.enumerated()), id: \.element.id) { (idx, stop) in
-                stopRow(idx: idx, stop: stop, totalStops: stops)
+            // Cap the visible list at ~280pt — long pastes (50+ stops)
+            // would otherwise render every row as a sibling of the
+            // VStack and grow the whole panel past the screen with no
+            // way to scroll. ScrollView keeps the row drag-handles +
+            // delete buttons all reachable; the count label and action
+            // row stay anchored below.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(stops.enumerated()), id: \.element.id) { (idx, stop) in
+                        stopRow(idx: idx, stop: stop, totalStops: stops)
+                    }
+                }
             }
+            .frame(maxHeight: 280)
 
+            // Three actions wrap to a second row if the panel is
+            // narrower than ~280 pt — Clear (destructive) stays first,
+            // Save-as-preset is the lightweight "remember these stops"
+            // action, Save-as-route is the heavier "promote to sidebar
+            // Routes section" action.
             HStack(spacing: 6) {
                 Button(role: .destructive) {
                     state.pendingStops = []
@@ -108,6 +215,17 @@ struct MultiStopPanel: View {
                 .controlSize(.small)
                 .buttonStyle(.bordered)
                 .hoverHighlight(cornerRadius: 5)
+
+                Button {
+                    state.presetPendingSave = true
+                } label: {
+                    Label("Save as preset",
+                          systemImage: "bookmark.fill")
+                }
+                .controlSize(.small)
+                .buttonStyle(.bordered)
+                .hoverHighlight(cornerRadius: 5)
+                .help(LocalizedStringKey("Save these stops as a named preset — click it later to reload the same staging"))
 
                 Button {
                     state.stagePendingStopsAsRoute()
@@ -205,5 +323,43 @@ private struct StopDragPayload: Codable, Transferable {
     let id: UUID
     static var transferRepresentation: some TransferRepresentation {
         CodableRepresentation(contentType: .data)
+    }
+}
+
+/// Shared row of "Dwell at each stop" toggle + N-seconds stepper.
+/// Lives both in the sidebar's MultiStopPanel and (since v1.11.0)
+/// in the on-map ControlPanel popup, so the user can flip dwell on
+/// without leaving whichever surface they're operating.
+///
+/// The stepper is conditionally rendered (instead of permanently
+/// shown with `.disabled`) because macOS's `.disabled` Stepper
+/// renders the +/- buttons at a low-contrast grey that some users
+/// were misreading as "uninteractive" even when dwell was on.
+struct DwellModeRow: View {
+    @Environment(AppState.self) private var state
+
+    var body: some View {
+        @Bindable var state = state
+        HStack(spacing: 8) {
+            Toggle(isOn: $state.dwellEnabled) {
+                Text("Dwell at each stop",
+                     comment: "Toggle that makes Navigate pause N seconds at every stop")
+                    .font(.caption)
+            }
+            .toggleStyle(.switch)
+            Spacer(minLength: 6)
+            if state.dwellEnabled {
+                Stepper(
+                    value: $state.dwellSeconds,
+                    in: 1...3600,
+                    step: 5,
+                ) {
+                    Text("\(state.dwellSeconds) s",
+                         comment: "Dwell duration stepper label, in seconds")
+                        .font(.caption.monospacedDigit())
+                        .frame(minWidth: 40, alignment: .trailing)
+                }
+            }
+        }
     }
 }

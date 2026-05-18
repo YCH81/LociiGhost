@@ -8,6 +8,17 @@ import SwiftUI
 struct MovementModesSection: View {
     @Environment(AppState.self) private var state
     @State private var sectionCollapsed: Bool = false
+    /// Holds the user's mode-switch request while we wait on the
+    /// "Stop current route?" confirmation alert. nil means no pending
+    /// switch. The wrapper's `target` is itself optional because
+    /// "turn off the current mode" is a legitimate switch (target ==
+    /// nil) we still want to confirm.
+    @State private var pendingSwitch: PendingSwitch?
+
+    private struct PendingSwitch: Identifiable {
+        let id = UUID()
+        let target: MovementMode?
+    }
 
     var body: some View {
         @Bindable var state = state
@@ -70,12 +81,77 @@ struct MovementModesSection: View {
             }
         }
         .animation(.easeInOut(duration: 0.18), value: state.activeMovementMode)
+        .alert(
+            String(localized: "Stop current simulation?",
+                   comment: "Mode-switch confirmation title — user has an active simulation (navigation / random walk / joystick)"),
+            isPresented: Binding(
+                get: { pendingSwitch != nil },
+                set: { if !$0 { pendingSwitch = nil } }
+            ),
+            presenting: pendingSwitch,
+        ) { pending in
+            Button(role: .cancel) {
+                pendingSwitch = nil
+            } label: {
+                Text("Keep going",
+                     comment: "Mode-switch confirmation cancel button — keep the current route running")
+            }
+            Button(role: .destructive) {
+                let target = pending.target
+                pendingSwitch = nil
+                if let udid = state.selectedUDID {
+                    Task {
+                        // Stop whichever live session(s) are running.
+                        // Multiple can technically be set in pathological
+                        // states (race during a prior switch) — stop them
+                        // all so we land in a clean slate before
+                        // activating the new mode.
+                        if state.navigation != nil {
+                            await state.stopNavigation(udid: udid)
+                        }
+                        if state.randomWalk != nil {
+                            await state.stopRandomWalk(udid: udid)
+                        }
+                        if state.joystick != nil {
+                            await state.stopJoystick(udid: udid)
+                        }
+                        await MainActor.run {
+                            state.activeMovementMode = target
+                        }
+                    }
+                } else {
+                    state.activeMovementMode = target
+                }
+            } label: {
+                Text("Stop & switch",
+                     comment: "Mode-switch confirmation destructive button — stops the active session then switches mode")
+            }
+        } message: { _ in
+            Text("Switching modes ends the current simulation. The iPhone halts at its current simulated position.",
+                 comment: "Mode-switch confirmation message — applies to navigation / random walk / joystick")
+        }
+    }
+
+    /// Any active simulation session whose interruption deserves a
+    /// "Stop current X?" prompt before mode-switching: live navigation
+    /// (multi-stop / route), random walker, or joystick. Gold Ditto
+    /// doesn't have a long-running session — its actions are one-shot
+    /// — so it doesn't gate switching.
+    private var hasActiveSession: Bool {
+        state.navigation != nil
+            || state.randomWalk != nil
+            || state.joystick != nil
     }
 
     private func modeButton(_ mode: MovementMode, symbol: String, title: LocalizedStringKey) -> some View {
         let isActive = state.activeMovementMode == mode
+        let target: MovementMode? = isActive ? nil : mode
         return Button {
-            state.activeMovementMode = isActive ? nil : mode
+            if hasActiveSession && target != state.activeMovementMode {
+                pendingSwitch = PendingSwitch(target: target)
+            } else {
+                state.activeMovementMode = target
+            }
         } label: {
             VStack(spacing: 3) {
                 Image(systemName: symbol)

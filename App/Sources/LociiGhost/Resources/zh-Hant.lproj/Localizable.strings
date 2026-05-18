@@ -331,3 +331,22 @@
 "Inspired by " = "致敬 ";
 " by keezxc1223 (MIT). LociiGhost is a complete native-Swift rewrite." = "（作者 keezxc1223，MIT 授權）。LociiGhost 為 native Swift 完整重寫版本。";
 "Run `cat LICENSE` from the project root for the full MIT text with both copyright notices." = "在專案根目錄執行 `cat LICENSE` 可看到完整 MIT 授權文與兩段 copyright 標示。";
+
+/* v1.11.0 additions */
+"Stop current route?" = "要停止目前的路線嗎？";
+"Stop current simulation?" = "要停止目前的模擬嗎？";
+"Keep going" = "繼續執行";
+"Stop & switch" = "停止並切換";
+"Switching modes ends the current navigation. The iPhone halts at its current simulated position." = "切換模式會結束目前的導航，iPhone 會停留在當下的模擬位置。";
+"Switching modes ends the current simulation. The iPhone halts at its current simulated position." = "切換模式會結束目前的模擬，iPhone 會停留在當下的模擬位置。";
+"Hide this panel — stops stay in the sidebar; click the floating chip on the map to bring it back" = "隱藏此面板 — 停靠點仍會留在側欄；點地圖上的浮動標籤即可重新叫回";
+"%lld stops — show controls" = "%lld 個停靠點 — 顯示控制";
+"Reopen the route controls" = "重新開啟路線控制";
+"Apple Maps couldn't plan this route — its data may not cover this area. Try switching the routing engine to OSRM in Settings. (%@)" = "Apple Maps 無法規劃此路線 — 該地區的圖資可能不完整。請到設定切換路線引擎為 OSRM。(%@)";
+"Path style" = "路徑樣式";
+"Straight line" = "直線";
+"Map path (OSRM)" = "地圖路徑 (OSRM)";
+"Dwell at each stop" = "每站停留";
+"%lld s" = "%lld 秒";
+"With dwell on, the iPhone pauses the chosen number of seconds at each stop before continuing to the next" = "啟用停留後，iPhone 抵達每個停靠點會暫停指定秒數再繼續往下一站。";
+"Show route controls" = "顯示路線控制";
