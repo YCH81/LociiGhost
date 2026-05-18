@@ -47,6 +47,7 @@ struct AppHeaderBar: View {
                 }
             }
             Spacer(minLength: 12)
+            autoRecenterToggle
             settingsButton
             languageToggle
             Divider().frame(height: 14)
@@ -88,6 +89,53 @@ struct AppHeaderBar: View {
         .hoverHighlight(cornerRadius: 12)
         .help(Text("Update available — click to view release",
                    comment: "Tooltip on the update-available badge"))
+    }
+
+    /// v1.11.0 hotfix — toggle for the map auto-recenter behaviour.
+    /// On (default): the map follows the simulated pin every 1 Hz
+    /// tick during joystick / random walk / navigation. Off: the map
+    /// stays where the user left it; one-shot teleports (route-start
+    /// fly, Recent Places, preset Teleport) still pan since those use
+    /// `pendingMapFly` directly. Sits left of the Settings pill in
+    /// the header bar so the user can flip it without diving into
+    /// Settings → … just because they want to read a corner of the
+    /// map mid-trip.
+    private var autoRecenterToggle: some View {
+        @Bindable var state = state
+        return Button {
+            state.mapAutoRecenter.toggle()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: state.mapAutoRecenter
+                      ? "location.viewfinder"
+                      : "location.slash")
+                    .font(.caption)
+                    .foregroundStyle(state.mapAutoRecenter ? Color.lociSage : Color.secondary)
+                Text("Auto-center",
+                     comment: "Header bar — toggle for map auto-recenter during simulated movement")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(state.mapAutoRecenter ? .primary : .secondary)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(
+                state.mapAutoRecenter
+                    ? AnyShapeStyle(Color.lociSage.opacity(0.15))
+                    : AnyShapeStyle(Color.secondary.opacity(0.08)),
+                in: .capsule
+            )
+            .overlay(
+                Capsule().strokeBorder(
+                    state.mapAutoRecenter
+                        ? Color.lociSage.opacity(0.45)
+                        : Color.secondary.opacity(0.25),
+                    lineWidth: 0.5
+                ),
+            )
+        }
+        .buttonStyle(.plain)
+        .hoverHighlight(cornerRadius: 12)
+        .help(LocalizedStringKey("Toggle map auto-recenter: when on, the map follows the simulated location during movement. When off, the map stays put — teleports and route starts still pan once, then you scroll the map manually."))
     }
 
     /// v1.9 Settings shortcut — sits left of the language toggle so

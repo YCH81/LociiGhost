@@ -319,12 +319,35 @@ final class AppState {
     /// move; multi-stop staging without an active Navigate
     /// doesn't move; the map only chases motion that's actually
     /// happening.
+    ///
+    /// v1.11.0 hotfix: user-toggleable. When `mapAutoRecenter` is off,
+    /// continuous follow is suppressed entirely — explicit one-shot
+    /// teleports (route start, Recent Places "Show on map", manual
+    /// recenter button) still pan because those go through
+    /// `pendingMapFly` directly, not this getter.
     var shouldFollowSimulatedLocation: Bool {
+        guard mapAutoRecenter else { return false }
         if navigation != nil { return true }
         switch activeMovementMode {
         case .joystick, .randomWalk: return true
         case .multiStop, .goldDitto, .none: return false
         }
+    }
+
+    /// User-controlled toggle: when on, the map auto-recenters every
+    /// 1 Hz position tick during joystick / random walk / navigation;
+    /// when off, the map stays where the user left it and they
+    /// recenter manually via the "Show current location" button or by
+    /// panning. One-shot teleports (route-start fly, Recent Places,
+    /// preset Teleport) ignore this setting — they always pan.
+    /// Persisted to UserDefaults so the preference survives launches.
+    var mapAutoRecenter: Bool = {
+        if UserDefaults.standard.object(forKey: "map.autoRecenter") == nil {
+            return true  // default behaviour preserves the existing UX
+        }
+        return UserDefaults.standard.bool(forKey: "map.autoRecenter")
+    }() {
+        didSet { UserDefaults.standard.set(mapAutoRecenter, forKey: "map.autoRecenter") }
     }
 
     // MARK: - Status bar A: weather + remote-timezone for the simulated location
@@ -2319,11 +2342,22 @@ final class AppState {
             // dict). Switching the sidebar to a different iPhone
             // and back leaves the route / waypoints / destination
             // intact for the device that's actually running them.
+            // In dwell mode the recursive `navigate` only knows about
+            // the CURRENT leg's single stop, but the map should preview
+            // every still-pending waypoint of the dwell sequence so the
+            // user can see where the trip is going overall. Use the
+            // dwellContext's full remaining list when present.
+            let displayedWaypoints: [Coordinate]
+            if let dctx = dwellContext, dctx.remainingStops.count > 1 {
+                displayedWaypoints = dctx.remainingStops
+            } else {
+                displayedWaypoints = stops
+            }
             setActiveTrip(
                 route: coords,
-                destination: stops.last ?? coords.last,
+                destination: displayedWaypoints.last ?? coords.last,
                 isStraightLine: useStraightLine,
-                waypoints: stops,
+                waypoints: displayedWaypoints,
                 for: udid,
             )
             setSimulatedLocation(origin, for: udid)
@@ -2720,7 +2754,7 @@ final class AppState {
     /// Bumped every time the daemon source breaks ABI or behaviour in
     /// a way that requires an in-place restart. Must match the
     /// `__version__` in `Daemon/lociighostd/__init__.py`.
-    static let expectedDaemonVersion = "1.11.0"
+    static let expectedDaemonVersion = "1.11.1"
 
     // MARK: - Update check (v1.5)
 

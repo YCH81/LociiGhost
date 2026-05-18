@@ -351,3 +351,5 @@
 "%lld s" = "%lld s";
 "With dwell on, the iPhone pauses the chosen number of seconds at each stop before continuing to the next" = "With dwell on, the iPhone pauses the chosen number of seconds at each stop before continuing to the next";
 "Show route controls" = "Show route controls";
+"Auto-center" = "Auto-center";
+"Toggle map auto-recenter: when on, the map follows the simulated location during movement. When off, the map stays put — teleports and route starts still pan once, then you scroll the map manually." = "Toggle map auto-recenter: when on, the map follows the simulated location during movement. When off, the map stays put — teleports and route starts still pan once, then you scroll the map manually.";

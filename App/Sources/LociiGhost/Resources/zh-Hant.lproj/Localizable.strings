@@ -350,3 +350,5 @@
 "%lld s" = "%lld 秒";
 "With dwell on, the iPhone pauses the chosen number of seconds at each stop before continuing to the next" = "啟用停留後，iPhone 抵達每個停靠點會暫停指定秒數再繼續往下一站。";
 "Show route controls" = "顯示路線控制";
+"Auto-center" = "地圖置中";
+"Toggle map auto-recenter: when on, the map follows the simulated location during movement. When off, the map stays put — teleports and route starts still pan once, then you scroll the map manually." = "切換地圖自動置中：開啟時，模擬移動中地圖會跟著定位置中。關閉時地圖不再追蹤 — 瞬移與路線初始仍會帶地圖到起點一次，之後就要自己拖地圖。";
