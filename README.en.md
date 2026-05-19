@@ -29,8 +29,8 @@ if you're in Taiwan.
 
 ## Download
 
-- **Latest version**: v1.11.0
-- **Release date**: 2026-05-16
+- **Latest version**: v1.11.1
+- **Release date**: 2026-05-19
 - **Download**: [Google Drive folder](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) — DMG is Apple-Developer-ID-signed and notarised, so it opens with a double-click without the Gatekeeper warning. **Use the DMG, not a zip**: extracting a signed .app into an iCloud-synced folder (Documents, Desktop) lets the File Provider attach extra xattrs that break the signature and show "LociiGhost is damaged".
 
 ## New here?
@@ -61,46 +61,76 @@ if you're in Taiwan.
 
 ## What's new
 
+**v1.11.1** (2026-05-19)
+
+- **Dwell mode now shows the full remaining route on the map.**
+  v1.11.0 with `dwellEnabled` ON only displayed the current
+  leg's single destination — the rest of the staged stops and
+  the polyline disappeared. The daemon only ever sees the
+  current leg's one-stop navigate (correct), but the on-map
+  `activeWaypoints` display should reflect "I am walking
+  through THESE 274 stops". Now `navigate()` writes
+  `dwellContext.remainingStops` to `setActiveTrip` so every
+  still-pending waypoint appears on the map.
+- **New: Auto-center toggle in the header bar** (left of
+  Settings). On (default = v1.11.0 behaviour): map follows the
+  simulated pin every 1 Hz tick during simulated movement.
+  Off: map stays where the user left it. One-shot teleports
+  (route-start fly, Recent Places, preset Teleport) still pan
+  because they go through `pendingMapFly` directly. Setting
+  persists across launches via UserDefaults
+  (`map.autoRecenter`).
+
 **v1.11.0** (2026-05-18)
 
-- **Fixed map-drag and button-click lag during long routes.**
-  `MapContainerView.updateNSView` was wiping and re-adding the
-  entire pin set on every 1 Hz position event — for a 274-stop
-  route that's ~550 MapKit add/remove ops per second hammering
-  the main thread. Map pans, Pause / Stop / Restore clicks, and
-  app-window-switch transitions all stalled behind that work.
-  Added dirty-check signatures for stops, waypoints, simulated
-  pin, and the Mac-proxy pin — each block only touches MapKit
-  when its underlying state actually changes. Idle main thread
-  during normal navigation now.
-- **Multi-Stop staged-stop list now persists across Navigate.**
-  Previously `pendingStops` was cleared the moment Navigate
-  kicked off, so the coordinate list disappeared from the panel
-  even though the iPhone was still walking through them. Now
-  the list stays visible until the user clicks "Clear all
-  stops" or switches `activeMovementMode` away from multi-stop.
-- **Bulk-paste sheet height is locked.** Previously the sheet
-  grew taller as the user pasted more lines; pasting 100+ rows
-  pushed the sheet off-screen. The TextEditor is now 280 pt
-  tall with internal scrolling and the sheet is fixed at
-  540×500.
-- **New: Stop presets ("favourites" for Multi-Stop).** Save the
-  current staged stops as a named preset; reload any time from
-  the Multi-Stop panel's saved-presets list. Clicking a preset
-  opens a confirmation sheet with three actions:
-  - **Display only** — load into staging + recentre map, leave
-    the iPhone where it is.
-  - **Teleport to first** — load + immediately teleport the
-    iPhone to the preset's first coordinate.
-  - **Cancel** — no-op.
-
-  Right-click a preset row to delete. Backed by a new SwiftData
-  `StopPreset` model alongside the existing `Route` model;
-  presets and routes are deliberately separate entities (see
-  StopPreset.swift's doc-comment for the rationale).
-
-Deferred to v1.11.1: per-stop dwell time (multi-stop pause
-mode) and the Random-Walk straight-line vs map-routed picker.
+- **Performance overhaul.** MapContainerView 274-stop route
+  MapKit ops/sec ~550 → ~0 via dirty-check guards on
+  pendingStops/activeWaypoints, simulated pin (KVO in-place
+  coordinate mutation, no more remove+add flicker on Tahoe),
+  and Mac proxy pin. Batched `addAnnotations` / `removeAnnotations`
+  replace per-pin loops. Follow-puck setRegion changed to
+  animated:false so 1 Hz pan animations don't pile up and stall
+  SwiftUI alerts.
+- **Multi-stop upgrades**:
+  - Staged stops persist across Navigate
+  - Bulk-paste sheet height truly locked (BoundedTextEditor
+    wraps NSTextView in NSScrollView)
+  - MultiStopPanel + ControlPanel stops lists both wrapped in
+    ScrollView maxHeight 280
+  - **New SwiftData StopPreset model + Save/Load preset
+    sheets** — name a stop list, reload via 3-action confirm
+    (Cancel / Display only / Teleport to first); right-click
+    row to delete
+  - **New per-stop dwell mode** — toggle + N-seconds stepper
+    chops Navigate into single-leg navigates separated by
+    Mac-side sleep. BottomBar ETA shows full-trip estimate.
+- **Random Walk rebuilt**: new "Straight line / Map path
+  (OSRM)" picker. Map path uses per-leg JIT planning — pick
+  one random target, resolve OSRM polyline, walk it, dwell,
+  pick the next. On-map polyline matches exactly what the
+  walker traces. Random walk also supports dwell.
+- **Mode-switch confirmation alert** fires when an active
+  session (navigation / random walk / joystick) exists and the
+  user picks a different mode.
+- **ControlPanel popup X no longer wipes pendingStops** — it
+  minimises the panel. Floating chip on the map AND sidebar
+  button both reopen it.
+- **Apple Maps routing failure toast** suggests OSRM as the
+  fallback engine.
+- **macOS 26 Tahoe compatibility**:
+  - daemon.info returns process `start_time`; AppState
+    compares against bundled daemon binary mtime, surfaces
+    admin banner if running daemon is stale
+  - On Tahoe with unprivileged or stale daemon at first
+    connect, auto-trigger system admin prompt
+  - WiFi mDNS browse fixed (Address objects → `.ip`
+    extraction); link-local 169.254 filtered
+  - WiFi picker rows surface IP:port as primary label (not
+    mDNS instance UUID)
+  - build-daemon.sh / package-app.sh / make-dmg.sh sweep for
+    Tahoe FS's `<name> 2` auto-rename siblings and rsync them
+    back into the un-suffixed counterpart
+- **Full zh-Hant translations** for every v1.11.0 string.
 
 **v1.10.8** (2026-05-16)
 

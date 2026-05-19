@@ -27,8 +27,8 @@
 
 ## 下載
 
-- **最新版本**：v1.11.0
-- **發布日期**：2026-05-16
+- **最新版本**：v1.11.1
+- **發布日期**：2026-05-19
 - **下載連結**：[Google Drive 下載資料夾](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) —— DMG 已通過 Apple Developer ID 簽名 + Apple notarize，雙擊即可開啟，不會被 Gatekeeper 擋下。**請務必用 DMG 安裝**，不要把 .app 解壓到 iCloud 同步的資料夾（Documents、Desktop），File Provider 會蓋上額外 xattr 把簽章弄壞
 
 ## 第一次使用？
@@ -51,19 +51,31 @@
 
 ## 最新更新
 
+**v1.11.1**（2026-05-19）
+
+- **每站停留模式下地圖顯示完整剩餘路徑**。v1.11.0 開啟「每站停留」走長路線時，地圖只顯示當前 leg 的下一個目的地，後面的 stops 跟路徑都看不見。修法：navigate() 在 dwell mode 下把 dwellContext.remainingStops 寫進 activeWaypoints（顯示用），daemon 仍然只看當前 leg。
+- **新增「地圖置中」開關**（標題列設定按鈕左邊）。開啟（預設）時模擬移動中地圖自動跟著定位置中；關閉後地圖留在原處不再追蹤，可自由拖動查看其他位置。瞬移、路線初始仍會帶地圖到起點一次（走 `pendingMapFly` 不過 `shouldFollowSimulatedLocation`）。設定持久化 UserDefaults `map.autoRecenter`。
+
 **v1.11.0**（2026-05-18）
 
-- **修地圖拖動 + 按鈕點擊延遲**。MapContainerView 的 `updateNSView` 之前每秒都把所有 stop / waypoint pin 整批 remove + 重新 add，274 點路線等於每秒 ~550 個 MapKit annotation 操作壓在主執行緒上，造成地圖拖動卡、Pause / Stop / Restore 點下去沒反應、切回 LociiGhost 視窗卡很久。v1.11.0 加 4 個 signature dirty-check guard，stops / waypoints / 模擬 pin / Mac proxy pin 只有真的變動時才動 MapKit，平時主執行緒幾乎閒置。
-- **多點停靠點清單持久顯示**。Navigate 後 `pendingStops` 不再被清空，使用者可以一直看到剛剛排的座標 + 順序。要清就按「清空所有停靠點」，或切到非多點模式時自動清除。
-- **批次貼上座標 sheet 高度鎖定**。之前貼超過 15 行 sheet 會無限變高，現在 TextEditor 內部捲動，視窗 540×500 固定。
-- **新增「儲存為快選」功能**（多點面板我的最愛）。把當前 staged stops 存成命名 preset，多點面板下方列出所有 preset。點任一 preset 跳出確認對話框：
-  - **只顯示**：載入到 staging 並把地圖飛到第一個座標，iPhone 不動
-  - **瞬移到第一個**：載入 staging + 把 iPhone 瞬移到第一個 stop，按 Navigate 立刻乾淨啟動
-  - **取消**：什麼都不做
-
-  Preset 右鍵可刪除。存的是名稱 + 完整座標清單（SwiftData，自己機器留著）。
-
-延後到 v1.11.1 的：每停靠點停留時間（多點 dwell mode）、隨機漫步的「直線 vs 地圖路徑」選項。
+- **效能大改**。MapContainerView 274 點路線從每秒 ~550 個 MapKit annotation 操作降到 ~0（4 個 dirty-check guard + batch addAnnotations + 模擬 pin KVO in-place 更新）；follow-puck setRegion 改 animated:false 不再跟 alert 搶主執行緒。地圖拖動、按鈕點擊、切換模式全部不卡頓。
+- **多點功能大進化**：
+  - 停靠點清單 Navigate 後持久顯示，按「清空」或切離 multi-stop 才清
+  - 批次貼上 sheet 真正鎖高度（BoundedTextEditor 用 NSScrollView 包 NSTextView）
+  - MultiStopPanel + ControlPanel 兩個 list 都加 ScrollView 上限 280pt
+  - **新增「我的最愛 (Preset)」**：命名收藏 stops 組合，點 preset 跳「只顯示 / 瞬移到第一個 / 取消」三選一
+  - **新增「每站停留 N 秒」(dwell mode)**：Navigate 時每個 stop 停 N 秒再走下一個，底欄 ETA 顯示全程估算時間
+- **隨機漫步重做**：新增「直線 / 地圖路徑 (OSRM)」選擇。Map mode 用 per-leg JIT 規劃，地圖顯示的線就是 iPhone 實際走的真實道路；也支援每點停留秒數。
+- **模式切換確認彈窗**：跑著 navigation / random / joystick 切其他模式跳「停止目前的模擬？」alert。
+- **ControlPanel popup 重新呼出入口**：按 X 不再清空 stops，地圖左上 chip + sidebar 按鈕兩個入口。
+- **Apple Maps 錯誤建議 OSRM**：MKDirections 失敗時 toast 提示切換引擎。
+- **macOS 26 Tahoe 完整支援**：
+  - 首次啟動偵測非 root daemon 或 stale binary 自動跳系統授權框
+  - daemon.info 加 `start_time` 比對 binary mtime detect stale daemon
+  - WiFi mDNS browse 修好（pymobiledevice3 / zeroconf 新版 Address 物件 `.ip` 屬性）
+  - picker 顯示 IP:port 為主標題（不再 mDNS UUID）
+  - build 三個 script 加 Tahoe FS `<name> 2` 自動 rename defense
+- **繁中翻譯完整補上所有新字串。**
 
 **v1.10.8**（2026-05-16）
 
