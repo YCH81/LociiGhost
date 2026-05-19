@@ -274,25 +274,29 @@
 
   <section class="card">
     <div class="version-line">
-      <strong>v1.11.0</strong>
+      <strong>v1.11.1</strong>
       <span class="status-pill">Released</span>
     </div>
-    <p>Released 2026-05-18. <strong>Four Multi-Stop &amp; performance
-       improvements</strong>: (1) <strong>Map performance</strong> — the
-       274-stop route previously triggered ~550 MapKit annotation
-       add/remove ops per second; now down to zero via dirty-check
-       guards. Map drags, Pause/Stop/Restore clicks, and window-switch
-       transitions are no longer laggy.
-       (2) <strong>Staged stops persist after Navigate</strong> — the
-       Multi-Stop panel keeps the coordinate list visible until the
-       user clicks Clear or switches modes.
-       (3) <strong>Bulk-paste sheet height is locked</strong> (internal
-       scroll past 15 rows; no more sheet growing off-screen).
-       (4) <strong>New "Save as preset"</strong> — name a Multi-Stop set,
-       reload from the panel's preset list, confirm with Display Only
-       or Teleport to First. See
-       <a href="https://github.com/YCH81/LociiGhost/releases/tag/v1.11.0">v1.11.0 release notes</a>
-       for the full diagnosis.</p>
+    <p>Released 2026-05-19. <strong>v1.11.0 + v1.11.1 bundled
+       update</strong>: (1) <strong>Performance overhaul</strong> — map
+       drags, mode switches, and long routes (200+ stops) no longer
+       lag; the simulated pin slides smoothly instead of flickering.
+       (2) <strong>Multi-Stop upgrades</strong> — staged stops persist
+       across Navigate, bulk-paste sheet height is locked, named
+       "Preset" favourites for stop lists, "Dwell N seconds at each
+       stop" mode with full-trip ETA, the on-map polyline shows every
+       remaining stop in dwell mode.
+       (3) <strong>Random Walk rebuilt</strong> — new "Straight line /
+       Map path" picker; map path follows real roads via OSRM rather
+       than straight-line hops; random walk also supports dwell.
+       (4) <strong>Auto-center toggle</strong> in the header bar — flip
+       off to keep the map where you left it during simulated motion.
+       (5) <strong>macOS 26 Tahoe support</strong> — first-launch
+       admin prompt fires automatically; WiFi multi-device discovery
+       fixed (mDNS browse was silently broken on Tahoe).
+       See
+       <a href="https://github.com/YCH81/LociiGhost/releases/tag/v1.11.1">v1.11.1 release notes</a>
+       for the full changelog.</p>
     <p class="meta">The DMG is Apple-Developer-ID-signed and notarised,
        so it opens with a double-click without a Gatekeeper warning.
        <strong>Use the DMG, not a zip</strong>: extracting a signed .app

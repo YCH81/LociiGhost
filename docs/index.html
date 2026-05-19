@@ -274,18 +274,18 @@
 
   <section class="card">
     <div class="version-line">
-      <strong>v1.11.0</strong>
+      <strong>v1.11.1</strong>
       <span class="status-pill">已發佈</span>
     </div>
-    <p>發布日期：2026-05-18。<strong>4 個多點 / 效能改進</strong>：
-       (1) <strong>地圖效能</strong> — 274-stop 路線時 MapKit annotation 從每秒 ~550 個操作
-       降為 0（dirty-check guard），地圖拖動 / 按鈕點擊 / 視窗切換不再延遲。
-       (2) <strong>停靠點清單持久顯示</strong> — Navigate 後 pendingStops 不再被清空。
-       (3) <strong>批次貼上 sheet 高度鎖定</strong>（>15 行內部捲動）。
-       (4) <strong>新增「儲存為快選」</strong>（多點面板我的最愛），點 preset 跳出確認對話框
-       決定只顯示或瞬移到第一個。
+    <p>發布日期：2026-05-19。<strong>v1.11.0 + v1.11.1 一次到位</strong>：
+       (1) <strong>效能大改</strong> — 拖地圖、切換模式、長路線（200+ 點）都不再卡頓。
+       (2) <strong>多點功能升級</strong> — 停靠點清單持久 / 批次貼上鎖高度 /
+       「我的最愛 (Preset)」/「每站停留 N 秒」(走完一站停 N 秒再走)，地圖會顯示完整剩餘路徑。
+       (3) <strong>隨機漫步重做</strong> — 新增「直線 / 地圖路徑」選擇，地圖路徑會依真實道路規劃並前進。
+       (4) <strong>地圖置中開關</strong>（標題列）— 關閉後地圖不再被模擬移動拉著走。
+       (5) <strong>macOS 26 Tahoe 完整支援</strong> — 首次啟動自動跳系統授權、WiFi 多裝置連線修復。
        完整變更紀錄見
-       <a href="https://github.com/YCH81/LociiGhost/releases/tag/v1.11.0">v1.11.0 release notes</a>。</p>
+       <a href="https://github.com/YCH81/LociiGhost/releases/tag/v1.11.1">v1.11.1 release notes</a>。</p>
     <p class="meta">DMG 已通過 Apple Developer ID 簽名 + Apple notarize，
        雙擊即可開啟，不會被 Gatekeeper 擋下。<strong>請務必用 DMG 安裝</strong>，
        不要把 .app 解壓到 iCloud 同步的資料夾（Documents、Desktop），
