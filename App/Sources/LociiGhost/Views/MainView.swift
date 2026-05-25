@@ -17,6 +17,7 @@ struct MainView: View {
     @State private var showSyncConfirm: Bool = false
 
     var body: some View {
+        @Bindable var state = state
         NavigationSplitView(columnVisibility: $columnVisibility) {
             Sidebar()
                 // Lock the sidebar column at ≥280pt. Without this,
@@ -33,8 +34,18 @@ struct MainView: View {
                 .navigationSplitViewColumnWidth(min: 280, ideal: 295, max: 310)
         } detail: {
             VStack(spacing: 0) {
+                // v1.11.2: .layoutPriority(1) on both fixed bars ensures
+                // SwiftUI allocates their natural heights BEFORE giving
+                // the remaining space to the map ZStack. Without this,
+                // MapContainerView (NSViewRepresentable) occasionally
+                // claims the full VStack height during a NavigationSplitView
+                // layout pass on macOS Tahoe — compressing TopStatusBar to
+                // 0 pt and leaving BottomBar empty. The map ZStack has no
+                // priority set (defaults to 0) so it always gets the remainder.
                 AppHeaderBar(appLanguage: $appLanguage)
+                    .layoutPriority(1)
                 TopStatusBar()
+                    .layoutPriority(1)
                 ZStack(alignment: .topLeading) {
                     MapContainerView()
                         .ignoresSafeArea(edges: .top)
@@ -89,6 +100,7 @@ struct MainView: View {
                     .padding(12)
                 }
                 BottomBar()
+                    .layoutPriority(1)
             }
         }
         .navigationSplitViewStyle(.balanced)
@@ -123,8 +135,22 @@ struct MainView: View {
         // still gets cleared (those singletons can't represent
         // multiple devices); the daemon will re-emit if the
         // newly-selected device has anything active.
-        .onChange(of: state.selectedUDID) { _, newSelection in
+        .onChange(of: state.selectedUDID) { oldSelection, newSelection in
             state.refreshWeatherAndTzNow()
+            // v1.11.2 round 17: per-device memory for activeMovementMode
+            // and pendingStops. Before this, switching from iPhone A
+            // (staged for multi-stop) to Map / iPhone B and back left
+            // A's staging gone — `activeMovementMode` and `pendingStops`
+            // are single globals at the AppState level, so any
+            // intervening selection that wrote to them clobbered A's
+            // state. We snapshot on leave + restore on arrive so each
+            // device gets its own private slot.
+            if let leaving = oldSelection {
+                state.snapshotModeAndStops(forLeaving: leaving)
+            }
+            if let arriving = newSelection {
+                state.restoreModeAndStops(forArriving: arriving)
+            }
             if let coord = state.simulatedLocation {
                 state.pendingMapFly = MapFlyRequest(
                     coordinate: coord,
@@ -145,21 +171,17 @@ struct MainView: View {
             state.randomWalk = nil
             state.joystick = nil
         }
-        // Map-follow loop: whenever the simulated puck moves AND
-        // we're in a "things are happening" mode (joystick /
-        // random walk / live navigation), shift the map's centre
-        // to keep the puck on screen. `preserveZoom: true` means
-        // the user's chosen zoom level isn't fighting the
-        // per-second updates — only the centre changes.
-        .onChange(of: state.simulatedLocation) { _, newValue in
-            guard state.shouldFollowSimulatedLocation,
-                  let coord = newValue else { return }
-            state.pendingMapFly = MapFlyRequest(
-                coordinate: coord,
-                spanMeters: 0,
-                preserveZoom: true,
-            )
-        }
+        // v1.11.2 round 8 perf fix: the map-follow trigger lives in
+        // AppState.applyPositionEvent now (state-layer instead of
+        // view-layer). Putting `.onChange(of: state.simulatedLocation)`
+        // on this MainView body meant every 10 Hz position event
+        // re-registered every .onChange / .sheet / .toolbar modifier
+        // here, fanning out to every sub-view's dependency graph.
+        // Round 7's MapFollowObserver attempt (.background sub-view)
+        // accidentally compounded the loop and pinned CPU at 100%.
+        // Driving pendingMapFly directly from applyPositionEvent
+        // (the same code that updates simulatedLocation) bypasses
+        // the view-layer observer entirely.
         // Sync-mode confirm. Triggered by the "Use both at once"
         // button on the lockout overlay. We warn the user that
         // running both UIs simultaneously can let the two
@@ -524,6 +546,16 @@ private struct Sidebar: View {
                 RouteEditSheet(pending: p, editing: nil)
                     .environment(state)
             }
+        }
+        // v1.11.2 round 12: re-introduce RouteWaypointsEditSheet
+        // via `.sheet(item:)` — SwiftUI handles this lazily (the
+        // builder closure only fires when the optional flips
+        // non-nil), so no per-body Binding rebuild like round 6's
+        // `.sheet(isPresented:)` form. Item is `state.editingRouteWaypoints`
+        // (Route is @Model and therefore Identifiable).
+        .sheet(item: $state.editingRouteWaypoints) { route in
+            RouteWaypointsEditSheet(route: route)
+                .environment(state)
         }
     }
 
@@ -1537,6 +1569,12 @@ private struct DaemonStatusPill: View {
     @Environment(AppState.self) private var state
 
     var body: some View {
+        // v1.11.2 round 4 perf revert: the conditional Button wrapper
+        // (when daemonStatus == .failed) was a measurable contributor
+        // to view-tree size growth that hurt overall layout perf.
+        // The AppState auto-elevate trigger + the AdminPromptBanner
+        // are still the recovery affordances; this is back to a
+        // simple status display.
         HStack(spacing: 6) {
             Circle().fill(color).frame(width: 8, height: 8)
             Text("lociighostd: \(state.daemonStatus.label)")

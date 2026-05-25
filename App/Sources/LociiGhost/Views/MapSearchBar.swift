@@ -218,7 +218,12 @@ struct MapSearchBar: View {
             // Just fly there. No teleport, no navigation. The user
             // is browsing — still log it, so re-opening the popover
             // can re-fly to a previously-previewed place.
+            // v1.11.2: also drop a search-preview marker at the
+            // coord so the user can see where they previewed —
+            // before this, the map silently panned with no visible
+            // indication of the previewed point.
             state.pendingMapFly = MapFlyRequest(coordinate: coord, spanMeters: 2_500)
+            state.searchPreviewCoord = coord
             state.recordRecentPlace(label: recentLabel, lat: coord.lat, lng: coord.lng, kind: recentKind)
             statusMessage = String(format: "Previewing %.5f, %.5f", coord.lat, coord.lng)
 
@@ -231,6 +236,10 @@ struct MapSearchBar: View {
                 return
             }
             state.pendingMapFly = MapFlyRequest(coordinate: coord, spanMeters: 2_000)
+            // v1.11.2: teleporting commits the action — clear any
+            // lingering search-preview marker since the simulated
+            // pin now occupies that spot.
+            state.searchPreviewCoord = nil
             await state.teleport(udid: udid, lat: coord.lat, lng: coord.lng)
             // Overwrite the coord-only label inserted by `teleport(...)`
             // with the friendlier "place name" string from the search
@@ -253,6 +262,10 @@ struct MapSearchBar: View {
             // controls do when the user hits Navigate manually.
             let speed = state.customSpeedMps ?? state.travelProfile.defaultSpeedMps
             state.pendingMapFly = MapFlyRequest(coordinate: coord, spanMeters: 4_000)
+            // v1.11.2: navigating commits the action — clear any
+            // lingering search-preview marker since the destination
+            // pin now claims that spot.
+            state.searchPreviewCoord = nil
             await state.navigate(
                 udid: udid,
                 through: [coord],
@@ -282,7 +295,13 @@ struct MapSearchBar: View {
             TextField("Search address or place", text: $model.query)
                 .textFieldStyle(.plain)
                 .focused($isFocused)
-                .onSubmit { Task { await pickFirst() } }
+                // v1.11.2: Enter triggers Teleport (the most common
+                // "I want to go here now" intent), not Paste-as-stop.
+                // Clicking a row in the suggestions list below still
+                // appends to pendingStops (multi-stop staging path),
+                // so both intents remain reachable — Enter is the
+                // one-shot shortcut.
+                .onSubmit { Task { await act(.teleport) } }
             if resolvingTitle != nil {
                 ProgressView().controlSize(.small)
             } else if !model.query.isEmpty {

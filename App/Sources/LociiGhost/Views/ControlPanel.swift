@@ -50,6 +50,30 @@ struct ControlPanel: View {
 
             stopsList
 
+            // v1.11.2 round 15: Smart sort back on the on-map panel
+            // too — `.frame(maxWidth: .infinity)` removed since
+            // that was the layout-spin trigger in the round-1 add.
+            // Plain button + leading-aligned HStack; no flex frame,
+            // no NSHostingView size renegotiation.
+            if stops.count >= 3 {
+                HStack(spacing: 0) {
+                    Button {
+                        smartSortStops()
+                    } label: {
+                        Label {
+                            Text("Smart sort",
+                                 comment: "ControlPanel — reorder staged stops by minimum total path distance")
+                        } icon: {
+                            Image(systemName: "wand.and.stars")
+                        }
+                    }
+                    .controlSize(.small)
+                    .buttonStyle(.bordered)
+                    .help(LocalizedStringKey("Reorder stops by minimum total path distance — Stop 1 stays the start"))
+                    Spacer(minLength: 0)
+                }
+            }
+
             Divider()
 
             // Travel mode + speed (shared with sidebar mode panels)
@@ -234,9 +258,7 @@ struct ControlPanel: View {
     /// Straight-line vs road-routing is decided up front because the
     /// daemon's navigator gets the final polyline at start time. Mid-
     /// route flipping would need a re-route, which we don't support.
-    private var isLockedDuringNavigation: Bool {
-        state.navigation != nil
-    }
+    private var isLockedDuringNavigation: Bool { state.navigationActive }
 
     /// What speed will be sent to `location.navigate`.
     private var chosenSpeed: Double {
@@ -246,5 +268,17 @@ struct ControlPanel: View {
     private var speedLabel: String {
         let kmh = chosenSpeed * 3.6
         return String(format: "%.1f km/h (%.1f m/s)", kmh, chosenSpeed)
+    }
+
+    /// v1.11.2: smart sort wraps `StopOrdering.smartSorted` and
+    /// no-ops if the result is unchanged (no SwiftData write
+    /// pressure on a redundant assignment).
+    private func smartSortStops() {
+        let current = state.pendingStops
+        guard current.count >= 3 else { return }
+        let sorted = StopOrdering.smartSorted(current)
+        if sorted != current {
+            state.pendingStops = sorted
+        }
     }
 }

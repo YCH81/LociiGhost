@@ -353,3 +353,78 @@
 "Show route controls" = "Show route controls";
 "Auto-center" = "Auto-center";
 "Toggle map auto-recenter: when on, the map follows the simulated location during movement. When off, the map stays put — teleports and route starts still pan once, then you scroll the map manually." = "Toggle map auto-recenter: when on, the map follows the simulated location during movement. When off, the map stays put — teleports and route starts still pan once, then you scroll the map manually.";
+
+/* ─── v1.11.2 — joe bug fix (daemon failure UI) ───────────────────── */
+"Daemon failed to start: %@. Click to authenticate and restart." = "Daemon failed to start: %@. Click to authenticate and restart.";
+"Click to authenticate and restart the daemon — opens the macOS password prompt" = "Click to authenticate and restart the daemon — opens the macOS password prompt";
+
+/* ─── v1.11.2 — #1 BottomBar inline custom speed ──────────────────── */
+"km/h" = "km/h";
+"Apply this custom speed — works in every mode" = "Apply this custom speed — works in every mode";
+"Drop the custom speed and use the travel-mode preset" = "Drop the custom speed and use the travel-mode preset";
+
+/* ─── v1.11.2 — #2 RouteWaypointsEditSheet ────────────────────────── */
+"Edit waypoints" = "Edit waypoints";
+"Edit waypoints…" = "Edit waypoints…";
+"Edit info…" = "Edit info…";
+"Edit name, category, icon" = "Edit name, category, icon";
+"Edit waypoints (add / delete / reorder / change coords)" = "Edit waypoints (add / delete / reorder / change coords)";
+"Add waypoint" = "Add waypoint";
+"lat" = "lat";
+"lng" = "lng";
+"Run once (no save)" = "Run once (no save)";
+"Save changes" = "Save changes";
+"No waypoints yet. Tap **Add waypoint** to begin." = "No waypoints yet. Tap **Add waypoint** to begin.";
+"Run this trip once without overwriting the saved route" = "Run this trip once without overwriting the saved route";
+"Delete this waypoint" = "Delete this waypoint";
+"No waypoints to run." = "No waypoints to run.";
+
+/* ─── v1.11.2 — #3 RandomWalk mode-switch alert ───────────────────── */
+"Stop random walk to change this?" = "Stop random walk to change this?";
+"Keep walking" = "Keep walking";
+"Stop & apply" = "Stop & apply";
+"Changing this setting needs the current walk to stop. We'll restart it immediately with the new value." = "Changing this setting needs the current walk to stop. We'll restart it immediately with the new value.";
+
+/* ─── v1.11.2 — #4 full backup / restore ──────────────────────────── */
+"Backup all data" = "Backup all data";
+"Export everything — bookmarks, routes, stop presets — to a single JSON file you can restore on another Mac or after a reinstall." = "Export everything — bookmarks, routes, stop presets — to a single JSON file you can restore on another Mac or after a reinstall.";
+"Export all…" = "Export all…";
+"Save a JSON file containing every bookmark, route, and stop preset" = "Save a JSON file containing every bookmark, route, and stop preset";
+"Restore from backup…" = "Restore from backup…";
+"Open a backup file; pick Merge or Overwrite when prompted" = "Open a backup file; pick Merge or Overwrite when prompted";
+"Restore asks before doing anything: Merge keeps your current data, Overwrite replaces it." = "Restore asks before doing anything: Merge keeps your current data, Overwrite replaces it.";
+"Nothing to back up — no bookmarks, routes, or stop presets yet." = "Nothing to back up — no bookmarks, routes, or stop presets yet.";
+"Backed up %lld bookmarks · %lld routes · %lld presets." = "Backed up %lld bookmarks · %lld routes · %lld presets.";
+"Export all data (full backup)" = "Export all data (full backup)";
+"Restore from backup JSON" = "Restore from backup JSON";
+"This backup is from a newer LociiGhost version. Please update before restoring." = "This backup is from a newer LociiGhost version. Please update before restoring.";
+"Restore from backup?" = "Restore from backup?";
+"This backup contains %lld bookmarks · %lld routes · %lld presets.\n\nMerge keeps your existing data and adds new entries (skipping name+coords duplicates).\nOverwrite wipes everything currently in LociiGhost and replaces it with the backup." = "This backup contains %lld bookmarks · %lld routes · %lld presets.\n\nMerge keeps your existing data and adds new entries (skipping name+coords duplicates).\nOverwrite wipes everything currently in LociiGhost and replaces it with the backup.";
+"Merge" = "Merge";
+"Overwrite" = "Overwrite";
+"Restored: %lld bookmarks · %lld routes · %lld presets added." = "Restored: %lld bookmarks · %lld routes · %lld presets added.";
+
+/* ─── v1.11.2 — #5 Snap to real location ──────────────────────────── */
+"Snap to real" = "Snap to real";
+"Snap to real location" = "Snap to real location";
+"Teleport the simulated iPhone to your Mac's current real location — simulation stays active" = "Teleport the simulated iPhone to your Mac's current real location — simulation stays active";
+
+/* ─── v1.11.2 — #7 Copy all stops + #8 Smart sort ─────────────────── */
+"Copy all stops" = "Copy all stops";
+"Copy every staged stop as lat,lng per line — paste back into Bulk-add or share elsewhere" = "Copy every staged stop as lat,lng per line — paste back into Bulk-add or share elsewhere";
+"Smart sort" = "Smart sort";
+"Reorder stops by minimum total path distance — Stop 1 stays the start, the rest get sorted into an efficient visit order" = "Reorder stops by minimum total path distance — Stop 1 stays the start, the rest get sorted into an efficient visit order";
+"Reorder stops by minimum total path distance — Stop 1 stays the start" = "Reorder stops by minimum total path distance — Stop 1 stays the start";
+
+/* ─── v1.11.2 — #9 force re-authorize ─────────────────────────────── */
+"Advanced" = "Advanced";
+"If the system password dialog stopped appearing, or the daemon is stuck in a half-authorized state, force a clean re-authorization here. This will end the running daemon, prompt for your macOS password, and bring up a fresh privileged daemon." = "If the system password dialog stopped appearing, or the daemon is stuck in a half-authorized state, force a clean re-authorization here. This will end the running daemon, prompt for your macOS password, and bring up a fresh privileged daemon.";
+"Force re-authorize" = "Force re-authorize";
+"Force-kill the daemon, prompt for your macOS password, and bring up a fresh privileged daemon" = "Force-kill the daemon, prompt for your macOS password, and bring up a fresh privileged daemon";
+"Re-authorizing…" = "Re-authorizing…";
+"Use this when LociiGhost's automatic admin prompts aren't appearing on their own, or when you want to manually re-trigger the standard macOS authentication flow." = "Use this when LociiGhost's automatic admin prompts aren't appearing on their own, or when you want to manually re-trigger the standard macOS authentication flow.";
+
+/* ─── v1.11.2 bug-fix wave (T31/T32) ───────────────────────────────── */
+"Your current simulation will stop before this route starts." = "Your current simulation will stop before this route starts.";
+"Stop & start" = "Stop & start";
+"Switch to Multi-stop mode first" = "Switch to Multi-stop mode first";

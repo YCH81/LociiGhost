@@ -1,6 +1,7 @@
 import SwiftUI
 import MapKit
 import CoreLocation
+import Observation
 
 /// SwiftUI host for an MKMapView with three logical layers:
 ///
@@ -31,6 +32,35 @@ struct MapContainerView: NSViewRepresentable {
         map.showsZoomControls = true
         map.showsScale = true
         map.isRotateEnabled = false
+        // v1.11.2 round 21: reduce MapKit's per-frame render demand.
+        // Tahoe's VectorKit pipeline runs onRenderTimerFired at ~60 Hz
+        // (display refresh) regardless of state changes; the cheaper
+        // the per-frame content, the less main-thread time MapKit
+        // takes and the more headroom available for drag handling.
+        //
+        // - pitchEnabled false: disables 3D camera tilt, which the app
+        //   never uses but otherwise costs perspective transform work
+        //   every frame.
+        // - showsBuildings false: 3D building extrusions are pure
+        //   render cost we don't display.
+        // - showsTraffic false: real-time traffic overlay polls + draws
+        //   coloured road overlays we never reference.
+        // - selectableMapFeatures = []: turns off POI tap hit-testing,
+        //   which Apple keeps "live" each frame for pointer chasing.
+        // - preferredConfiguration with flat elevation + muted style:
+        //   trades visual richness for the cheapest standard render
+        //   path. Roads + labels stay legible; 3D shading is dropped.
+        map.isPitchEnabled = false
+        map.showsBuildings = false
+        map.showsTraffic = false
+        if #available(macOS 13.0, *) {
+            let config = MKStandardMapConfiguration(
+                elevationStyle: .flat,
+                emphasisStyle: .muted,
+            )
+            config.showsTraffic = false
+            map.preferredConfiguration = config
+        }
         // Initial map region:
         //
         //   * Browse-only Map device selected → ALWAYS open at
@@ -92,16 +122,62 @@ struct MapContainerView: NSViewRepresentable {
         map.addGestureRecognizer(rightClick)
 
         context.coordinator.mapView = map
+        // v1.11.2 round 20: kick off the coordinator's own observation
+        // loop via `withObservationTracking`. From here on, state
+        // changes flow directly to MapKit through the coordinator,
+        // bypassing SwiftUI's view body re-eval entirely. The map
+        // view is no longer dragged along when MainView /
+        // BottomBar / etc redraw.
+        context.coordinator.startObserving()
+
+        // ── VectorKit tile-cache keep-alive ─────────────────────────
+        // VectorKit (MKMapView's Metal renderer) evicts GPU tile
+        // textures when the display link goes quiet — typically a few
+        // seconds after the last user interaction. The next pan/drag
+        // then starts with a cache miss: tiles reload from disk, producing
+        // a visible "loading" stutter on the FIRST frame. This is the
+        // root cause of the "first drag slow, then smooth" pattern.
+        //
+        // Fix: attach an invisible 0×0 CALayer with a 30-second rotation
+        // animation to MKMapView's backing layer. Core Animation keeps
+        // the display link running while any layer in the hierarchy has
+        // an active animation — VectorKit's display link co-schedules
+        // with CA's, so it never fully suspends. The layer is opacity=0,
+        // frame=zero, so it has zero visual or hit-testing impact. CPU
+        // overhead is negligible (one matrix multiply per frame for a
+        // layer with no content). Power impact is minimal — the GPU was
+        // already paged-in for the rest of the UI; keeping it at idle
+        // cadence avoids the MORE expensive page-in cost on next drag.
+        map.wantsLayer = true
+        if let rootLayer = map.layer {
+            let keepAlive = CALayer()
+            keepAlive.frame    = .zero
+            keepAlive.opacity  = 0
+            keepAlive.masksToBounds = false
+            rootLayer.addSublayer(keepAlive)
+            let spin = CABasicAnimation(keyPath: "transform.rotation.z")
+            spin.fromValue    = 0
+            spin.toValue      = 2 * Double.pi
+            spin.duration     = 30
+            spin.repeatCount  = .infinity
+            spin.timingFunction = CAMediaTimingFunction(name: .linear)
+            keepAlive.add(spin, forKey: "tileKeepAlive")
+        }
+
         return map
     }
 
     func updateNSView(_ nsView: MKMapView, context: Context) {
-        context.coordinator.state = state
-        context.coordinator.refreshAnnotations(on: nsView)
-        context.coordinator.applyPendingFly(on: nsView)
-        // Cheap idempotence: applyTileLayer no-ops when the layer
-        // hasn't changed, so calling it on every state update is fine.
-        Coordinator.applyTileLayer(state.mapTileLayer, to: nsView)
+        // v1.11.2 round 20: no-op. The coordinator manages its own
+        // state subscription via `withObservationTracking`. SwiftUI
+        // may still call updateNSView for non-state reasons (layout,
+        // window resize, etc.) — those don't need MapKit refreshes.
+        // If the parent ever injects a different AppState reference,
+        // re-bind and restart the observation loop.
+        if context.coordinator.state !== state {
+            context.coordinator.state = state
+            context.coordinator.startObserving()
+        }
     }
 
     @MainActor
@@ -112,6 +188,8 @@ struct MapContainerView: NSViewRepresentable {
         private var simulatedAnnotation: SimulatedAnnotation?
         private var macAnnotation: MacAnnotation?
         private var destinationAnnotation: DestinationAnnotation?
+        private var searchPreviewAnnotation: SearchPreviewAnnotation?
+        private var lastSearchPreviewSig: Coordinate?
         private var routePolyline: StyledPolyline?
         private var previewPolyline: StyledPolyline?
         private var randomWalkPreviewCircle: MKCircle?
@@ -139,6 +217,68 @@ struct MapContainerView: NSViewRepresentable {
 
         init(state: AppState) {
             self.state = state
+        }
+
+        // MARK: v1.11.2 round 20 — withObservationTracking loop
+
+        /// Kicks off the standalone observation loop. From this point
+        /// MapKit updates are driven by `withObservationTracking`,
+        /// NOT by SwiftUI's view body re-evaluation. The map view is
+        /// effectively decoupled from MainView's render cycle.
+        func startObserving() {
+            scheduleNextObservation()
+            applyStateToMap()
+        }
+
+        /// Subscribe to one round of state mutations. The closure
+        /// passed to `withObservationTracking` reads every state
+        /// property whose change should trigger a MapKit refresh.
+        /// `onChange` fires once on the next mutation of any of those
+        /// properties, dispatches an apply pass, and re-subscribes
+        /// so the loop continues.
+        ///
+        /// Note: properties read inside this closure form the
+        /// subscription set. To avoid pulling in CoreLocation's
+        /// 1 Hz publisher we ONLY read `state.macLocation.*` when
+        /// `state.currentMapFocus == nil` (i.e. the Mac pin is
+        /// actually going to render).
+        private func scheduleNextObservation() {
+            withObservationTracking { [self] in
+                _ = state.activeRoute
+                _ = state.activeRouteIsStraightLine
+                _ = state.activeWaypoints
+                _ = state.pendingStops
+                _ = state.previewRoute
+                _ = state.previewIsStraightLine
+                _ = state.activeDestination
+                _ = state.searchPreviewCoord
+                _ = state.randomWalkPreviewCenter
+                _ = state.randomWalkPreviewRadiusM
+                _ = state.randomWalk
+                _ = state.currentMapFocus
+                _ = state.isVirtualMapSelected
+                _ = state.pendingMapFly
+                _ = state.mapTileLayer
+                if state.currentMapFocus == nil {
+                    _ = state.macLocation.coordinate
+                }
+            } onChange: { [weak self] in
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.applyStateToMap()
+                    self.scheduleNextObservation()
+                }
+            }
+        }
+
+        /// Push the current state snapshot onto MKMapView. Same work
+        /// updateNSView used to do — now triggered by the observation
+        /// loop above instead of SwiftUI's per-body schedule.
+        private func applyStateToMap() {
+            guard let mv = mapView else { return }
+            refreshAnnotations(on: mv)
+            applyPendingFly(on: mv)
+            Self.applyTileLayer(state.mapTileLayer, to: mv)
         }
 
         /// Last applied layer per MKMapView, keyed by ObjectIdentifier
@@ -199,20 +339,18 @@ struct MapContainerView: NSViewRepresentable {
             let animated: Bool
             if req.preserveZoom {
                 // Follow-puck path: keep the user's current span,
-                // only shift the centre. setRegion-with-current-
-                // span would jitter on rapid updates; passing the
-                // map's existing `region.span` keeps zoom stable.
-                // v1.11.0: animated=false here. The 1 Hz follow
-                // tick previously queued a 200-300 ms MapKit pan
-                // animation per update — on macOS 26 Tahoe these
-                // accumulate on the main thread and stall SwiftUI
-                // alerts/sheets/popovers that try to present mid-
-                // navigation. The simulated pin is already KVO-
-                // smooth so jumping the region instantly is barely
-                // perceptible visually but keeps the alert / mode-
-                // switch dialog snappy.
+                // only shift the centre. animated=false: the 1 Hz
+                // animated pan was accumulating on macOS Tahoe.
                 region = MKCoordinateRegion(center: center, span: map.region.span)
                 animated = false
+                // Gate the camera-save path: this setRegion is
+                // programmatic (1 Hz follow tick), not a user pan.
+                // MKMapView fires regionWillChange/regionDidChange
+                // synchronously during setRegion on macOS, so the
+                // flag fully covers the delegate callbacks.
+                applyingProgrammaticFly = true
+                map.setRegion(region, animated: animated)
+                applyingProgrammaticFly = false
             } else {
                 region = MKCoordinateRegion(
                     center: center,
@@ -220,8 +358,8 @@ struct MapContainerView: NSViewRepresentable {
                     longitudinalMeters: req.spanMeters,
                 )
                 animated = true
+                map.setRegion(region, animated: animated)
             }
-            map.setRegion(region, animated: animated)
         }
 
         @objc func handleClick(_ gesture: NSClickGestureRecognizer) {
@@ -250,18 +388,20 @@ struct MapContainerView: NSViewRepresentable {
                 return
             }
             // Stop-adding only when Multi-stop mode is the active
-            // panel. Without this gate every stray map click would
-            // sprout a red pin even when the user is just panning
-            // around looking for somewhere to teleport — a real
-            // annoyance the previous version surfaced. Right-click
-            // ALWAYS pops the context menu (see `handleRightClick`),
-            // so there's still a one-step "add as stop" path
-            // available regardless of mode.
-            guard state.activeMovementMode == .multiStop else { return }
+            // panel, OR when a multi-stop dwell navigation is already
+            // running (canQueueStop covers both). Without this gate
+            // every stray map click would sprout a red pin even when
+            // the user is just panning around looking for somewhere to
+            // teleport — a real annoyance the previous version surfaced.
+            // Right-click ALWAYS pops the context menu (see
+            // `handleRightClick`), so there's still a one-step "add as
+            // stop" path available regardless of mode.
+            guard state.canQueueStop else { return }
             // Append rather than replace so successive clicks build a
-            // multi-stop trip. The control panel exposes a clear / undo
-            // affordance for getting out of this mode.
-            state.pendingStops.append(coordinate)
+            // multi-stop trip. In dwell mode this also injects the new
+            // coord into dwellContext.remainingStops so the iPhone
+            // actually visits it during the current trip.
+            state.appendQueueStop(coordinate)
             refreshAnnotations(on: map)
         }
 
@@ -337,6 +477,15 @@ struct MapContainerView: NSViewRepresentable {
             }
             menu.addItem(teleport)
 
+            // v1.11.2 bug #3 follow-up: "Add as stop" only makes sense
+            // when the user has already opened Multi-stop mode (left-
+            // click on the map follows the same rule, see line ~262).
+            // Right-clicking on the map while a route / random walk /
+            // joystick is running, or while no mode is active at all,
+            // used to silently append to pendingStops anyway — confusing
+            // because the new pin never showed up in any visible
+            // staging list. Disable the item with a hint instead.
+            let canAddStop = state.activeMovementMode == .multiStop
             let addStop = NSMenuItem(
                 title: menuString("Add as stop"),
                 action: #selector(menuAddStop(_:)),
@@ -344,6 +493,10 @@ struct MapContainerView: NSViewRepresentable {
             )
             addStop.target = self
             addStop.image = NSImage(systemSymbolName: "mappin.and.ellipse", accessibilityDescription: nil)
+            addStop.isEnabled = canAddStop
+            if !canAddStop {
+                addStop.toolTip = menuString("Switch to Multi-stop mode first")
+            }
             menu.addItem(addStop)
 
             // Copy-coordinates lands right after the action items
@@ -383,7 +536,7 @@ struct MapContainerView: NSViewRepresentable {
 
         @objc func menuAddStop(_ sender: NSMenuItem) {
             guard let coord = contextMenuCoordinate else { return }
-            state.pendingStops.append(Coordinate(lat: coord.latitude, lng: coord.longitude))
+            state.appendQueueStop(Coordinate(lat: coord.latitude, lng: coord.longitude))
             if let map = mapView {
                 refreshAnnotations(on: map)
             }
@@ -546,6 +699,29 @@ struct MapContainerView: NSViewRepresentable {
                 lastDestinationSignature = destination
             }
 
+            // --- Search preview marker (orange) -------------------------
+            // v1.11.2: the search bar's Preview action drops a marker
+            // here so the user can see *where* they previewed instead
+            // of just having the map silently pan. Same dirty-check
+            // pattern as the destination flag — touch MapKit only when
+            // the coord actually changes; nil → no marker.
+            let previewMark = state.searchPreviewCoord
+            if previewMark != lastSearchPreviewSig {
+                if let old = searchPreviewAnnotation {
+                    map.removeAnnotation(old)
+                    searchPreviewAnnotation = nil
+                }
+                if let coord = previewMark {
+                    let pin = SearchPreviewAnnotation()
+                    pin.coordinate = CLLocationCoordinate2D(latitude: coord.lat, longitude: coord.lng)
+                    pin.title = "Preview"
+                    pin.subtitle = String(format: "%.5f, %.5f", coord.lat, coord.lng)
+                    map.addAnnotation(pin)
+                    searchPreviewAnnotation = pin
+                }
+                lastSearchPreviewSig = previewMark
+            }
+
             // --- Pending stops + active waypoints (numbered pins) ------
             // Render BOTH the staging list (`pendingStops`, red, what the
             // user is composing right now) AND the captured waypoint list
@@ -679,12 +855,30 @@ struct MapContainerView: NSViewRepresentable {
             // haven't changed since the last refresh. The first-fix
             // recenter is hoisted out of the rebuild branch so it
             // still fires on the initial appearance.
+            //
+            // v1.11.2 round 19 perf fix: ONLY read state.macLocation
+            // when the Mac annotation is actually going to render
+            // (macHidden == false). Previously `state.macLocation.accuracy`
+            // was read unconditionally, which registered MapContainerView
+            // as an observer of the CoreLocation 1 Hz publisher even
+            // when a simulated/browse pin had taken visual focus — so
+            // every Mac location tick fired updateNSView during a
+            // drag, stuttering the pan. Now in device-connected mode
+            // (currentMapFocus != nil) MapContainerView is fully
+            // decoupled from the CoreLocation publisher.
             let macHidden = state.currentMapFocus != nil
-            let macCoord: Coordinate? = (!macHidden && state.macLocation.coordinate != nil)
-                ? Coordinate(lat: state.macLocation.coordinate!.latitude,
-                             lng: state.macLocation.coordinate!.longitude)
-                : nil
-            let macAcc: Double? = state.macLocation.accuracy
+            let macCoord: Coordinate?
+            let macAcc: Double?
+            if macHidden {
+                macCoord = nil
+                macAcc = nil
+            } else if let c = state.macLocation.coordinate {
+                macCoord = Coordinate(lat: c.latitude, lng: c.longitude)
+                macAcc = state.macLocation.accuracy
+            } else {
+                macCoord = nil
+                macAcc = nil
+            }
             let macSig: (Coordinate, Double?)? = macCoord.map { ($0, macAcc) }
             let macSigChanged: Bool = {
                 switch (macSig, lastMacSig) {
@@ -731,26 +925,53 @@ struct MapContainerView: NSViewRepresentable {
         /// Throttle handle for `regionDidChange` saves — we don't want
         /// to write the SwiftData store on every pixel of the user's
         /// pan, but we DO want the latest region to land within ~half
-        /// a second of them stopping moving. The Task is cancelled
-        /// and replaced on every region change; only the last one's
-        /// timer ever fires the save.
+        /// a second of them stopping moving.
+        ///
+        /// v1.11.2 drag-lag fix: MKMapView fires `regionDidChange`
+        /// continuously at display-link cadence (~60 Hz) during a
+        /// drag. The old approach cancelled + recreated a Swift
+        /// Concurrency Task on EVERY call — ~60 allocations/sec. The
+        /// pattern now uses a separate `regionChanging` flag to gate
+        /// Task creation: `regionWillChange` arms the flag, and only
+        /// ONE new Task is created when the flag transitions. During
+        /// the drag every `regionDidChange` call just snapshots the
+        /// latest region into `pendingCenter/pendingSpan` (cheap
+        /// value writes); the single pending Task reads those values
+        /// when its 500 ms timer fires.
         private var saveCameraTask: Task<Void, Never>?
+        private var regionChanging = false
+        // Set to true just before applyPendingFly calls setRegion so
+        // that the resulting regionWillChange / regionDidChange pair is
+        // NOT treated as a user-initiated pan. Programmatic follow
+        // ticks fire at 1 Hz during navigation — saving the camera
+        // on every tick floods the SwiftData WAL and causes app-wide
+        // lag within a few minutes. User-initiated pans (flag is false
+        // when the delegate fires) still go through the save path.
+        private var applyingProgrammaticFly = false
+        private var pendingCenter = CLLocationCoordinate2D()
+        private var pendingSpan: Double = 0
+
+        func mapView(_ mapView: MKMapView, regionWillChangeAnimated animated: Bool) {
+            if !applyingProgrammaticFly { regionChanging = true }
+        }
 
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
+            // Always snapshot the latest region so the Task has fresh
+            // values whenever it finally fires.
+            pendingCenter = mapView.region.center
+            pendingSpan   = mapView.region.span.latitudeDelta * 111_000
+
+            guard regionChanging else { return }
+            regionChanging = false
+
             saveCameraTask?.cancel()
-            // Capture the region NOW (not in the deferred task) so we
-            // persist what the map looks like at the end of the
-            // user's interaction, not whatever it has drifted to half
-            // a second later.
-            let center = mapView.region.center
-            let span = mapView.region.span.latitudeDelta * 111_000  // ° → m
             saveCameraTask = Task { [weak self] in
                 try? await Task.sleep(for: .milliseconds(500))
-                if Task.isCancelled { return }
-                self?.state.saveMapCamera(
-                    centerLat: center.latitude,
-                    centerLng: center.longitude,
-                    spanMeters: span / 2,           // store half-span
+                guard !Task.isCancelled, let self else { return }
+                self.state.saveMapCamera(
+                    centerLat: self.pendingCenter.latitude,
+                    centerLng: self.pendingCenter.longitude,
+                    spanMeters: self.pendingSpan / 2,
                 )
             }
         }
@@ -873,6 +1094,12 @@ struct MapContainerView: NSViewRepresentable {
                 v.markerTintColor = stop.isActive ? .systemBlue : .systemRed
                 v.glyphText = "\(stop.stopNumber)"
                 v.canShowCallout = true
+                // .required opts stop pins out of MapKit's
+                // collision-avoidance pool. Without this, stops that
+                // are geographically close (common in dense walking
+                // routes) are silently hidden — the user sees 6 pins
+                // for a 7-stop route with no indication one is missing.
+                v.displayPriority = .required
                 return v
 
             case is DestinationAnnotation:
@@ -882,6 +1109,22 @@ struct MapContainerView: NSViewRepresentable {
                 v.annotation = annotation
                 v.markerTintColor = .systemPurple
                 v.glyphImage = NSImage(systemSymbolName: "flag.checkered", accessibilityDescription: nil)
+                v.canShowCallout = true
+                return v
+
+            case is SearchPreviewAnnotation:
+                // v1.11.2: orange marker with magnifying-glass glyph
+                // — visually distinct from staging stops (red), live
+                // waypoints (blue), destination (purple), and the
+                // simulated puck (green / blue). Picked orange so a
+                // user previewing across an active route still sees
+                // both at a glance.
+                let id = "search-preview"
+                let v = (mapView.dequeueReusableAnnotationView(withIdentifier: id) as? MKMarkerAnnotationView)
+                    ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: id)
+                v.annotation = annotation
+                v.markerTintColor = .systemOrange
+                v.glyphImage = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
                 v.canShowCallout = true
                 return v
 
@@ -925,6 +1168,10 @@ private final class StopAnnotation: MKPointAnnotation {
 private final class SimulatedAnnotation: MKPointAnnotation {}
 private final class MacAnnotation: MKPointAnnotation {}
 private final class DestinationAnnotation: MKPointAnnotation {}
+/// v1.11.2: marker dropped by the search bar's Preview action so the
+/// user actually sees where they previewed. Cleared by teleport /
+/// navigate / a new preview (the previous marker just relocates).
+private final class SearchPreviewAnnotation: MKPointAnnotation {}
 
 /// MKPolyline carrying the small bit of metadata the renderer needs to
 /// distinguish straight-line trips from OSRM road routes, previews from

@@ -53,6 +53,11 @@ struct AdminPromptBanner: View {
     /// Connect attempt blew up at the tunnel step. nil daemonIsRoot
     /// (haven't queried yet / daemon down) doesn't trigger the banner
     /// so we don't flash it during startup.
+    ///
+    /// (v1.11.2 round 4 perf revert: the `.failed`-status branch was
+    /// removed; the AppState auto-elevate trigger still fires the
+    /// system prompt automatically on Tahoe, and the DaemonStatusPill
+    /// is the visible recovery affordance for non-auto cases.)
     private var shouldShow: Bool {
         state.needsAdminElevation || state.daemonIsRoot == false
     }

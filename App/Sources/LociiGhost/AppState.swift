@@ -92,6 +92,45 @@ final class AppState {
         }
     }
 
+    /// v1.11.2 round 17: per-device snapshots of the active movement
+    /// mode + pending stops. AppState's `activeMovementMode` and
+    /// `pendingStops` are visible to the UI as single global values,
+    /// but each device gets its own slot saved here on
+    /// device-switch and restored on switch-back. Without this, a
+    /// user with iPhone A staged for multi-stop who briefly clicks
+    /// Map or iPhone B comes back to a blank multi-stop panel and
+    /// thinks their staging vanished.
+    private var savedModesByDevice: [String: MovementMode] = [:]
+    private var savedStopsByDevice: [String: [Coordinate]] = [:]
+
+    /// Snapshot the visible global mode + stops into the per-device
+    /// dicts. Called from MainView's selectedUDID onChange just
+    /// before switching, with the OLD device's UDID.
+    func snapshotModeAndStops(forLeaving udid: String) {
+        if let mode = activeMovementMode {
+            savedModesByDevice[udid] = mode
+        } else {
+            savedModesByDevice.removeValue(forKey: udid)
+        }
+        if !pendingStops.isEmpty {
+            savedStopsByDevice[udid] = pendingStops
+        } else {
+            savedStopsByDevice.removeValue(forKey: udid)
+        }
+    }
+
+    /// Restore the per-device snapshot for the arriving device.
+    /// Sets activeMovementMode first (its didSet may clear
+    /// pendingStops as a side effect when moving away from
+    /// .multiStop), then writes pendingStops to override the clear
+    /// with the real saved staging.
+    func restoreModeAndStops(forArriving udid: String) {
+        let savedMode = savedModesByDevice[udid]
+        let savedStops = savedStopsByDevice[udid] ?? []
+        activeMovementMode = savedMode
+        pendingStops = savedStops
+    }
+
     /// Snapshot of `pendingStops` captured at the moment a multi-
     /// stop Navigate fires. Per-device (see `tripsByDevice`) so
     /// switching iPhones doesn't wipe the live waypoint dots —
@@ -468,7 +507,69 @@ final class AppState {
     /// `event.position_update` and `event.state_changed`. Becomes nil when
     /// navigation finishes (reached / stopped) but `activeRoute` keeps the
     /// last route + destination visible on the map.
-    var navigation: NavigationVM?
+    var navigation: NavigationVM? {
+        didSet {
+            // Guard: only write navigationActive when the nil/non-nil
+            // state actually changes. @Observable fires withMutation on
+            // every assign — without this guard, navigation = nav on
+            // every 1 Hz position event re-notifies all observers of
+            // navigationActive even when it's already true, causing
+            // MovementModesSection / ControlPanel / StartRouteSheet to
+            // re-render every second.
+            let active = navigation != nil
+            if navigationActive != active { navigationActive = active }
+            let paused = navigation?.isPaused == true
+            if navigationPaused != paused { navigationPaused = paused }
+        }
+    }
+
+    /// Lightweight session-active flags — set to `true` when a session
+    /// starts, `false` when it stops. Views that only need to know
+    /// "is something running?" (mode buttons, alert gates, etc.) should
+    /// read these instead of `navigation != nil` / `randomWalk != nil` /
+    /// `joystick != nil`. The full VMs are rebuilt on every 1 Hz position
+    /// event; anything observing those properties re-renders every second.
+    /// These flags only change on session transitions, so sidebar views
+    /// that read them stay completely quiet while a simulation is running.
+    var navigationActive: Bool = false
+    var navigationPaused: Bool = false
+    var randomWalkActive: Bool = false
+    var joystickActive: Bool = false
+
+    /// Convenience: any session is running. Reads only the three cheap
+    /// booleans above, not the full VMs.
+    var anySessionActive: Bool { navigationActive || randomWalkActive || joystickActive }
+
+    /// True when a left-click (or right-click "Add as stop") on the map
+    /// should append a coordinate to the pending-stops queue.
+    ///
+    /// Two windows:
+    ///   1. Multi-stop mode is the active panel — the normal staging phase
+    ///      before the user presses Navigate.
+    ///   2. A multi-stop dwell navigation is already running — `pendingStops`
+    ///      is non-empty (not cleared by navigate()) and we have a live
+    ///      `dwellContext` that can absorb extra stops mid-trip.
+    ///
+    /// Deliberately excludes non-dwell navigation: once the daemon has the
+    /// full fixed polyline there's nowhere to inject a new waypoint without
+    /// re-routing. The stop is staged in `pendingStops` by `appendQueueStop`
+    /// and stays there for the next Navigate after the current trip ends.
+    var canQueueStop: Bool {
+        if activeMovementMode == .multiStop { return true }
+        if navigationActive && !pendingStops.isEmpty { return true }
+        return false
+    }
+
+    /// Append `coord` to the staging queue and, when a dwell sequence
+    /// is running, also inject the stop into `dwellContext.remainingStops`
+    /// so the iPhone actually visits it during the current trip.
+    func appendQueueStop(_ coord: Coordinate) {
+        pendingStops.append(coord)
+        if var dctx = dwellContext {
+            dctx.remainingStops.append(coord)
+            dwellContext = dctx
+        }
+    }
 
     /// Set by `runRoute` when the user requested looping, cleared by
     /// `stopNavigation` (explicit Stop) or by the loop counter
@@ -497,6 +598,16 @@ final class AppState {
     /// (it's equivalent to dwellEnabled = false).
     var dwellSeconds: Int = max(1, UserDefaults.standard.integer(forKey: "dwell.seconds")) {
         didSet { UserDefaults.standard.set(max(1, dwellSeconds), forKey: "dwell.seconds") }
+    }
+    /// Bookmark sidebar sort order ("date" / "alpha" / "manual").
+    /// Kept in AppState rather than @AppStorage to avoid the macOS
+    /// global UserDefaults.didChangeNotification re-render trap that
+    /// would cause BookmarksSection to redraw on every system write.
+    var bookmarkSortMode: String = UserDefaults.standard.string(forKey: "bookmarks.sortMode") ?? "date" {
+        didSet {
+            guard bookmarkSortMode != oldValue else { return }
+            UserDefaults.standard.set(bookmarkSortMode, forKey: "bookmarks.sortMode")
+        }
     }
 
     /// User dismissed the on-map ControlPanel popup (via its X
@@ -598,6 +709,15 @@ final class AppState {
     /// duplicates so updateNSView() stays idempotent.
     var pendingMapFly: MapFlyRequest?
 
+    /// v1.11.2: when the user previews a search result (search bar →
+    /// preview button), drop a marker at the previewed coord so the
+    /// user actually *sees* where they searched. Cleared automatically
+    /// when teleport / navigate fires (a simulated or destination pin
+    /// then takes the visual focus) or when the user previews another
+    /// place (the marker just relocates). MapContainerView renders
+    /// this via a dedicated SearchPreviewAnnotation type.
+    var searchPreviewCoord: Coordinate?
+
     /// Currently selected base map layer. Mutated from the floating
     /// layer-selector button; MapContainerView observes this and
     /// swaps overlays in updateNSView(). Default is Apple's native
@@ -664,9 +784,19 @@ final class AppState {
     /// Latest snapshot from a `location.random_walk` session, populated
     /// from `event.position_update` / `event.state_changed` notifications.
     /// nil means no walker is running.
-    var randomWalk: RandomWalkVM?
+    var randomWalk: RandomWalkVM? {
+        didSet {
+            let active = randomWalk != nil
+            if randomWalkActive != active { randomWalkActive = active }
+        }
+    }
     /// Latest snapshot from a `location.joystick` session.
-    var joystick: JoystickVM?
+    var joystick: JoystickVM? {
+        didSet {
+            let active = joystick != nil
+            if joystickActive != active { joystickActive = active }
+        }
+    }
 
     /// Live preview of the random-walk bounds while the user is still
     /// configuring the panel. The map renders a translucent disc using
@@ -696,6 +826,12 @@ final class AppState {
     /// EDIT-mode counterpart for an already-saved Route. Mutually
     /// exclusive with `pendingRouteImport` in practice.
     var editingRoute: Route?
+
+    /// v1.11.2: dedicated edit-waypoints sheet trigger. Separate from
+    /// `editingRoute` (which surfaces RouteEditSheet for name /
+    /// category / icon) so a user can edit metadata or waypoints
+    /// independently without one sheet trying to host both UIs.
+    var editingRouteWaypoints: Route?
 
     /// "Save current pending stops as a route" surfaces the same
     /// `RouteEditSheet` that GPX import uses. We pre-fill the name
@@ -1427,6 +1563,307 @@ final class AppState {
         }
     }
 
+    // MARK: - Full backup (v1.11.2)
+
+    /// Dump every user-generated entity (bookmarks + routes + stop
+    /// presets) to a single versioned JSON file via NSSavePanel.
+    /// Designed for "I'm about to wipe / migrate / reinstall" — one
+    /// file, one round-trip back through `importAllBackup()`.
+    @MainActor
+    func exportAllBackup() async {
+        guard let ctx = modelContext else {
+            lastError = String(localized: "Database not ready yet — try again in a second.")
+            return
+        }
+        let bookmarks = (try? ctx.fetch(FetchDescriptor<Bookmark>(
+            sortBy: [SortDescriptor(\Bookmark.createdAt)],
+        ))) ?? []
+        let routes = (try? ctx.fetch(FetchDescriptor<Route>(
+            sortBy: [SortDescriptor(\Route.createdAt)],
+        ))) ?? []
+        let presets = (try? ctx.fetch(FetchDescriptor<StopPreset>(
+            sortBy: [SortDescriptor(\StopPreset.createdAt)],
+        ))) ?? []
+
+        guard !bookmarks.isEmpty || !routes.isEmpty || !presets.isEmpty else {
+            lastError = String(
+                localized: "Nothing to back up — no bookmarks, routes, or stop presets yet.",
+                comment: "Toast when full-backup export finds an empty database",
+            )
+            return
+        }
+
+        let bundle = FullBackupBundle(
+            version: 1,
+            exportedAt: .now,
+            bookmarks: bookmarks.map {
+                FullBackupBundle.BookmarkEntry(
+                    name: $0.name,
+                    lat: $0.lat,
+                    lng: $0.lng,
+                    category: $0.category,
+                    iconSymbol: $0.iconSymbol,
+                    createdAt: $0.createdAt,
+                )
+            },
+            routes: routes.map {
+                FullBackupBundle.RouteEntry(
+                    name: $0.name,
+                    category: $0.category,
+                    iconSymbol: $0.iconSymbol,
+                    points: $0.points.map { [$0.lat, $0.lng] },
+                    createdAt: $0.createdAt,
+                )
+            },
+            stopPresets: presets.map {
+                FullBackupBundle.StopPresetEntry(
+                    name: $0.name,
+                    points: $0.coordinates.map { [$0.lat, $0.lng] },
+                    createdAt: $0.createdAt,
+                )
+            },
+        )
+
+        let date = DateFormatter()
+        date.dateFormat = "yyyy-MM-dd"
+        let defaultName = "lociighost-backup-\(date.string(from: .now)).json"
+
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.init(filenameExtension: "json")!]
+        panel.nameFieldStringValue = defaultName
+        panel.title = String(
+            localized: "Export all data (full backup)",
+            comment: "Title of the save-file dialog for full backup export",
+        )
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        do {
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(bundle)
+            try data.write(to: url, options: .atomic)
+            lastError = String(
+                format: String(
+                    localized: "Backed up %lld bookmarks · %lld routes · %lld presets.",
+                    comment: "Toast after a successful full-backup export",
+                ),
+                bookmarks.count, routes.count, presets.count,
+            )
+        } catch {
+            lastError = "Backup failed: \(error.localizedDescription)"
+        }
+    }
+
+    /// Open a previously-exported backup JSON, prompt the user to pick
+    /// a merge / overwrite strategy via NSAlert, then apply. Refuses to
+    /// proceed if the version is newer than this build understands —
+    /// downgrade-on-restore is a footgun we don't ship.
+    @MainActor
+    func importAllBackup() async {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.init(filenameExtension: "json")!]
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.title = String(
+            localized: "Restore from backup JSON",
+            comment: "Title of the open-file dialog for full backup import",
+        )
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        let bundle: FullBackupBundle
+        do {
+            let data = try Data(contentsOf: url)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            bundle = try decoder.decode(FullBackupBundle.self, from: data)
+        } catch {
+            lastError = "Restore failed: couldn't parse backup file — \(error.localizedDescription)"
+            return
+        }
+
+        guard bundle.version <= 1 else {
+            lastError = String(
+                localized: "This backup is from a newer LociiGhost version. Please update before restoring.",
+                comment: "Toast when full-backup import sees a higher schema version than this build supports",
+            )
+            return
+        }
+
+        // Strategy dialog — three buttons, NSAlert returns first /
+        // second / third button for Merge / Overwrite / Cancel.
+        let alert = NSAlert()
+        alert.messageText = String(
+            localized: "Restore from backup?",
+            comment: "Full-backup import — strategy dialog title",
+        )
+        alert.informativeText = String(
+            format: String(
+                localized: "This backup contains %lld bookmarks · %lld routes · %lld presets.\n\nMerge keeps your existing data and adds new entries (skipping name+coords duplicates).\nOverwrite wipes everything currently in LociiGhost and replaces it with the backup.",
+                comment: "Full-backup import — strategy dialog body explaining merge vs overwrite",
+            ),
+            bundle.bookmarks.count, bundle.routes.count, bundle.stopPresets.count,
+        )
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: String(
+            localized: "Merge",
+            comment: "Full-backup import — merge button",
+        ))
+        alert.addButton(withTitle: String(
+            localized: "Overwrite",
+            comment: "Full-backup import — overwrite button (destructive)",
+        ))
+        alert.addButton(withTitle: String(
+            localized: "Cancel",
+            comment: "Full-backup import — cancel button",
+        ))
+
+        let response = alert.runModal()
+        let strategy: BackupImportStrategy
+        switch response {
+        case .alertFirstButtonReturn:  strategy = .merge
+        case .alertSecondButtonReturn: strategy = .overwrite
+        default: return  // user cancelled
+        }
+
+        applyBackup(bundle, strategy: strategy)
+    }
+
+    /// Insert (and optionally wipe-first) bundle records into the
+    /// SwiftData store. Dedupe key is `(name, coords)` for all three
+    /// entity types — same name+different coords becomes a separate
+    /// entry, same coords+different name becomes a separate entry.
+    @MainActor
+    private func applyBackup(_ bundle: FullBackupBundle, strategy: BackupImportStrategy) {
+        guard let ctx = modelContext else {
+            lastError = String(localized: "Database not ready yet — try again in a second.")
+            return
+        }
+
+        if strategy == .overwrite {
+            if let bms = try? ctx.fetch(FetchDescriptor<Bookmark>()) {
+                for b in bms { ctx.delete(b) }
+            }
+            if let rs = try? ctx.fetch(FetchDescriptor<Route>()) {
+                for r in rs { ctx.delete(r) }
+            }
+            if let ps = try? ctx.fetch(FetchDescriptor<StopPreset>()) {
+                for p in ps { ctx.delete(p) }
+            }
+        }
+
+        // Build dedupe sets up front so the per-entry merge check is
+        // O(1); rebuilding the set per-entry would be O(N²) for a
+        // big backup against a big database.
+        var bookmarkKeys: Set<String> = []
+        var routeKeys: Set<String> = []
+        var presetKeys: Set<String> = []
+        if strategy == .merge {
+            if let bms = try? ctx.fetch(FetchDescriptor<Bookmark>()) {
+                for b in bms {
+                    bookmarkKeys.insert(Self.bookmarkKey(name: b.name, lat: b.lat, lng: b.lng))
+                }
+            }
+            if let rs = try? ctx.fetch(FetchDescriptor<Route>()) {
+                for r in rs {
+                    routeKeys.insert(Self.coordsKey(name: r.name, points: r.points))
+                }
+            }
+            if let ps = try? ctx.fetch(FetchDescriptor<StopPreset>()) {
+                for p in ps {
+                    presetKeys.insert(Self.coordsKey(name: p.name, points: p.coordinates))
+                }
+            }
+        }
+
+        var addedBookmarks = 0, addedRoutes = 0, addedPresets = 0
+
+        for entry in bundle.bookmarks {
+            if strategy == .merge,
+               bookmarkKeys.contains(Self.bookmarkKey(name: entry.name, lat: entry.lat, lng: entry.lng)) {
+                continue
+            }
+            let bm = Bookmark(
+                name: entry.name,
+                lat: entry.lat,
+                lng: entry.lng,
+                category: entry.category,
+                iconSymbol: entry.iconSymbol,
+                createdAt: entry.createdAt ?? .now,
+            )
+            ctx.insert(bm)
+            addedBookmarks += 1
+        }
+
+        for entry in bundle.routes {
+            let coords: [Coordinate] = entry.points.compactMap { pt in
+                guard pt.count == 2 else { return nil }
+                return Coordinate(lat: pt[0], lng: pt[1])
+            }
+            if strategy == .merge,
+               routeKeys.contains(Self.coordsKey(name: entry.name, points: coords)) {
+                continue
+            }
+            let r = Route(
+                name: entry.name,
+                points: coords,
+                category: entry.category,
+                iconSymbol: entry.iconSymbol,
+                createdAt: entry.createdAt ?? .now,
+            )
+            ctx.insert(r)
+            addedRoutes += 1
+        }
+
+        for entry in bundle.stopPresets {
+            let coords: [Coordinate] = entry.points.compactMap { pt in
+                guard pt.count == 2 else { return nil }
+                return Coordinate(lat: pt[0], lng: pt[1])
+            }
+            if strategy == .merge,
+               presetKeys.contains(Self.coordsKey(name: entry.name, points: coords)) {
+                continue
+            }
+            let p = StopPreset(
+                name: entry.name,
+                coordinates: coords,
+                createdAt: entry.createdAt ?? .now,
+            )
+            ctx.insert(p)
+            addedPresets += 1
+        }
+
+        do {
+            try ctx.save()
+            lastError = String(
+                format: String(
+                    localized: "Restored: %lld bookmarks · %lld routes · %lld presets added.",
+                    comment: "Toast after a successful full-backup restore",
+                ),
+                addedBookmarks, addedRoutes, addedPresets,
+            )
+        } catch {
+            lastError = "Restore failed: \(error.localizedDescription)"
+        }
+    }
+
+    /// Dedupe key for Bookmark: name + 6-decimal coords. Six decimals
+    /// is the same precision the UI prints, so two records that look
+    /// identical to the user collapse to the same key.
+    private static func bookmarkKey(name: String, lat: Double, lng: Double) -> String {
+        "\(name)|\(String(format: "%.6f,%.6f", lat, lng))"
+    }
+
+    /// Dedupe key for Route / StopPreset: name + concatenated coords.
+    /// Two routes with the same name but different points become
+    /// distinct entries (the user clearly authored them separately).
+    private static func coordsKey(name: String, points: [Coordinate]) -> String {
+        let hash = points.map { String(format: "%.6f,%.6f", $0.lat, $0.lng) }
+            .joined(separator: ";")
+        return "\(name)|\(hash)"
+    }
+
     /// Force-kill the running daemon and start a fresh one, requesting
     /// admin privileges through the standard macOS auth dialog. Used
     /// by the Settings sheet's "Force restart" button as a one-click
@@ -1533,6 +1970,44 @@ final class AppState {
         try? ctx.save()
     }
 
+    /// v1.11.2: write a fresh waypoints list to an existing Route.
+    /// The Route.points setter handles pointsJSON re-encoding and
+    /// pointCount sync internally, so we just assign + save.
+    func updateRouteWaypoints(_ route: Route, points: [Coordinate]) {
+        guard let ctx = modelContext else { return }
+        route.points = points
+        try? ctx.save()
+    }
+
+    /// v1.11.2: run a coordinate list as a one-shot trip without
+    /// touching any saved Route. Used by the "Run once (no save)"
+    /// path in RouteWaypointsEditSheet — the user wants to try a
+    /// tweak without committing it. Same teleport-then-navigate
+    /// shape as `runRoute(_:udid:lapCount:)`, just no loopContext,
+    /// no Route reference, no lapCount UI (single-trip only).
+    @MainActor
+    func runAdHocRoute(coords: [Coordinate], udid: String) async {
+        guard !coords.isEmpty else {
+            lastError = String(
+                localized: "No waypoints to run.",
+                comment: "Toast when Run once is invoked with an empty waypoint list",
+            )
+            return
+        }
+        let connected = devices.first(where: { $0.udid == udid })?.connected == true
+        guard connected else {
+            lastError = String(localized: "Connect a device first.")
+            return
+        }
+        let speed = customSpeedMps ?? travelProfile.defaultSpeedMps
+        let profile = travelProfile
+        await teleport(udid: udid, lat: coords[0].lat, lng: coords[0].lng)
+        if coords.count > 1 {
+            let rest = Array(coords.dropFirst())
+            await navigate(udid: udid, through: rest, profile: profile, speed: speed)
+        }
+    }
+
     /// Click-to-execute: teleport to the route's first point, then
     /// navigate through the rest as a straight-line multi-stop trip.
     ///
@@ -1573,6 +2048,40 @@ final class AppState {
             lastError = String(localized: "Connect a device first.")
             return
         }
+
+        // v1.11.2 round 10 (T20 proper fix): if a previous route /
+        // navigation is still running, explicitly stop it on the
+        // daemon side before we kick off the new one. round 9's
+        // app-side `clearActiveTrip` cleared the view state but
+        // the daemon kept emitting position events for the old
+        // route, so its waypoint pins kept getting re-attached to
+        // the new device slot via `applyPositionEvent`'s
+        // continuation. Sending a real `location.stop` first ensures
+        // the daemon stops broadcasting before teleport+navigate
+        // begins.
+        if navigation != nil || randomWalk != nil {
+            await stopNavigation(udid: udid)
+            if randomWalk != nil {
+                await stopRandomWalk(udid: udid)
+            }
+        }
+        // After the stop, also explicitly wipe the staging list and
+        // any cached preview polyline so the new route owns the
+        // canvas cleanly — stopNavigation only clears the active
+        // trip, not pendingStops.
+        //
+        // v1.11.2: also close any open movement-mode panel (most
+        // importantly Multi-Stop). Without this, a user who starts a
+        // route while the Multi-Stop sidebar is open can keep adding
+        // stops during route playback, violating the single-active-
+        // mode rule. Setting activeMovementMode → nil also triggers
+        // its didSet which clears pendingStops when leaving .multiStop,
+        // so the explicit clear below is belt-and-suspenders for other
+        // modes (joystick, random walk) where the didSet does not clear.
+        activeMovementMode = nil
+        pendingStops = []
+        schedulePreviewRefresh()
+
         let speed = customSpeedMps ?? travelProfile.defaultSpeedMps
 
         // Stash the loop plan for the event-handler-driven
@@ -1752,6 +2261,7 @@ final class AppState {
             let started = await Self.waitForSocket(path: path, timeout: 5.0)
             guard started else {
                 daemonStatus = .failed("daemon socket did not appear")
+                await triggerTahoeElevateAfterBootstrapFailure()
                 return
             }
 
@@ -1810,7 +2320,26 @@ final class AppState {
             await refreshDevices()
         } catch {
             daemonStatus = .failed(String(describing: error))
+            await triggerTahoeElevateAfterBootstrapFailure()
         }
+    }
+
+    /// v1.11.2: When the bootstrap path fails on Tahoe — either the socket
+    /// never came up (timed-out waitForSocket) or connect() threw
+    /// ECONNREFUSED against a stale socket file — `daemonIsRoot` stays
+    /// nil and `needsAdminElevation` stays false. `AdminPromptBanner`
+    /// guards on `daemonIsRoot == false` which is unreachable from nil,
+    /// and `autoElevateOnTahoeIfNeeded()` guards on the same. Result:
+    /// red error chip in the status bar with no actionable banner and
+    /// no system password prompt — a dead end for the user. Force the
+    /// elevate flow so the system auth dialog appears once and the user
+    /// can recover with one click. `attemptedTahoeAutoElevate` makes
+    /// this fire at most once per app launch even if the user cancels.
+    private func triggerTahoeElevateAfterBootstrapFailure() async {
+        let v = ProcessInfo.processInfo.operatingSystemVersion
+        guard v.majorVersion >= 26 else { return }
+        needsAdminElevation = true
+        await autoElevateOnTahoeIfNeeded()
     }
 
     func teardown() async {
@@ -2230,12 +2759,28 @@ final class AppState {
         // the daemon's idle event for that leg, sleeps `dwellSeconds`,
         // and fires the next leg the same way.
         if dwellEnabled, stops.count > 1, dwellContext == nil {
+            // v1.11.2 round 11: precompute full-route haversine total
+            // so the progress bar and the ETA timer share the same
+            // "full trip" scale. Origin for leg 0 is the current
+            // navigation origin; subsequent leg origins are the
+            // previous leg's destination.
+            let origin = navigationOrigin() ?? stops[0]
+            let legPoints: [Coordinate] = [origin] + stops
+            var totalM: Double = 0
+            for i in 1..<legPoints.count {
+                let a = CLLocation(latitude: legPoints[i - 1].lat, longitude: legPoints[i - 1].lng)
+                let b = CLLocation(latitude: legPoints[i].lat,     longitude: legPoints[i].lng)
+                totalM += a.distance(from: b)
+            }
             dwellContext = DwellContext(
                 udid: udid,
                 remainingStops: stops,
                 profile: profile,
                 speed: speed,
                 dwellSeconds: max(1, dwellSeconds),
+                totalDistanceM: totalM,
+                completedDistanceM: 0,
+                useStraightLine: useStraightLine,
             )
             await navigate(udid: udid, through: [stops[0]], profile: profile, speed: speed)
             return
@@ -2327,13 +2872,41 @@ final class AppState {
             }
             let reply: Reply = try await client.call("location.navigate", params: navParams)
             let coords = reply.route.coordinates.map { Coordinate(lat: $0.lat, lng: $0.lng) }
+            // v1.11.2 round 11 (T24 fix): in dwell mode, override
+            // distance + ETA with the FULL trip values rather than
+            // this single leg's. dwellAdjustedEta below already
+            // returns full-trip seconds; the matching distance
+            // denominator is dctx.totalDistanceM. Progress scaling
+            // happens in applyPositionEvent — see (completedDistanceM
+            // + cum) / totalDistanceM. Non-dwell mode keeps the
+            // daemon's reply values verbatim.
+            let displayedDistanceM: Double
+            let displayedEtaSeconds: Double
+            if let dctx = dwellContext, dctx.totalDistanceM > 0 {
+                displayedDistanceM = dctx.totalDistanceM
+                displayedEtaSeconds = dwellAdjustedEta(currentLegEta: reply.route.duration_s,
+                                                       from: origin)
+                // Stash this leg's daemon-reported distance so when
+                // the leg completes (idle event → applyStateEvent)
+                // we can add it to completedDistanceM and advance
+                // the progress baseline. Without this, progress
+                // would jump back to its start-of-leg value at the
+                // beginning of every dwell leg.
+                if var dctxLocal = dwellContext {
+                    dctxLocal.currentLegDistanceM = reply.route.distance_m
+                    dwellContext = dctxLocal
+                }
+            } else {
+                displayedDistanceM = reply.route.distance_m
+                displayedEtaSeconds = reply.route.duration_s
+            }
             navigation = NavigationVM(
                 state: .moving,
                 profile: profile,
                 speedMps: reply.speed_mps,
                 routeCoordinates: coords,
-                distanceM: reply.route.distance_m,
-                etaSeconds: reply.route.duration_s,
+                distanceM: displayedDistanceM,
+                etaSeconds: displayedEtaSeconds,
                 currentLocation: origin,
                 progress: 0,
                 laps: max(1, routeLaps)
@@ -2347,14 +2920,31 @@ final class AppState {
             // every still-pending waypoint of the dwell sequence so the
             // user can see where the trip is going overall. Use the
             // dwellContext's full remaining list when present.
+            //
+            // v1.11.2 round 9 (T21 fix): in dwell mode also synthesise
+            // a polyline that extends past the daemon-resolved current
+            // leg to every remaining stop. The daemon only sees the
+            // current single-stop navigate so its `coords` covers just
+            // this leg; without this stitched look-ahead, the user
+            // sees the pins of upcoming stops but no line connecting
+            // them — the trip shape disappears past the next dwell
+            // target. Straight-line look-ahead is the cheapest accurate
+            // hint we can draw without a second OSRM round-trip.
             let displayedWaypoints: [Coordinate]
+            let displayedRoute: [Coordinate]
             if let dctx = dwellContext, dctx.remainingStops.count > 1 {
                 displayedWaypoints = dctx.remainingStops
+                // Skip the first remaining stop — it's already the
+                // destination of the current leg's resolved polyline,
+                // so its position is already terminating `coords`.
+                let lookAhead = Array(dctx.remainingStops.dropFirst())
+                displayedRoute = coords + lookAhead
             } else {
                 displayedWaypoints = stops
+                displayedRoute = coords
             }
             setActiveTrip(
-                route: coords,
+                route: displayedRoute,
                 destination: displayedWaypoints.last ?? coords.last,
                 isStraightLine: useStraightLine,
                 waypoints: displayedWaypoints,
@@ -2385,6 +2975,7 @@ final class AppState {
         _ = try? await client.callRaw("location.pause", params: ["udid": AnyCodable(udid)])
         if var nav = navigation {
             nav.state = .paused
+            nav.pausedAt = Date()
             navigation = nav
         }
     }
@@ -2394,6 +2985,7 @@ final class AppState {
         _ = try? await client.callRaw("location.resume", params: ["udid": AnyCodable(udid)])
         if var nav = navigation {
             nav.state = .moving
+            nav.pausedAt = nil
             navigation = nav
         }
     }
@@ -2538,6 +3130,15 @@ final class AppState {
         ])
         if var nav = navigation {
             nav.speedMps = speedMps
+            // Client-side ETA recalc so the BottomBar reflects the new
+            // speed immediately without waiting for the next daemon
+            // position event. The daemon will refine this on its next
+            // tick; this just removes the ~1 s stale-ETA glitch.
+            if speedMps > 0 {
+                let remaining = nav.distanceM * max(0, 1 - nav.progress)
+                nav.etaSeconds = remaining / speedMps
+                nav.etaRefAt = Date()
+            }
             navigation = nav
         }
     }
@@ -3090,6 +3691,25 @@ final class AppState {
             setSimulatedLocation(coord, for: selected)
         }
 
+        // v1.11.2 round 8 perf fix: map-follow loop fires from here
+        // (state-layer) instead of via .onChange(of: simulatedLocation)
+        // on MainView. The view-layer observer was invalidating the
+        // entire MainView body 10 Hz, fanning out to every .sheet /
+        // .toolbar / .onChange modifier and pinning multi-thread
+        // SwiftUI AttributeGraph at high CPU. Driving pendingMapFly
+        // here keeps the per-tick work to a single property write
+        // that only MapContainerView observes. Same trigger condition
+        // as before: follow only when an "active" mode is running
+        // and the event is for the selected device.
+        if (eventUDID == nil || eventUDID == selectedUDID),
+           shouldFollowSimulatedLocation {
+            pendingMapFly = MapFlyRequest(
+                coordinate: coord,
+                spanMeters: 0,
+                preserveZoom: true,
+            )
+        }
+
         // Live nav/random/joystick state only makes sense for the
         // CURRENTLY selected device — the UI bottom bar can't
         // render concurrent navs from two devices. Events for
@@ -3103,7 +3723,17 @@ final class AppState {
             nav.currentLocation = coord
             if let cum = doubleValue(params["cumulative_m"]),
                nav.distanceM > 0 {
-                nav.progress = max(0, min(1, cum / nav.distanceM))
+                // v1.11.2 round 11 (T24 fix): in dwell mode the
+                // daemon's cumulative_m is only for the CURRENT leg
+                // but nav.distanceM is now the FULL trip distance,
+                // so we add the prior-leg accumulator and divide by
+                // total. Non-dwell mode falls through to the original
+                // calc (cum and distanceM are both whole-trip).
+                if let dctx = dwellContext, dctx.totalDistanceM > 0 {
+                    nav.progress = max(0, min(1, (dctx.completedDistanceM + cum) / dctx.totalDistanceM))
+                } else {
+                    nav.progress = max(0, min(1, cum / nav.distanceM))
+                }
             }
             if let eta = doubleValue(params["eta_s"]) {
                 // v1.11.0: in dwell mode the daemon only sees the
@@ -3114,6 +3744,7 @@ final class AppState {
                 // leg's haversine straight-line estimate at the
                 // chosen speed + a dwell pause at each stop.
                 nav.etaSeconds = dwellAdjustedEta(currentLegEta: eta, from: coord)
+                nav.etaRefAt = Date()
             }
             navigation = nav
         } else if stringValue(params["state"]) == "moving",
@@ -3157,6 +3788,10 @@ final class AppState {
                 currentLocation: coord,
                 progress: progress,
                 laps: max(1, routeLaps),
+                // Preserve the original start time — position events rebuild
+                // NavigationVM on every tick; a fresh Date() here would reset
+                // the elapsed-time counter every second.
+                startedAt: navigation?.startedAt ?? Date()
             )
         }
         if var rw = randomWalk {
@@ -3275,6 +3910,14 @@ final class AppState {
         var willDwellNext = false
         if stateRaw == "idle", wasRunning, var dctx = dwellContext {
             if !dctx.remainingStops.isEmpty {
+                // v1.11.2 round 11 (T24 fix): bank the just-completed
+                // leg's daemon distance into completedDistanceM so
+                // the next leg's progress baseline picks up from the
+                // right cumulative point — otherwise progress resets
+                // to ~0 at every dwell stop even though the full-trip
+                // ETA continues counting down.
+                dctx.completedDistanceM += dctx.currentLegDistanceM
+                dctx.currentLegDistanceM = 0
                 dctx.remainingStops.removeFirst()
                 dwellContext = dctx
             }
@@ -3285,6 +3928,18 @@ final class AppState {
                     guard let self else { return }
                     try? await Task.sleep(for: .seconds(snap.dwellSeconds))
                     guard self.dwellContext != nil else { return }
+                    // v1.11.2 bugfix: restore the dwell sequence's
+                    // original routing mode for this leg. Without
+                    // this, route playback's leg 1 ran straight-line
+                    // (runRoute forced `useStraightLine = true`) but
+                    // legs 2+ inherited whatever `state.useStraightLine`
+                    // had drifted back to after runRoute's `defer`
+                    // restored the pre-route value — flipping mid-
+                    // trip to OSRM/path, and on some routes causing
+                    // the daemon to stall (T31 bug #2).
+                    let savedStraight = self.useStraightLine
+                    self.useStraightLine = snap.useStraightLine
+                    defer { self.useStraightLine = savedStraight }
                     await self.navigate(udid: snap.udid,
                                         through: [nextStop],
                                         profile: snap.profile,
@@ -3390,10 +4045,19 @@ final class AppState {
 
     // MARK: - Helpers
 
+    /// Wait for the daemon socket to become *responsive*, not just to
+    /// appear on disk. A stale socket file from a crashed previous daemon
+    /// satisfies `fileExists` but throws ECONNREFUSED on connect — so
+    /// polling on existence alone caused bootstrap() to immediately
+    /// attempt connect() against a dead socket, fail with errno=61, and
+    /// land in the catch block with a red error chip but no actionable
+    /// path forward (see the v1.11.2 connect-failure fix). Probing with
+    /// connect()+close() each tick ensures we only return true once a
+    /// real listener is bound.
     private static func waitForSocket(path: String, timeout: TimeInterval) async -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if FileManager.default.fileExists(atPath: path) {
+            if DaemonLifecycle.isSocketResponsive(at: path) {
                 return true
             }
             try? await Task.sleep(for: .milliseconds(100))
@@ -3714,6 +4378,31 @@ struct DwellContext: Sendable, Equatable {
     let profile: TravelProfile
     let speed: Double
     let dwellSeconds: Int
+    /// v1.11.2: full-route total distance, computed once at dwell
+    /// start. Used as the denominator for `nav.progress` so the
+    /// progress bar and the ETA timer share the same "full trip"
+    /// scale — before this, ETA was full-trip but progress was
+    /// current-leg, so the bar reached 100% at every dwell stop
+    /// while ETA still said hours remaining.
+    var totalDistanceM: Double = 0
+    /// Distance accumulated over legs already finished. Incremented
+    /// in applyStateEvent when a dwell leg's idle event arrives,
+    /// before the next leg fires.
+    var completedDistanceM: Double = 0
+    /// The current leg's daemon-reported distance (recorded after the
+    /// navigate RPC reply). When the leg completes, this is what
+    /// gets added to completedDistanceM.
+    var currentLegDistanceM: Double = 0
+    /// v1.11.2 bugfix: snapshot of `useStraightLine` at dwell start.
+    /// Route playback's `runRoute` force-sets straight-line then
+    /// `defer`-restores to the user's pre-route value, which happens
+    /// the moment `await navigate(...)` returns (after leg 1). The
+    /// applyStateEvent-driven continuation that fires legs 2+ then
+    /// inherited whatever state.useStraightLine had drifted back to,
+    /// silently flipping subsequent legs to OSRM/path mode mid-trip.
+    /// Storing the routing intent here lets every leg in the dwell
+    /// sequence run with the exact same mode the user kicked off.
+    var useStraightLine: Bool = false
 }
 
 struct NavigationVM: Sendable, Equatable {
@@ -3728,6 +4417,15 @@ struct NavigationVM: Sendable, Equatable {
     var currentLocation: Coordinate
     var progress: Double            // 0...1
     var laps: Int = 1               // 1 = single trip, 2+ = looped
+    /// Wall-clock instant the trip started. Preserved across position-event
+    /// NavigationVM rebuilds so the elapsed counter doesn't reset every tick.
+    var startedAt: Date = .now
+    /// Wall-clock instant when `etaSeconds` was last written.
+    var etaRefAt: Date = .now
+    /// Wall-clock instant when pause was triggered. Set by
+    /// `pauseNavigation`, cleared on resume. Used by ElapsedTimerChip
+    /// to freeze the elapsed counter at the right value while paused.
+    var pausedAt: Date? = nil
 
     var isPaused: Bool { state == .paused }
     /// Distance of one lap of the closed-loop route (or the full route

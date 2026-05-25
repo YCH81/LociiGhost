@@ -23,6 +23,10 @@ final class Bookmark {
     /// (newest first within a category) and lets us show a "added
     /// today / yesterday / N days ago" label later if needed.
     var createdAt: Date
+    /// User-defined sort position. Only meaningful when
+    /// BookmarksSection is in `.manual` sort mode; ignored otherwise.
+    /// SwiftData migrates existing rows to the default (0) automatically.
+    var sortOrder: Int = 0
 
     init(
         name: String,

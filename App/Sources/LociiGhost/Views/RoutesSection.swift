@@ -156,6 +156,12 @@ struct RoutesSection: View {
 private struct RouteRow: View {
     let route: Route
     @Environment(AppState.self) private var state
+    /// v1.11.2 round 14: re-introduce hover-show inline buttons.
+    /// State is local to RouteRow so hover only re-evaluates this
+    /// one row, not the entire RoutesSection. The hover effect is
+    /// cheap — only `hovered` toggles between two view-tree shapes,
+    /// no flex-frame interaction, no high-frequency observation.
+    @State private var hovered: Bool = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -177,7 +183,38 @@ private struct RouteRow: View {
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 4)
+            // v1.11.2 round 14: hover-show inline edit buttons. The
+            // right-click context menu retains the same actions for
+            // mouseless users; this just surfaces them faster for
+            // pointer users without paying the always-visible
+            // layout cost.
+            if hovered {
+                HStack(spacing: 2) {
+                    Button {
+                        state.editingRoute = route
+                    } label: {
+                        Image(systemName: "pencil")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(4)
+                    }
+                    .buttonStyle(.borderless)
+                    .help(LocalizedStringKey("Edit name, category, icon"))
+
+                    Button {
+                        state.editingRouteWaypoints = route
+                    } label: {
+                        Image(systemName: "list.bullet.indent")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(4)
+                    }
+                    .buttonStyle(.borderless)
+                    .help(LocalizedStringKey("Edit waypoints (add / delete / reorder / change coords)"))
+                }
+            }
         }
+        .onHover { hovered = $0 }
         .padding(.vertical, 3)
         .padding(.horizontal, 4)
         .contentShape(.rect)
@@ -208,8 +245,19 @@ private struct RouteRow: View {
             Button {
                 state.editingRoute = route
             } label: {
-                Label("Edit…",
+                Label("Edit info…",
                       systemImage: "pencil")
+            }
+            // v1.11.2: separate entry for editing the waypoints list
+            // itself (add / delete / reorder / change coords). Edit
+            // info is for name / category / icon; this is for the
+            // path. Keeping them split means each sheet stays focused
+            // and the user can pick the one they actually want.
+            Button {
+                state.editingRouteWaypoints = route
+            } label: {
+                Label("Edit waypoints…",
+                      systemImage: "list.bullet.indent")
             }
             Divider()
             Button(role: .destructive) {

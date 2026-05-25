@@ -36,6 +36,14 @@ struct StartRouteSheet: View {
         return 0
     }
 
+    /// v1.11.2 bug #3: when a navigation / random walk / joystick is
+    /// already running, surface a warning + relabel the confirm
+    /// button so the user explicitly acknowledges the interruption.
+    /// runRoute internally calls stopNavigation/stopRandomWalk first
+    /// anyway (T20 fix), but doing it silently surprised users —
+    /// this makes the stop-and-restart intent visible up front.
+    private var hasActiveSession: Bool { state.anySessionActive }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
@@ -59,6 +67,23 @@ struct StartRouteSheet: View {
             .font(.callout)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+
+            // v1.11.2 bug #3: visible warning when starting this
+            // route will interrupt an in-flight simulation.
+            if hasActiveSession {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .font(.callout)
+                    Text("Your current simulation will stop before this route starts.",
+                         comment: "StartRouteSheet — warning shown when an active navigation / random walk / joystick will be interrupted")
+                        .font(.callout)
+                        .foregroundStyle(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(10)
+                .background(Color.orange.opacity(0.12), in: .rect(cornerRadius: 6))
+            }
 
             Toggle(isOn: $loop) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -116,8 +141,11 @@ struct StartRouteSheet: View {
                         await state.runRoute(r, udid: udid, lapCount: lapCount)
                     }
                 } label: {
-                    Text("Start",
-                         comment: "Confirm button on the start-route sheet")
+                    Text(hasActiveSession
+                         ? String(localized: "Stop & start",
+                                  comment: "Confirm button on the start-route sheet when a current simulation will be stopped first")
+                         : String(localized: "Start",
+                                  comment: "Confirm button on the start-route sheet"))
                 }
                 .keyboardShortcut(.defaultAction)
             }

@@ -40,9 +40,20 @@ final class DaemonLifecycle {
         // because the user launched it manually with sudo for the iOS 17+
         // tunnel work -- attach to it instead of spawning our own. The app
         // will not own this daemon's lifetime; stop() leaves it running.
-        if isExistingSocketResponsive() {
+        if Self.isSocketResponsive(at: LociiGhostPaths.socketPath) {
             attachedToExisting = true
             return
+        }
+
+        // If the socket file exists but no one is listening (stale leftover
+        // from a crashed previous daemon), unlink it before spawning. The
+        // app side's waitForSocket() also probes connect() now, but pre-
+        // clearing the stale file means the new daemon's bind() doesn't
+        // race against a brief window where the stale file is still
+        // visible — and saves the app from polling for that whole window.
+        let socketPath = LociiGhostPaths.socketPath
+        if FileManager.default.fileExists(atPath: socketPath) {
+            try? FileManager.default.removeItem(atPath: socketPath)
         }
 
         let exe = try resolveExecutable()
@@ -105,8 +116,11 @@ final class DaemonLifecycle {
     /// True if the canonical socket exists and a connect()+close() succeeds.
     /// We don't ping; merely opening the socket is enough proof the file
     /// belongs to a live process and isn't a stale leftover from a crash.
-    private func isExistingSocketResponsive() -> Bool {
-        let path = LociiGhostPaths.socketPath
+    /// Static so the app-side bootstrap can reuse the same liveness check
+    /// in its waitForSocket() poll loop — file existence alone is not
+    /// sufficient (a stale socket file from a crashed daemon also exists
+    /// but throws ECONNREFUSED on connect).
+    static func isSocketResponsive(at path: String) -> Bool {
         guard FileManager.default.fileExists(atPath: path) else { return false }
 
         let s = socket(AF_UNIX, SOCK_STREAM, 0)

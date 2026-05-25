@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import AppKit
 
 /// Inline multi-stop panel. Multi-stop is "click on the map a few
 /// times and press Navigate"; the work happens in the on-map
@@ -70,17 +71,39 @@ struct MultiStopPanel: View {
             // entry is fine for 3–5 stops but breaks down for a long
             // pre-planned route; this button opens a paste sheet that
             // accepts one `lat, lng` per line and appends each to the
-            // end of pendingStops in order.
-            Button {
-                showingBulkPaste = true
-            } label: {
-                Label("Bulk-add coordinates…",
-                      systemImage: "doc.on.clipboard")
+            // end of pendingStops in order. v1.11.2: the symmetric Copy
+            // button next to it dumps the current staged stops to the
+            // pasteboard in the same `lat, lng` per line format, so
+            // the user can paste back into Bulk-add or share with
+            // other tools.
+            HStack(spacing: 6) {
+                Button {
+                    showingBulkPaste = true
+                } label: {
+                    Label("Bulk-add coordinates…",
+                          systemImage: "doc.on.clipboard")
+                }
+                .controlSize(.small)
+                .buttonStyle(.bordered)
+                .hoverHighlight(cornerRadius: 5)
+                .help(LocalizedStringKey("Paste many coordinates at once — each line becomes the next stop"))
+
+                Button {
+                    copyAllStops()
+                } label: {
+                    Label {
+                        Text("Copy all stops",
+                             comment: "MultiStopPanel — copy every staged stop's coordinates to the clipboard, one lat,lng per line")
+                    } icon: {
+                        Image(systemName: "doc.on.doc")
+                    }
+                }
+                .controlSize(.small)
+                .buttonStyle(.bordered)
+                .hoverHighlight(cornerRadius: 5)
+                .disabled(state.pendingStops.isEmpty)
+                .help(LocalizedStringKey("Copy every staged stop as lat,lng per line — paste back into Bulk-add or share elsewhere"))
             }
-            .controlSize(.small)
-            .buttonStyle(.bordered)
-            .hoverHighlight(cornerRadius: 5)
-            .help(LocalizedStringKey("Paste many coordinates at once — each line becomes the next stop"))
 
             DwellModeRow()
                 .help(LocalizedStringKey("With dwell on, the iPhone pauses the chosen number of seconds at each stop before continuing to the next"))
@@ -201,42 +224,66 @@ struct MultiStopPanel: View {
             }
             .frame(maxHeight: 280)
 
-            // Three actions wrap to a second row if the panel is
-            // narrower than ~280 pt — Clear (destructive) stays first,
-            // Save-as-preset is the lightweight "remember these stops"
-            // action, Save-as-route is the heavier "promote to sidebar
-            // Routes section" action.
-            HStack(spacing: 6) {
-                Button(role: .destructive) {
-                    state.pendingStops = []
-                } label: {
-                    Label("Clear all stops", systemImage: "trash")
-                }
-                .controlSize(.small)
-                .buttonStyle(.bordered)
-                .hoverHighlight(cornerRadius: 5)
+            // v1.11.2 round 15: 2×2 layout via Grid. Grid gives
+            // equal column widths naturally — no need for
+            // `.frame(maxWidth: .infinity)` on each button label
+            // (which was the round-4 culprit that drove the
+            // NSHostingView ↔ _FlexFrameLayout layout-recursion
+            // spin). Grid layout passes are bounded and don't
+            // ping-pong with the host view. Row 1: edit-the-list
+            // (Smart sort + Save preset). Row 2: heavy actions
+            // (Clear destructive + Save as new route prominent).
+            Grid(horizontalSpacing: 6, verticalSpacing: 6) {
+                GridRow {
+                    Button {
+                        smartSortStops()
+                    } label: {
+                        Label {
+                            Text("Smart sort",
+                                 comment: "MultiStopPanel — reorder staged stops so the trip visits them in minimum-total-distance order")
+                        } icon: {
+                            Image(systemName: "wand.and.stars")
+                        }
+                    }
+                    .controlSize(.small)
+                    .buttonStyle(.bordered)
+                    .hoverHighlight(cornerRadius: 5)
+                    .disabled(state.pendingStops.count < 3)
+                    .help(LocalizedStringKey("Reorder stops by minimum total path distance — Stop 1 stays the start, the rest get sorted into an efficient visit order"))
 
-                Button {
-                    state.presetPendingSave = true
-                } label: {
-                    Label("Save as preset",
-                          systemImage: "bookmark.fill")
+                    Button {
+                        state.presetPendingSave = true
+                    } label: {
+                        Label("Save as preset",
+                              systemImage: "bookmark.fill")
+                    }
+                    .controlSize(.small)
+                    .buttonStyle(.bordered)
+                    .hoverHighlight(cornerRadius: 5)
+                    .help(LocalizedStringKey("Save these stops as a named preset — click it later to reload the same staging"))
                 }
-                .controlSize(.small)
-                .buttonStyle(.bordered)
-                .hoverHighlight(cornerRadius: 5)
-                .help(LocalizedStringKey("Save these stops as a named preset — click it later to reload the same staging"))
 
-                Button {
-                    state.stagePendingStopsAsRoute()
-                } label: {
-                    Label("Save as new route",
-                          systemImage: "point.bottomleft.forward.to.point.topright.scurvepath.fill")
+                GridRow {
+                    Button(role: .destructive) {
+                        state.pendingStops = []
+                    } label: {
+                        Label("Clear all stops", systemImage: "trash")
+                    }
+                    .controlSize(.small)
+                    .buttonStyle(.bordered)
+                    .hoverHighlight(cornerRadius: 5)
+
+                    Button {
+                        state.stagePendingStopsAsRoute()
+                    } label: {
+                        Label("Save as new route",
+                              systemImage: "point.bottomleft.forward.to.point.topright.scurvepath.fill")
+                    }
+                    .controlSize(.small)
+                    .buttonStyle(.borderedProminent)
+                    .hoverHighlight(cornerRadius: 5)
+                    .help(LocalizedStringKey("Save these stops as a Route so you can replay this trip later"))
                 }
-                .controlSize(.small)
-                .buttonStyle(.borderedProminent)
-                .hoverHighlight(cornerRadius: 5)
-                .help(LocalizedStringKey("Save these stops as a Route so you can replay this trip later"))
             }
             .padding(.top, 2)
         }
@@ -312,6 +359,34 @@ struct MultiStopPanel: View {
         coords.insert(removed, at: dest)
         if coords != state.pendingStops {
             state.pendingStops = coords
+        }
+    }
+
+    /// v1.11.2: dump every staged stop to the pasteboard as one
+    /// `lat, lng` per line — symmetric with BulkPasteStopsSheet's
+    /// input format so the user can round-trip stops through the
+    /// clipboard (back into Bulk-add, or out to any other tool).
+    /// Six-decimal precision matches the Copy button on the
+    /// TopStatusBar coords chip.
+    private func copyAllStops() {
+        guard !state.pendingStops.isEmpty else { return }
+        let text = state.pendingStops
+            .map { String(format: "%.6f, %.6f", $0.lat, $0.lng) }
+            .joined(separator: "\n")
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(text, forType: .string)
+    }
+
+    /// v1.11.2: Smart sort — reorder pendingStops so the trip visits
+    /// them in minimum-total-haversine-distance order. Algorithm is
+    /// shared with ControlPanel via `StopOrdering.smartSorted`.
+    private func smartSortStops() {
+        let stops = state.pendingStops
+        guard stops.count >= 3 else { return }
+        let sorted = StopOrdering.smartSorted(stops)
+        if sorted != stops {
+            state.pendingStops = sorted
         }
     }
 }

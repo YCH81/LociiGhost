@@ -66,6 +66,8 @@ struct SettingsView: View {
                     Divider()
                     routesSection
                     Divider()
+                    backupSection
+                    Divider()
                     routingEngineSection
                     Divider()
                     logsSection
@@ -75,6 +77,8 @@ struct SettingsView: View {
                     alertsSection
                     Divider()
                     troubleshootingSection
+                    Divider()
+                    advancedSection
                     Divider()
                     aboutSection
                 }
@@ -535,6 +539,126 @@ struct SettingsView: View {
                      comment: "Settings — note about the macOS auth dialog under Force Restart")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    // MARK: - Backup all data (v1.11.2)
+
+    /// One-click "back up everything I care about, restore it on the
+    /// next install" surface. Wraps `state.exportAllBackup()` /
+    /// `state.importAllBackup()`, both of which bundle bookmarks +
+    /// routes + stop presets into a single versioned JSON file. Sits
+    /// next to the per-type Bookmarks / Routes import/export so a
+    /// user looking for "data import/export" finds both in the same
+    /// vertical scan.
+    private var backupSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader(symbol: "tray.and.arrow.down.fill",
+                          titleKey: "Backup all data")
+            Text("Export everything — bookmarks, routes, stop presets — to a single JSON file you can restore on another Mac or after a reinstall.",
+                 comment: "Settings — Backup section explanation")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 10) {
+                Button {
+                    Task { @MainActor in await state.exportAllBackup() }
+                } label: {
+                    Label {
+                        Text("Export all…",
+                             comment: "Settings — full-backup export button label")
+                    } icon: {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .help(LocalizedStringKey("Save a JSON file containing every bookmark, route, and stop preset"))
+
+                Button {
+                    Task { @MainActor in await state.importAllBackup() }
+                } label: {
+                    Label {
+                        Text("Restore from backup…",
+                             comment: "Settings — full-backup import button label")
+                    } icon: {
+                        Image(systemName: "square.and.arrow.down")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .help(LocalizedStringKey("Open a backup file; pick Merge or Overwrite when prompted"))
+
+                Spacer()
+            }
+
+            HStack(spacing: 6) {
+                Image(systemName: "info.circle")
+                    .foregroundStyle(.secondary)
+                Text("Restore asks before doing anything: Merge keeps your current data, Overwrite replaces it.",
+                     comment: "Settings — supplementary note under the backup buttons")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    // MARK: - Advanced (v1.11.2 — auth-focused recovery)
+
+    /// "Advanced" sits between Troubleshooting and About so power-user
+    /// recovery options aren't mixed in with day-to-day settings. The
+    /// single Force re-authorize button shares its underlying call
+    /// path (`forceRestartDaemon`) with the Troubleshooting button —
+    /// both end up doing daemon shutdown → admin install → bootstrap
+    /// — but this entry is labeled and framed around *authorization*
+    /// trouble rather than *hung daemon* trouble, so a user
+    /// investigating "did the password thing get stuck?" finds it
+    /// faster than wading through the troubleshooting copy.
+    private var advancedSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader(symbol: "lock.shield",
+                          titleKey: "Advanced")
+            Text("If the system password dialog stopped appearing, or the daemon is stuck in a half-authorized state, force a clean re-authorization here. This will end the running daemon, prompt for your macOS password, and bring up a fresh privileged daemon.",
+                 comment: "Settings — Advanced section explanation focused on authorization recovery")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 10) {
+                Button(role: .destructive) {
+                    Task { @MainActor in await state.forceRestartDaemon() }
+                } label: {
+                    Label {
+                        Text("Force re-authorize",
+                             comment: "Settings — force re-auth button label")
+                    } icon: {
+                        Image(systemName: "lock.rotation")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.orange)
+                .help(LocalizedStringKey("Force-kill the daemon, prompt for your macOS password, and bring up a fresh privileged daemon"))
+                Spacer()
+                if state.daemonStatus == .starting {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Re-authorizing…",
+                             comment: "Settings — status next to Force re-authorize while restart is in flight")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            HStack(spacing: 6) {
+                Image(systemName: "info.circle")
+                    .foregroundStyle(.secondary)
+                Text("Use this when LociiGhost's automatic admin prompts aren't appearing on their own, or when you want to manually re-trigger the standard macOS authentication flow.",
+                     comment: "Settings — supplementary note under Force re-authorize")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

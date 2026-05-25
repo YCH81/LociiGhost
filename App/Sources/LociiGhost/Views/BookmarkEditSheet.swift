@@ -61,33 +61,47 @@ struct BookmarkEditSheet: View {
 
             Divider()
 
-            Form {
-                LabeledContent {
-                    TextField("e.g. 公司 / Home / 台北 101",
-                              text: $name)
-                        .textFieldStyle(.roundedBorder)
-                } label: {
-                    Text("Name",
-                         comment: "Bookmark form — name field label")
-                }
+            // v1.11.2: switched from Form+LabeledContent to Grid so
+            // the Name and Category TextField column-edges actually
+            // line up. LabeledContent inside a grouped Form lets
+            // SwiftUI choose content widths per row, which left
+            // Name (shorter placeholder) visibly narrower than
+            // Category. Grid pins both TextFields to the same
+            // trailing column, so they're guaranteed equal width.
+            GroupBox {
+                Grid(alignment: .leading,
+                     horizontalSpacing: 12,
+                     verticalSpacing: 12) {
+                    GridRow {
+                        Text("Name",
+                             comment: "Bookmark form — name field label")
+                            .font(.callout)
+                            .gridColumnAlignment(.trailing)
+                        TextField("e.g. 公司 / Home / 台北 101",
+                                  text: $name)
+                            .textFieldStyle(.roundedBorder)
+                    }
 
-                LabeledContent {
-                    TextField("e.g. Work, Travel — leave blank for none",
-                              text: $category)
-                        .textFieldStyle(.roundedBorder)
-                } label: {
-                    Text("Category",
-                         comment: "Bookmark form — optional grouping label")
-                }
+                    GridRow {
+                        Text("Category",
+                             comment: "Bookmark form — optional grouping label")
+                            .font(.callout)
+                            .gridColumnAlignment(.trailing)
+                        TextField("e.g. Work, Travel — leave blank for none",
+                                  text: $category)
+                            .textFieldStyle(.roundedBorder)
+                    }
 
-                LabeledContent {
-                    iconPicker
-                } label: {
-                    Text("Icon",
-                         comment: "Bookmark form — SF Symbol picker label")
+                    GridRow {
+                        Text("Icon",
+                             comment: "Bookmark form — SF Symbol picker label")
+                            .font(.callout)
+                            .gridColumnAlignment(.trailing)
+                        iconPicker
+                    }
                 }
+                .padding(8)
             }
-            .formStyle(.grouped)
 
             HStack {
                 if editing != nil {

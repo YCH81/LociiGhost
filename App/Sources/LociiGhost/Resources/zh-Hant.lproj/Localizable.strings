@@ -352,3 +352,78 @@
 "Show route controls" = "顯示路線控制";
 "Auto-center" = "地圖置中";
 "Toggle map auto-recenter: when on, the map follows the simulated location during movement. When off, the map stays put — teleports and route starts still pan once, then you scroll the map manually." = "切換地圖自動置中：開啟時，模擬移動中地圖會跟著定位置中。關閉時地圖不再追蹤 — 瞬移與路線初始仍會帶地圖到起點一次，之後就要自己拖地圖。";
+
+/* ─── v1.11.2 — joe bug fix (daemon failure UI) ───────────────────── */
+"Daemon failed to start: %@. Click to authenticate and restart." = "Daemon 啟動失敗：%@。點擊重新授權並重啟。";
+"Click to authenticate and restart the daemon — opens the macOS password prompt" = "點擊重新授權並重啟 daemon — 會跳出 macOS 密碼框";
+
+/* ─── v1.11.2 — #1 BottomBar inline custom speed ──────────────────── */
+"km/h" = "km/h";
+"Apply this custom speed — works in every mode" = "套用自訂速度 — 所有模式皆適用";
+"Drop the custom speed and use the travel-mode preset" = "清除自訂速度，回到交通工具預設值";
+
+/* ─── v1.11.2 — #2 RouteWaypointsEditSheet ────────────────────────── */
+"Edit waypoints" = "編輯路線停靠點";
+"Edit waypoints…" = "編輯路線停靠點…";
+"Edit info…" = "編輯資訊…";
+"Edit name, category, icon" = "編輯名稱、分類、圖示";
+"Edit waypoints (add / delete / reorder / change coords)" = "編輯路線停靠點（新增 / 刪除 / 重新排序 / 改座標）";
+"Add waypoint" = "新增停靠點";
+"lat" = "緯度";
+"lng" = "經度";
+"Run once (no save)" = "執行一次（不儲存）";
+"Save changes" = "儲存變更";
+"No waypoints yet. Tap **Add waypoint** to begin." = "目前沒有停靠點。請按 **新增停靠點** 開始。";
+"Run this trip once without overwriting the saved route" = "執行一次但不覆蓋原本儲存的路線";
+"Delete this waypoint" = "刪除此停靠點";
+"No waypoints to run." = "沒有可執行的停靠點。";
+
+/* ─── v1.11.2 — #3 RandomWalk mode-switch alert ───────────────────── */
+"Stop random walk to change this?" = "要先停止隨機漫步才能變更此設定?";
+"Keep walking" = "繼續漫步";
+"Stop & apply" = "停止並套用";
+"Changing this setting needs the current walk to stop. We'll restart it immediately with the new value." = "變更此設定需要先停止目前的漫步，會立刻用新值重新啟動。";
+
+/* ─── v1.11.2 — #4 full backup / restore ──────────────────────────── */
+"Backup all data" = "全部資料備份";
+"Export everything — bookmarks, routes, stop presets — to a single JSON file you can restore on another Mac or after a reinstall." = "把全部資料 — 書籤、路線、停靠點預設 — 匯出成一個 JSON 檔，可在其他 Mac 或重新安裝後還原。";
+"Export all…" = "全部匯出…";
+"Save a JSON file containing every bookmark, route, and stop preset" = "儲存一個包含全部書籤、路線、停靠點預設的 JSON 檔";
+"Restore from backup…" = "從備份還原…";
+"Open a backup file; pick Merge or Overwrite when prompted" = "開啟備份檔；出現提示時選擇合併或覆蓋";
+"Restore asks before doing anything: Merge keeps your current data, Overwrite replaces it." = "還原前會先問你：合併保留現有資料，覆蓋會替換全部。";
+"Nothing to back up — no bookmarks, routes, or stop presets yet." = "沒有可備份的內容 — 還沒有書籤、路線或停靠點預設。";
+"Backed up %lld bookmarks · %lld routes · %lld presets." = "已備份 %lld 個書籤 · %lld 條路線 · %lld 個預設。";
+"Export all data (full backup)" = "全部資料匯出（完整備份）";
+"Restore from backup JSON" = "從備份 JSON 還原";
+"This backup is from a newer LociiGhost version. Please update before restoring." = "此備份來自較新版的 LociiGhost。請先升級再還原。";
+"Restore from backup?" = "從備份還原?";
+"This backup contains %lld bookmarks · %lld routes · %lld presets.\n\nMerge keeps your existing data and adds new entries (skipping name+coords duplicates).\nOverwrite wipes everything currently in LociiGhost and replaces it with the backup." = "此備份包含 %lld 個書籤 · %lld 條路線 · %lld 個預設。\n\n合併：保留現有資料，新增備份內非重複（name+座標）的項目。\n覆蓋：清除現有所有資料，全用備份內的取代。";
+"Merge" = "合併";
+"Overwrite" = "覆蓋";
+"Restored: %lld bookmarks · %lld routes · %lld presets added." = "已還原：新增 %lld 個書籤 · %lld 條路線 · %lld 個預設。";
+
+/* ─── v1.11.2 — #5 Snap to real location ──────────────────────────── */
+"Snap to real" = "瞬移真實位置";
+"Snap to real location" = "瞬移到 Mac 真實位置";
+"Teleport the simulated iPhone to your Mac's current real location — simulation stays active" = "把模擬中的 iPhone 瞬移到 Mac 當下真實位置，模擬仍在進行";
+
+/* ─── v1.11.2 — #7 Copy all stops + #8 Smart sort ─────────────────── */
+"Copy all stops" = "停靠點全部複製";
+"Copy every staged stop as lat,lng per line — paste back into Bulk-add or share elsewhere" = "把全部停靠點複製成每行一個 lat,lng — 可貼回「貼上座標」或給其他工具";
+"Smart sort" = "AI 路順排序";
+"Reorder stops by minimum total path distance — Stop 1 stays the start, the rest get sorted into an efficient visit order" = "依最短總距離重新排序 — 停靠點 1 仍為起點，其餘依路順最佳化";
+"Reorder stops by minimum total path distance — Stop 1 stays the start" = "依最短總距離重新排序 — 停靠點 1 仍為起點";
+
+/* ─── v1.11.2 — #9 force re-authorize ─────────────────────────────── */
+"Advanced" = "進階";
+"If the system password dialog stopped appearing, or the daemon is stuck in a half-authorized state, force a clean re-authorization here. This will end the running daemon, prompt for your macOS password, and bring up a fresh privileged daemon." = "若系統密碼框沒有自動出現、或 daemon 卡在授權不完整的狀態，可在這裡強制重新授權。動作會結束目前 daemon、跳出 macOS 密碼框、再啟動一個新的有授權 daemon。";
+"Force re-authorize" = "強制重新授權";
+"Force-kill the daemon, prompt for your macOS password, and bring up a fresh privileged daemon" = "強制結束 daemon、跳出 macOS 密碼框、啟動有授權的新 daemon";
+"Re-authorizing…" = "重新授權中…";
+"Use this when LociiGhost's automatic admin prompts aren't appearing on their own, or when you want to manually re-trigger the standard macOS authentication flow." = "當 LociiGhost 自動授權框沒出現，或想手動重新觸發 macOS 標準授權流程時使用。";
+
+/* ─── v1.11.2 bug-fix wave (T31/T32) ───────────────────────────────── */
+"Your current simulation will stop before this route starts." = "目前的模擬會在這條路線開始前停止。";
+"Stop & start" = "停止並開始";
+"Switch to Multi-stop mode first" = "請先切到多點模式";

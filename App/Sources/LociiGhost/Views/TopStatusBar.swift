@@ -24,10 +24,18 @@ struct TopStatusBar: View {
     /// this into `CountryDisplay.displayName` so the country chip
     /// re-renders in the picker's language on every toggle.
     @Environment(\.locale) private var locale
-    @State private var nowTick: Date = .now
-    private let clockTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
+        // v1.11.2 round 16 perf: the 1 Hz clock timer + nowTick
+        // @State used to live here on the outer body, which meant
+        // every tick re-evaluated the whole TopStatusBar (5 left
+        // buttons + 5 right chips + their AppKit layout pass) just
+        // to update the times chip's text. Sample(1) caught ~40% of
+        // main-thread time stuck inside NSView._layoutSubtreeWithOldSize
+        // recursion on idle as a direct result. The timer + state
+        // now lives inside `TimesChip` itself (see file footer); the
+        // outer TopStatusBar body re-evaluates only on event-driven
+        // state changes (selection / weather refresh / etc).
         HStack(spacing: 12) {
             leftButtons
             Spacer(minLength: 12)
@@ -35,10 +43,13 @@ struct TopStatusBar: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .frame(maxWidth: .infinity)
+        // minHeight: defensive floor so NSViewRepresentable height-
+        // competition in the parent VStack never compresses this bar
+        // to zero. Combined with .layoutPriority(1) on this view in
+        // MainView, the bar always claims its natural height first.
+        .frame(maxWidth: .infinity, minHeight: 44)
         .background(.bar)
         .overlay(Divider(), alignment: .bottom)
-        .onReceive(clockTimer) { nowTick = $0 }
     }
 
     // MARK: - Left: 還原 / 中斷連線 / 重新整理 / 退出
@@ -68,6 +79,28 @@ struct TopStatusBar: View {
                 ) {
                     Task { await state.setSyncMode(false) }
                 }
+            }
+
+            // v1.11.2 round 13: Snap-to-real re-introduced with a
+            // perf-safe contract — `disabled` only reads
+            // `activeDevice?.connected` (which changes on connect /
+            // disconnect events, not on a CoreLocation tick). The
+            // round-1 attempt also read `state.macLocation.coordinate`
+            // here which is a high-frequency publisher, redrawing
+            // the entire TopStatusBar on every fix update. Now the
+            // Mac coord is fetched LAZILY at click time inside
+            // `snapToReal(udid:)`; if it comes back nil the helper
+            // surfaces a toast instead of disabling the button.
+            statusBarButton(
+                titleKey: "Snap to real",
+                fallback: "Snap to real location",
+                symbol: "figure.walk.arrival",
+                tint: .green,
+                disabled: activeDevice?.connected != true,
+                helpKey: "Teleport the simulated iPhone to your Mac's current real location — simulation stays active",
+            ) {
+                guard let udid = activeDevice?.udid else { return }
+                Task { await snapToReal(udid: udid) }
             }
 
             statusBarButton(
@@ -258,11 +291,82 @@ struct TopStatusBar: View {
 
     // ── coords chip ──────────────────────────────────────────────
 
-    /// Coords pill with embedded copy button. Built bespoke (instead
-    /// of calling `infoChip`) because the copy button needs to live
-    /// inside the same border as the coords text — splitting it out
-    /// into a separate chip makes the row feel cluttered.
+    /// v1.11.2 round 18: CoordsChip lives in its own struct so its
+    /// dependency on `state.macLocation.coordinate` (a 1 Hz
+    /// CoreLocation publisher) only invalidates the chip itself.
+    /// Before, this read was part of TopStatusBar's outer body,
+    /// so every CoreLocation tick re-evaluated the whole status
+    /// bar — visible as drag-stutter when a device was connected.
     private var coordsChip: some View {
+        CoordsChip()
+    }
+
+    // ── times chip ───────────────────────────────────────────────
+
+    /// v1.11.2 round 16: TimesChip lives in its own struct (file
+    /// bottom) so its 1 Hz clock timer only invalidates the chip
+    /// itself, not the whole TopStatusBar tree.
+    private var timesChip: some View {
+        TimesChip()
+    }
+
+    // MARK: - Helpers
+
+    private var activeDevice: DeviceVM? {
+        guard let udid = state.selectedUDID else { return nil }
+        return state.devices.first(where: { $0.udid == udid })
+    }
+
+    /// v1.11.2 round 13: Snap-to-real action. Mac coord is fetched
+    /// LAZILY here (not in the disabled-state check), so a busy
+    /// CoreLocation publisher doesn't re-render the entire
+    /// TopStatusBar on every fix tick. Tries a fresh fix first
+    /// (~2s for accuracy) and falls back to the cached coord;
+    /// when neither is available we surface a toast asking the
+    /// user to enable Location in System Settings.
+    ///
+    /// v1.11.2 bugfix: also pan the map to the destination — the
+    /// applyPositionEvent map-follow loop only fires while an
+    /// active "moving" mode (joystick / random walk / nav) is
+    /// running, so a pure teleport like this one would otherwise
+    /// move the simulated pin offscreen with no camera change.
+    /// Mirrors the search-bar Teleport flow.
+    private func snapToReal(udid: String) async {
+        // Stop ALL active sessions before teleporting so the iPhone
+        // lands at the real location and stays still — no lingering
+        // route / random walk / joystick continuing to push the pin.
+        if state.navigationActive  { await state.stopNavigation(udid: udid) }
+        if state.randomWalkActive  { await state.stopRandomWalk(udid: udid) }
+        if state.joystickActive    { await state.stopJoystick(udid: udid) }
+        // Also clear the movement-mode panel so the sidebar is idle.
+        state.activeMovementMode = nil
+
+        var coord = await state.macLocation.fetchFreshFix(timeout: 2.0)
+        if coord == nil { coord = state.macLocation.coordinate }
+        guard let c = coord else {
+            state.lastError = String(
+                localized: "Mac location unavailable — open System Settings → Privacy → Location and allow LociiGhost.",
+                comment: "Toast when Snap-to-real fires with no Mac CoreLocation fix yet",
+            )
+            return
+        }
+        state.pendingMapFly = MapFlyRequest(
+            coordinate: Coordinate(lat: c.latitude, lng: c.longitude),
+            spanMeters: 2_000,
+        )
+        await state.teleport(udid: udid, lat: c.latitude, lng: c.longitude)
+    }
+}
+
+/// v1.11.2 round 18 perf: extracted CoordsChip into its own view so
+/// its `state.macLocation.coordinate` and `state.currentMapFocus`
+/// dependencies only invalidate this chip. Each CoreLocation tick
+/// otherwise redrew the whole TopStatusBar tree, contending with
+/// MapKit's per-frame render on a connected device.
+private struct CoordsChip: View {
+    @Environment(AppState.self) private var state
+
+    var body: some View {
         HStack(spacing: 5) {
             Image(systemName: "scope")
                 .foregroundStyle(.tint)
@@ -297,13 +401,8 @@ struct TopStatusBar: View {
         .help(LocalizedStringKey("Coordinates of the simulated location"))
     }
 
-    /// What the coords chip prints. Falls back to the Mac proxy when
-    /// no simulation is active so the chip isn't blank during plain
-    /// browsing.
+    /// Falls back to Mac proxy when no simulated coord is active.
     private var displayedCoord: Coordinate? {
-        // `currentMapFocus` resolves to browseCursor in Map mode
-        // and simulatedLocation for a real iPhone — so the chip
-        // shows the right point in either case.
         if let s = state.currentMapFocus { return s }
         if let m = state.macLocation.coordinate {
             return Coordinate(lat: m.latitude, lng: m.longitude)
@@ -316,46 +415,63 @@ struct TopStatusBar: View {
         pb.clearContents()
         pb.setString(String(format: "%.6f, %.6f", c.lat, c.lng), forType: .string)
     }
+}
 
-    // ── times chip ───────────────────────────────────────────────
+/// v1.11.2 round 16 perf: extracted clock-chip into its own view so
+/// the 1 Hz timer's @State update only invalidates this chip — not
+/// the entire TopStatusBar (5 left buttons + 5 right chips). Before
+/// this, sample(1) caught ~40% of main-thread time in
+/// NSView._layoutSubtreeWithOldSize recursion at idle, because each
+/// timer tick redrew the whole status bar and AppKit revisited every
+/// nested view's layout.
+///
+/// Two stacked timestamps. Top is the Mac's wall clock; bottom is
+/// the wall clock at the simulated location's timezone. When the
+/// two timezones match (or we haven't yet learned the GPS tz) we
+/// hide the bottom row to save horizontal space.
+private struct TimesChip: View {
+    @Environment(AppState.self) private var state
+    @State private var nowTick: Date = .now
+    private let clockTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
-    /// Two stacked timestamps. Top is the Mac's wall clock; bottom is
-    /// the wall clock at the simulated location's timezone. When the
-    /// two timezones match (or we haven't yet learned the GPS tz) we
-    /// hide the bottom row to save horizontal space.
-    private var timesChip: some View {
+    var body: some View {
         let tz = state.simulatedTimeZone
         let showRemote = tz != nil && tz != TimeZone.current
-        return infoChip(
-            content: {
-                VStack(alignment: .trailing, spacing: 1) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "macbook")
-                            .foregroundStyle(.secondary)
-                            .font(.caption)
-                        Text(formattedNow(in: TimeZone.current))
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                    }
-                    if showRemote, let tz {
-                        HStack(spacing: 5) {
-                            Image(systemName: "iphone.gen3")
-                                .foregroundStyle(.green)
-                                .font(.caption)
-                            Text(formattedNow(in: tz))
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
-                            Text(tz.abbreviation() ?? tz.identifier)
-                                .foregroundStyle(.tertiary)
-                                .font(.caption)
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
-                        }
-                    }
+        VStack(alignment: .trailing, spacing: 1) {
+            HStack(spacing: 5) {
+                Image(systemName: "macbook")
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+                Text(formattedNow(in: TimeZone.current))
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            if showRemote, let tz {
+                HStack(spacing: 5) {
+                    Image(systemName: "iphone.gen3")
+                        .foregroundStyle(.green)
+                        .font(.caption)
+                    Text(formattedNow(in: tz))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                    Text(tz.abbreviation() ?? tz.identifier)
+                        .foregroundStyle(.tertiary)
+                        .font(.caption)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
-            },
-            help: LocalizedStringKey("Mac time / Time at the simulated location"),
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .frame(minHeight: 28)
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .strokeBorder(Color.secondary.opacity(0.18), lineWidth: 0.5),
         )
+        .hoverHighlight(cornerRadius: 6, changesCursor: false)
+        .help(LocalizedStringKey("Mac time / Time at the simulated location"))
+        .onReceive(clockTimer) { nowTick = $0 }
     }
 
     private func formattedNow(in tz: TimeZone) -> String {
@@ -363,12 +479,5 @@ struct TopStatusBar: View {
         f.dateFormat = "yyyy/MM/dd HH:mm"
         f.timeZone = tz
         return f.string(from: nowTick)
-    }
-
-    // MARK: - Helpers
-
-    private var activeDevice: DeviceVM? {
-        guard let udid = state.selectedUDID else { return nil }
-        return state.devices.first(where: { $0.udid == udid })
     }
 }

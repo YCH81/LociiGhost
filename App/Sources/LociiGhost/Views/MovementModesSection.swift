@@ -106,13 +106,13 @@ struct MovementModesSection: View {
                         // states (race during a prior switch) — stop them
                         // all so we land in a clean slate before
                         // activating the new mode.
-                        if state.navigation != nil {
+                        if state.navigationActive {
                             await state.stopNavigation(udid: udid)
                         }
-                        if state.randomWalk != nil {
+                        if state.randomWalkActive {
                             await state.stopRandomWalk(udid: udid)
                         }
-                        if state.joystick != nil {
+                        if state.joystickActive {
                             await state.stopJoystick(udid: udid)
                         }
                         await MainActor.run {
@@ -137,11 +137,10 @@ struct MovementModesSection: View {
     /// (multi-stop / route), random walker, or joystick. Gold Ditto
     /// doesn't have a long-running session — its actions are one-shot
     /// — so it doesn't gate switching.
-    private var hasActiveSession: Bool {
-        state.navigation != nil
-            || state.randomWalk != nil
-            || state.joystick != nil
-    }
+    // Reads cheap session-active booleans that only flip on session
+    // start/stop — NOT on every 1 Hz position event. Keeps the mode
+    // buttons from re-rendering while a simulation is running.
+    private var hasActiveSession: Bool { state.anySessionActive }
 
     private func modeButton(_ mode: MovementMode, symbol: String, title: LocalizedStringKey) -> some View {
         let isActive = state.activeMovementMode == mode
