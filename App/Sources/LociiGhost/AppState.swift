@@ -7,6 +7,21 @@ import SwiftUI
 import UniformTypeIdentifiers
 import LociiGhostCore
 
+// MARK: - Debug file logger (DwellMonitor diagnostic only)
+private let _dwellLogURL = URL(fileURLWithPath: "/tmp/dwell_debug.txt")
+private func dwellLog(_ msg: String) {
+    let line = "[\(Date())] \(msg)\n"
+    if let data = line.data(using: .utf8) {
+        if FileManager.default.fileExists(atPath: _dwellLogURL.path) {
+            if let fh = try? FileHandle(forWritingTo: _dwellLogURL) {
+                fh.seekToEndOfFile(); fh.write(data); try? fh.close()
+            }
+        } else {
+            try? data.write(to: _dwellLogURL)
+        }
+    }
+}
+
 /// Top-level @Observable state for the SwiftUI app.
 ///
 /// Holds the long-lived `DaemonClient` actor and surfaces device/connection
@@ -560,15 +575,9 @@ final class AppState {
         return false
     }
 
-    /// Append `coord` to the staging queue and, when a dwell sequence
-    /// is running, also inject the stop into `dwellContext.remainingStops`
-    /// so the iPhone actually visits it during the current trip.
+    /// Append `coord` to the staging queue.
     func appendQueueStop(_ coord: Coordinate) {
         pendingStops.append(coord)
-        if var dctx = dwellContext {
-            dctx.remainingStops.append(coord)
-            dwellContext = dctx
-        }
     }
 
     /// Set by `runRoute` when the user requested looping, cleared by
@@ -580,16 +589,26 @@ final class AppState {
     /// lap as a single trip).
     private var loopContext: LoopContext?
 
-    /// Active dwell-mode sequence. Populated by `navigate` when the
-    /// user has dwellEnabled + multi-stop staging; drained on each
-    /// natural idle event in `applyStateEvent`. Cleared by an
-    /// explicit Stop. nil when no dwell trip is in flight.
+    /// Active dwell-mode sequence. Legacy — no longer set by navigate();
+    /// the new DwellMonitor approach handles per-stop pausing. Kept to
+    /// avoid breaking the applyStateEvent dead-code blocks below until
+    /// they are cleaned up in a future pass.
     private var dwellContext: DwellContext?
 
+    /// Multi-stop lap context. Set when routeLaps > 1 and multi-stop
+    /// Navigate is pressed. On natural idle, applyStateEvent decrements
+    /// remainingLaps and fires teleport + navigate for the next lap,
+    /// matching the same pattern as loopContext for route replay.
+    private var multiStopLapContext: MultiStopLapContext?
+
+    /// Position-based dwell monitor. The full multi-stop trip runs as ONE
+    /// navigate RPC; this monitor injects pause/resume at each staged stop.
+    /// Cleared by Stop, mode switch, or all-stops-visited.
+    var dwellMonitor: DwellMonitor? = nil
+
     /// Per-stop dwell mode (v1.11.0 Feat #3). When true, multi-stop
-    /// Navigate chops the trip into single-leg navigates separated
-    /// by a `dwellSeconds` pause at each waypoint. UserDefaults
-    /// persists across launches.
+    /// Navigate pauses the iPhone for `dwellSeconds` at each waypoint
+    /// without changing the route plan. UserDefaults persists across launches.
     var dwellEnabled: Bool = UserDefaults.standard.bool(forKey: "dwell.enabled") {
         didSet { UserDefaults.standard.set(dwellEnabled, forKey: "dwell.enabled") }
     }
@@ -2037,7 +2056,8 @@ final class AppState {
     /// next teleport-and-navigate when the previous lap completes
     /// naturally. User-Stop emits `stopped` (not `idle`), which clears
     /// `loopContext` and breaks the cycle cleanly.
-    func runRoute(_ route: Route, udid: String, lapCount: Int = 1) async {
+    func runRoute(_ route: Route, udid: String, lapCount: Int = 1,
+                  allowDwell: Bool = false, dwellSecondsForRoute: Int = 5) async {
         let coords = route.points
         guard !coords.isEmpty else {
             lastError = String(localized: "GPX file has no waypoints or track points.")
@@ -2093,11 +2113,15 @@ final class AppState {
             loopContext = LoopContext(
                 routePoints: coords, udid: udid, profile: travelProfile, speed: speed,
                 remainingLaps: Int.max,
+                allowDwell: allowDwell,
+                dwellSecondsForRoute: dwellSecondsForRoute,
             )
         } else if lapCount >= 2 {
             loopContext = LoopContext(
                 routePoints: coords, udid: udid, profile: travelProfile, speed: speed,
                 remainingLaps: lapCount - 1,
+                allowDwell: allowDwell,
+                dwellSecondsForRoute: dwellSecondsForRoute,
             )
         } else {
             loopContext = nil
@@ -2146,7 +2170,11 @@ final class AppState {
         await navigate(udid: udid,
                        through: stops,
                        profile: travelProfile,
-                       speed: speed)
+                       speed: speed,
+                       allowDwell: allowDwell,
+                       dwellOverride: allowDwell ? true : nil,
+                       dwellSecondsOverride: allowDwell ? dwellSecondsForRoute : nil,
+                       suppressDwellContext: true)
     }
 
     // MARK: - GPX import / export (Phase 5.4)
@@ -2734,6 +2762,26 @@ final class AppState {
         }
     }
 
+    /// Move the simulated position to (lat, lng) via the daemon's
+    /// location.teleport RPC — WITHOUT the UI side-effects of the
+    /// public `teleport()` (no pendingStops clear, no navigation nil,
+    /// no activeTrip wipe). Used exclusively for dwell lap-restarts
+    /// where we only need the position updated for `navigationOrigin()`,
+    /// and want the existing route/progress UI to survive intact.
+    private func teleportPositionOnly(udid: String, lat: Double, lng: Double) async {
+        guard let client else { return }
+        do {
+            _ = try await client.callRaw("location.teleport", params: [
+                "udid": AnyCodable(udid),
+                "lat":  AnyCodable(lat),
+                "lng":  AnyCodable(lng),
+            ])
+            setSimulatedLocation(Coordinate(lat: lat, lng: lng), for: udid)
+        } catch {
+            lastError = String(describing: error)
+        }
+    }
+
     /// Plan a route from "current" through `stops` in order and start
     /// the iPhone moving along it at `speed`. With one stop this is a
     /// simple A→B navigation; with multiple it visits each stop in order
@@ -2741,7 +2789,17 @@ final class AppState {
     ///
     /// Origin is the current simulated location if we have one (chained
     /// navigation), else the Mac proxy fix.
-    func navigate(udid: String, through stops: [Coordinate], profile: TravelProfile, speed: Double) async {
+    func navigate(udid: String, through stops: [Coordinate], profile: TravelProfile, speed: Double,
+                  allowDwell: Bool = true, isLapContinuation: Bool = false,
+                  /// When non-nil, overrides `self.dwellEnabled` for this call only.
+                  /// Lets runRoute force-enable dwell without mutating global state.
+                  dwellOverride: Bool? = nil,
+                  /// When non-nil, overrides `self.dwellSeconds` for this call only.
+                  dwellSecondsOverride: Int? = nil,
+                  /// When true, set up DwellMonitor (in-route pause) but skip DwellContext
+                  /// (end-of-route lap management). Used for saved-route playback where
+                  /// loopContext already handles lap repetition.
+                  suppressDwellContext: Bool = false) async {
         if udid == Self.virtualMapUDID { return }
         guard let client else { return }
         guard let origin = navigationOrigin() else {
@@ -2750,43 +2808,12 @@ final class AppState {
         }
         guard !stops.isEmpty else { return }
 
-        // v1.11.0 Feat #3: per-stop dwell mode. When the user enabled
-        // "Dwell at each stop" and staged 2+ stops, split the trip
-        // into single-leg navigates. We set `dwellContext` to track
-        // the queue and recursively fire `navigate` with just the
-        // first stop — the recursive call has `stops.count == 1` so
-        // the guard below skips re-entry. `applyStateEvent` picks up
-        // the daemon's idle event for that leg, sleeps `dwellSeconds`,
-        // and fires the next leg the same way.
-        if dwellEnabled, stops.count > 1, dwellContext == nil {
-            // v1.11.2 round 11: precompute full-route haversine total
-            // so the progress bar and the ETA timer share the same
-            // "full trip" scale. Origin for leg 0 is the current
-            // navigation origin; subsequent leg origins are the
-            // previous leg's destination.
-            let origin = navigationOrigin() ?? stops[0]
-            let legPoints: [Coordinate] = [origin] + stops
-            var totalM: Double = 0
-            for i in 1..<legPoints.count {
-                let a = CLLocation(latitude: legPoints[i - 1].lat, longitude: legPoints[i - 1].lng)
-                let b = CLLocation(latitude: legPoints[i].lat,     longitude: legPoints[i].lng)
-                totalM += a.distance(from: b)
-            }
-            dwellContext = DwellContext(
-                udid: udid,
-                remainingStops: stops,
-                profile: profile,
-                speed: speed,
-                dwellSeconds: max(1, dwellSeconds),
-                totalDistanceM: totalM,
-                completedDistanceM: 0,
-                useStraightLine: useStraightLine,
-            )
-            await navigate(udid: udid, through: [stops[0]], profile: profile, speed: speed)
-            return
-        }
-
-        let waypoints = [origin] + stops
+        // Always navigate the full stop list so the route polyline is
+        // identical to a non-dwell trip. Dwell pauses are driven by
+        // DwellMonitor (proximity → pause/resume) at intermediate stops
+        // and by the idle event at the final stop.
+        let effectiveStops = stops
+        let waypoints = [origin] + effectiveStops
         // AnyCodable's encoder only walks the recursive shapes it knows
         // about: [AnyCodable] and [String: AnyCodable]. A bare
         // [[String: AnyCodable]] falls into its `default` branch and
@@ -2861,7 +2888,10 @@ final class AppState {
                 "profile":        AnyCodable(profile.rawValue),
                 "speed_mps":      AnyCodable(speed),
                 "straight_line":  AnyCodable(effectiveStraightLine),
-                "laps":           AnyCodable(max(1, routeLaps)),
+                // allowDwell=true → dwell or multi-stop, App controls laps,
+                // always send laps=1 to daemon. allowDwell=false (route
+                // playback) → daemon controls laps.
+                "laps":           AnyCodable(allowDwell ? 1 : max(1, routeLaps)),
                 "engine":         AnyCodable(engine.rawValue),
             ]
             if let polylineParam {
@@ -2872,34 +2902,8 @@ final class AppState {
             }
             let reply: Reply = try await client.call("location.navigate", params: navParams)
             let coords = reply.route.coordinates.map { Coordinate(lat: $0.lat, lng: $0.lng) }
-            // v1.11.2 round 11 (T24 fix): in dwell mode, override
-            // distance + ETA with the FULL trip values rather than
-            // this single leg's. dwellAdjustedEta below already
-            // returns full-trip seconds; the matching distance
-            // denominator is dctx.totalDistanceM. Progress scaling
-            // happens in applyPositionEvent — see (completedDistanceM
-            // + cum) / totalDistanceM. Non-dwell mode keeps the
-            // daemon's reply values verbatim.
-            let displayedDistanceM: Double
-            let displayedEtaSeconds: Double
-            if let dctx = dwellContext, dctx.totalDistanceM > 0 {
-                displayedDistanceM = dctx.totalDistanceM
-                displayedEtaSeconds = dwellAdjustedEta(currentLegEta: reply.route.duration_s,
-                                                       from: origin)
-                // Stash this leg's daemon-reported distance so when
-                // the leg completes (idle event → applyStateEvent)
-                // we can add it to completedDistanceM and advance
-                // the progress baseline. Without this, progress
-                // would jump back to its start-of-leg value at the
-                // beginning of every dwell leg.
-                if var dctxLocal = dwellContext {
-                    dctxLocal.currentLegDistanceM = reply.route.distance_m
-                    dwellContext = dctxLocal
-                }
-            } else {
-                displayedDistanceM = reply.route.distance_m
-                displayedEtaSeconds = reply.route.duration_s
-            }
+            let displayedDistanceM = reply.route.distance_m
+            let displayedEtaSeconds = reply.route.duration_s
             navigation = NavigationVM(
                 state: .moving,
                 profile: profile,
@@ -2909,48 +2913,100 @@ final class AppState {
                 etaSeconds: displayedEtaSeconds,
                 currentLocation: origin,
                 progress: 0,
-                laps: max(1, routeLaps)
+                // In dwell mode the daemon only runs 1 lap; the App
+                // controls lap repetition via the idle handler. Setting
+                // laps>1 would make currentLap jump based on progress
+                // within the single daemon lap, causing the ETA chip to
+                // display the wrong lap number.
+                laps: allowDwell ? 1 : max(1, routeLaps)
             )
-            // Pin the trip onto THIS device's slot (per-device
-            // dict). Switching the sidebar to a different iPhone
-            // and back leaves the route / waypoints / destination
-            // intact for the device that's actually running them.
-            // In dwell mode the recursive `navigate` only knows about
-            // the CURRENT leg's single stop, but the map should preview
-            // every still-pending waypoint of the dwell sequence so the
-            // user can see where the trip is going overall. Use the
-            // dwellContext's full remaining list when present.
-            //
-            // v1.11.2 round 9 (T21 fix): in dwell mode also synthesise
-            // a polyline that extends past the daemon-resolved current
-            // leg to every remaining stop. The daemon only sees the
-            // current single-stop navigate so its `coords` covers just
-            // this leg; without this stitched look-ahead, the user
-            // sees the pins of upcoming stops but no line connecting
-            // them — the trip shape disappears past the next dwell
-            // target. Straight-line look-ahead is the cheapest accurate
-            // hint we can draw without a second OSRM round-trip.
-            let displayedWaypoints: [Coordinate]
-            let displayedRoute: [Coordinate]
-            if let dctx = dwellContext, dctx.remainingStops.count > 1 {
-                displayedWaypoints = dctx.remainingStops
-                // Skip the first remaining stop — it's already the
-                // destination of the current leg's resolved polyline,
-                // so its position is already terminating `coords`.
-                let lookAhead = Array(dctx.remainingStops.dropFirst())
-                displayedRoute = coords + lookAhead
-            } else {
-                displayedWaypoints = stops
-                displayedRoute = coords
-            }
             setActiveTrip(
-                route: displayedRoute,
-                destination: displayedWaypoints.last ?? coords.last,
+                route: coords,
+                destination: effectiveStops.last ?? coords.last,
                 isStraightLine: useStraightLine,
-                waypoints: displayedWaypoints,
+                waypoints: allowDwell ? pendingStops : stops,
                 for: udid,
             )
             setSimulatedLocation(origin, for: udid)
+            // Resolve effective dwell settings: callers (e.g. runRoute) can
+            // pass explicit overrides so the global toggle / seconds don't
+            // bleed into saved-route playback.
+            let effectiveDwellEnabled = dwellOverride ?? dwellEnabled
+            let effectiveDwellSeconds = dwellSecondsOverride ?? dwellSeconds
+            if allowDwell, effectiveDwellEnabled, stops.count > 1 {
+                // Route-snapped trigger coords: for each intermediate stop,
+                // find the nearest point in the daemon's actual route
+                // polyline (coords). The simulated position follows that
+                // exact polyline, so it passes within a few metres of the
+                // snapped point — far more reliable than the user's raw
+                // dropped coordinate which may be 20–80 m off-road.
+                // Last stop is excluded — it is handled by the idle event.
+                let triggerCoords: [Coordinate] = stops.dropLast().map { stop in
+                    coords.min(by: {
+                        StopOrdering.haversineMeters($0, stop) < StopOrdering.haversineMeters($1, stop)
+                    }) ?? stop
+                }
+                dwellLog("[DwellMonitor] setup: coordsCount=\(coords.count) stopsCount=\(stops.count) intermediateCount=\(triggerCoords.count) dwellSeconds=\(effectiveDwellSeconds)")
+                for (i, tc) in triggerCoords.enumerated() {
+                    let snapDist = StopOrdering.haversineMeters(tc, stops[i])
+                    dwellLog("[DwellMonitor]   stop[\(i)] raw=(\(String(format:"%.5f",stops[i].lat)),\(String(format:"%.5f",stops[i].lng))) snap=(\(String(format:"%.5f",tc.lat)),\(String(format:"%.5f",tc.lng))) snapDist=\(String(format:"%.1f",snapDist))m")
+                }
+                dwellMonitor = DwellMonitor(
+                    udid: udid,
+                    stops: triggerCoords,
+                    dwellSeconds: max(1, effectiveDwellSeconds),
+                    thresholdM: 30.0
+                )
+                // suppressDwellContext == true: saved-route playback. loopContext
+                // manages lap repetition (including end-of-lap dwell in the loop
+                // handler). No DwellContext needed — it would conflict with loopContext
+                // on the natural-idle event.
+                if !suppressDwellContext {
+                    // For lap continuations isLapContinuation=true; dwellContext
+                    // is already set with the decremented lap count. Preserve it.
+                    // For initial presses, start fresh from routeLaps.
+                    if isLapContinuation, let prior = dwellContext {
+                        // Lap continuation: stops is allStops.dropFirst() (origin=stop1).
+                        // Preserve the full original stop list in allStops so the next
+                        // lap restart can teleport to stop1 and route through all stops again.
+                        dwellContext = DwellContext(
+                            udid: udid,
+                            profile: profile,
+                            speed: speed,
+                            dwellSeconds: max(1, effectiveDwellSeconds),
+                            useStraightLine: useStraightLine,
+                            allStops: prior.allStops,  // full list, not the dropFirst() stops
+                            totalLaps: prior.totalLaps,
+                            currentLap: prior.currentLap,
+                            remainingDwellLaps: prior.remainingDwellLaps
+                        )
+                    } else {
+                        dwellContext = DwellContext(
+                            udid: udid,
+                            profile: profile,
+                            speed: speed,
+                            dwellSeconds: max(1, effectiveDwellSeconds),
+                            useStraightLine: useStraightLine,
+                            allStops: stops,
+                            totalLaps: max(1, routeLaps),
+                            currentLap: 1,
+                            remainingDwellLaps: max(0, routeLaps - 1)
+                        )
+                    }
+                    // Patch NavigationVM with dwell-mode lap info so the BottomBar
+                    // can show the correct "Lap N / M" counter. Must happen after
+                    // dwellContext is set (initial) or updated (continuation).
+                    if let dctx = dwellContext, var nav = navigation {
+                        nav.dwellCurrentLap = dctx.currentLap
+                        nav.dwellTotalLaps = dctx.totalLaps
+                        navigation = nav
+                    }
+                }
+            } else {
+                dwellMonitor = nil
+                if !allowDwell { dwellContext = nil }
+            }
+            multiStopLapContext = nil
             // v1.11.0: do NOT clear `pendingStops` after Navigate. Earlier
             // versions wiped the staging list as soon as the trip started,
             // which removed the on-panel coordinate list users wanted to
@@ -2998,12 +3054,26 @@ final class AppState {
         // context and won't fire a fresh lap or fresh dwell leg.
         if loopContext?.udid == udid { loopContext = nil }
         if dwellContext?.udid == udid { dwellContext = nil }
+        if dwellMonitor?.udid == udid { dwellMonitor = nil }
+        if multiStopLapContext?.udid == udid { multiStopLapContext = nil }
         _ = try? await client.callRaw("location.stop", params: ["udid": AnyCodable(udid)])
         navigation = nil
         // Stop cancels THIS device's trip — wipe just its slot
         // in the per-device tripsByDevice dict. Other iPhones
         // running their own trips stay drawn.
         clearActiveTrip(for: udid)
+    }
+
+    /// Clear all simulation state and staged stops without snapping
+    /// the iPhone back to real GPS. The iPhone stays at its last
+    /// simulated position. Used by the BottomBar "Clear" button.
+    func clearAllState(udid: String) async {
+        if navigationActive { await stopNavigation(udid: udid) }
+        if randomWalkActive  { await stopRandomWalk(udid: udid) }
+        if joystickActive    { await stopJoystick(udid: udid) }
+        pendingStops = []
+        activeMovementMode = nil
+        schedulePreviewRefresh()
     }
 
     // ------------------------------------------------------------------
@@ -3729,24 +3799,57 @@ final class AppState {
                 // so we add the prior-leg accumulator and divide by
                 // total. Non-dwell mode falls through to the original
                 // calc (cum and distanceM are both whole-trip).
-                if let dctx = dwellContext, dctx.totalDistanceM > 0 {
-                    nav.progress = max(0, min(1, (dctx.completedDistanceM + cum) / dctx.totalDistanceM))
-                } else {
-                    nav.progress = max(0, min(1, cum / nav.distanceM))
-                }
+                nav.progress = max(0, min(1, cum / nav.distanceM))
             }
-            if let eta = doubleValue(params["eta_s"]) {
-                // v1.11.0: in dwell mode the daemon only sees the
-                // current leg's polyline (single-stop navigate), so
-                // its eta_s covers just this leg. The UI's bottom-
-                // bar ETA should instead reflect the full remaining
-                // multi-stop journey: this leg + every remaining
-                // leg's haversine straight-line estimate at the
-                // chosen speed + a dwell pause at each stop.
+            if let eta = doubleValue(params["eta_s"]), !nav.isPaused {
+                // v1.11.2: guard !isPaused so the displayed ETA
+                // freezes while paused even if daemon keeps ticking.
+                // dwellAdjustedEta is a no-op when dwellContext==nil;
+                // in the new DwellMonitor path the daemon reports the
+                // full-route eta_s so we use it directly.
                 nav.etaSeconds = dwellAdjustedEta(currentLegEta: eta, from: coord)
                 nav.etaRefAt = Date()
             }
             navigation = nav
+            // DwellMonitor: trigger a pause/resume dwell at each
+            // stop when the simulated position arrives within
+            // thresholdM. Only fires when moving (not user-paused).
+            if var dmon = dwellMonitor {
+                if dmon.isDwelling || nav.state != .moving || dmon.nextIndex >= dmon.stops.count {
+                    dwellLog("[DwellMonitor] BLOCKED: isDwelling=\(dmon.isDwelling) state=\(nav.state) idx=\(dmon.nextIndex)/\(dmon.stops.count)")
+                } else {
+                    let target = dmon.stops[dmon.nextIndex]
+                    let loc = CLLocation(latitude: coord.lat, longitude: coord.lng)
+                    let tgt = CLLocation(latitude: target.lat, longitude: target.lng)
+                    let dist = loc.distance(from: tgt)
+                    dwellLog("[DwellMonitor] check: idx=\(dmon.nextIndex) dist=\(String(format:"%.1f",dist))m threshold=\(dmon.thresholdM)m pos=(\(String(format:"%.5f",coord.lat)),\(String(format:"%.5f",coord.lng)))")
+                    if dist < dmon.thresholdM {
+                        dwellLog("[DwellMonitor] FIRED idx=\(dmon.nextIndex)")
+                        dmon.isDwelling = true
+                        dwellMonitor = dmon
+                        let snap = dmon
+                        Task { @MainActor [weak self] in
+                            guard let self else { return }
+                            await self.pauseNavigation(udid: snap.udid)
+                            try? await Task.sleep(for: .seconds(snap.dwellSeconds))
+                            guard self.dwellMonitor != nil else { return }
+                            await self.resumeNavigation(udid: snap.udid)
+                            if var dm = self.dwellMonitor {
+                                dm.isDwelling = false
+                                dm.nextIndex += 1
+                                if dm.nextIndex >= dm.stops.count {
+                                    // All intermediate stops dwelled. The route
+                                    // continues to the last stop; idle event
+                                    // handles the final dwell + lap logic.
+                                    self.dwellMonitor = nil
+                                    return
+                                }
+                                self.dwellMonitor = dm
+                            }
+                        }
+                    }
+                }
+            }
         } else if stringValue(params["state"]) == "moving",
                   let distanceM = doubleValue(params["distance_m"]),
                   let etaS = doubleValue(params["eta_s"]) {
@@ -3878,6 +3981,13 @@ final class AppState {
                 let snap = ctx
                 Task { @MainActor [weak self] in
                     guard let self else { return }
+                    // Dwell at the last stop of this lap before teleporting back
+                    // to the start. Only applies when the user enabled dwell for
+                    // this route run (opt-in from StartRouteSheet).
+                    if snap.allowDwell {
+                        try? await Task.sleep(for: .seconds(Double(snap.dwellSecondsForRoute)))
+                        guard self.loopContext != nil else { return }
+                    }
                     await self.teleport(udid: snap.udid,
                                         lat: snap.routePoints[0].lat,
                                         lng: snap.routePoints[0].lng)
@@ -3894,59 +4004,68 @@ final class AppState {
                     await self.navigate(udid: snap.udid,
                                         through: stops,
                                         profile: snap.profile,
-                                        speed: snap.speed)
+                                        speed: snap.speed,
+                                        allowDwell: snap.allowDwell,
+                                        dwellOverride: snap.allowDwell ? true : nil,
+                                        dwellSecondsOverride: snap.allowDwell ? snap.dwellSecondsForRoute : nil,
+                                        suppressDwellContext: true)
                 }
             } else {
                 loopContext = nil
             }
         }
 
-        // v1.11.0 Feat #3: dwell-mode continuation. Same shape as the
-        // auto-loop above — on natural idle we pop the leg that just
-        // completed, sleep the configured dwell time, then fire the
-        // next leg. Explicit Stop clears dwellContext (see
-        // `stopNavigation`), which short-circuits the queued Task's
-        // guard and ends the sequence.
+        // Dwell at final stop + lap continuation. When the full route
+        // reaches idle with a dwellContext active, sleep the dwell time
+        // at the last stop, then either teleport-and-loop or finish.
+        // Explicit Stop clears dwellContext in stopNavigation(), so the
+        // Task's guard check exits immediately on user cancellation.
         var willDwellNext = false
-        if stateRaw == "idle", wasRunning, var dctx = dwellContext {
-            if !dctx.remainingStops.isEmpty {
-                // v1.11.2 round 11 (T24 fix): bank the just-completed
-                // leg's daemon distance into completedDistanceM so
-                // the next leg's progress baseline picks up from the
-                // right cumulative point — otherwise progress resets
-                // to ~0 at every dwell stop even though the full-trip
-                // ETA continues counting down.
-                dctx.completedDistanceM += dctx.currentLegDistanceM
-                dctx.currentLegDistanceM = 0
-                dctx.remainingStops.removeFirst()
-                dwellContext = dctx
-            }
-            if let nextStop = dctx.remainingStops.first {
-                willDwellNext = true
-                let snap = dctx
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    try? await Task.sleep(for: .seconds(snap.dwellSeconds))
+        if stateRaw == "idle", wasRunning, let dctx = dwellContext {
+            willDwellNext = true
+            let snap = dctx
+            let startCoord = dctx.allStops[0]
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                try? await Task.sleep(for: .seconds(snap.dwellSeconds))  // dwell at last stop
+                guard self.dwellContext != nil else { return }
+                if snap.remainingDwellLaps > 0 {
+                    var nextDctx = snap
+                    nextDctx.remainingDwellLaps -= 1
+                    nextDctx.currentLap += 1
+                    self.dwellContext = nextDctx
+                    // Clear navigation BEFORE teleport: teleportPositionOnly() causes
+                    // the daemon to send state=idle (it stops the current route when
+                    // repositioning), which would re-trigger this idle handler and
+                    // fire a duplicate lap-continuation navigate(). By clearing
+                    // navigation here, applyStateEvent's wasRunning check fails for
+                    // any daemon idle that arrives during the teleport, preventing
+                    // the double-navigate bug.
+                    self.navigation = nil
+                    await self.teleportPositionOnly(udid: snap.udid,
+                                                   lat: startCoord.lat,
+                                                   lng: startCoord.lng)
                     guard self.dwellContext != nil else { return }
-                    // v1.11.2 bugfix: restore the dwell sequence's
-                    // original routing mode for this leg. Without
-                    // this, route playback's leg 1 ran straight-line
-                    // (runRoute forced `useStraightLine = true`) but
-                    // legs 2+ inherited whatever `state.useStraightLine`
-                    // had drifted back to after runRoute's `defer`
-                    // restored the pre-route value — flipping mid-
-                    // trip to OSRM/path, and on some routes causing
-                    // the daemon to stall (T31 bug #2).
+                    try? await Task.sleep(for: .seconds(snap.dwellSeconds))  // dwell at stop1
+                    guard self.dwellContext != nil else { return }
                     let savedStraight = self.useStraightLine
                     self.useStraightLine = snap.useStraightLine
                     defer { self.useStraightLine = savedStraight }
+                    // Origin is already at allStops[0] (teleported above);
+                    // pass the remaining stops so waypoints don't duplicate stop1.
                     await self.navigate(udid: snap.udid,
-                                        through: [nextStop],
+                                        through: Array(snap.allStops.dropFirst()),
                                         profile: snap.profile,
-                                        speed: snap.speed)
+                                        speed: snap.speed,
+                                        isLapContinuation: true)
+                } else {
+                    self.dwellContext = nil
+                    self.dwellMonitor = nil
+                    self.navigation = nil
+                    if self.alertSoundEnabled {
+                        Task { @MainActor in AlertSoundService.playRouteComplete() }
+                    }
                 }
-            } else {
-                dwellContext = nil
             }
         }
 
@@ -3976,28 +4095,12 @@ final class AppState {
     /// straight-line time + a dwell pause at each stop. Returns the
     /// raw leg ETA unchanged when no dwell sequence is active.
     private func dwellAdjustedEta(currentLegEta: Double, from currentCoord: Coordinate) -> Double {
-        guard let dctx = dwellContext, !dctx.remainingStops.isEmpty else {
-            return currentLegEta
-        }
-        let speed = max(0.1, dctx.speed)
-        // Stops beyond the one we're currently walking toward. The
-        // first entry in remainingStops is THIS leg's destination
-        // (already covered by currentLegEta); subsequent entries are
-        // future legs that need straight-line estimating.
-        let upcomingStops = dctx.remainingStops.dropFirst()
-        var extra: Double = 0
-        // Dwell at this leg's destination once we arrive (still owed).
-        extra += Double(dctx.dwellSeconds)
-        // Walk and dwell for every remaining stop after that.
-        var prev = dctx.remainingStops.first ?? currentCoord
-        for stop in upcomingStops {
-            let from = CLLocation(latitude: prev.lat, longitude: prev.lng)
-            let to = CLLocation(latitude: stop.lat, longitude: stop.lng)
-            extra += from.distance(from: to) / speed
-            extra += Double(dctx.dwellSeconds)
-            prev = stop
-        }
-        return currentLegEta + extra
+        guard let dctx = dwellContext else { return currentLegEta }
+        // Remaining intermediate pauses (DwellMonitor hasn't fired yet)
+        // + 1 for the final stop (handled by idle event).
+        let pendingIntermediate = dwellMonitor.map { $0.stops.count - $0.nextIndex } ?? 0
+        let pendingPauses = pendingIntermediate + 1
+        return currentLegEta + Double(pendingPauses * dctx.dwellSeconds)
     }
 
     private func doubleValue(_ wrapped: AnyCodable?) -> Double? {
@@ -4363,6 +4466,13 @@ struct LoopContext: Sendable, Equatable {
     let profile: TravelProfile
     let speed: Double
     var remainingLaps: Int
+    /// Whether dwell pauses are enabled for this route run (opt-in per-execution
+    /// in StartRouteSheet; does NOT read the global dwellEnabled toggle so that
+    /// multi-stop dwell setting doesn't leak into route playback).
+    var allowDwell: Bool = false
+    /// Seconds to pause at each intermediate waypoint and at the end of each lap
+    /// before looping (only meaningful when allowDwell == true).
+    var dwellSecondsForRoute: Int = 5
 }
 
 /// Per-stop dwell sequence (Feat #3 / v1.11.0). When the user enables
@@ -4374,35 +4484,49 @@ struct LoopContext: Sendable, Equatable {
 /// navigates separated by the dwell delays.
 struct DwellContext: Sendable, Equatable {
     let udid: String
-    var remainingStops: [Coordinate]
     let profile: TravelProfile
     let speed: Double
     let dwellSeconds: Int
-    /// v1.11.2: full-route total distance, computed once at dwell
-    /// start. Used as the denominator for `nav.progress` so the
-    /// progress bar and the ETA timer share the same "full trip"
-    /// scale — before this, ETA was full-trip but progress was
-    /// current-leg, so the bar reached 100% at every dwell stop
-    /// while ETA still said hours remaining.
-    var totalDistanceM: Double = 0
-    /// Distance accumulated over legs already finished. Incremented
-    /// in applyStateEvent when a dwell leg's idle event arrives,
-    /// before the next leg fires.
-    var completedDistanceM: Double = 0
-    /// The current leg's daemon-reported distance (recorded after the
-    /// navigate RPC reply). When the leg completes, this is what
-    /// gets added to completedDistanceM.
-    var currentLegDistanceM: Double = 0
-    /// v1.11.2 bugfix: snapshot of `useStraightLine` at dwell start.
-    /// Route playback's `runRoute` force-sets straight-line then
-    /// `defer`-restores to the user's pre-route value, which happens
-    /// the moment `await navigate(...)` returns (after leg 1). The
-    /// applyStateEvent-driven continuation that fires legs 2+ then
-    /// inherited whatever state.useStraightLine had drifted back to,
-    /// silently flipping subsequent legs to OSRM/path mode mid-trip.
-    /// Storing the routing intent here lets every leg in the dwell
-    /// sequence run with the exact same mode the user kicked off.
+    /// Snapshot of `useStraightLine` at dwell start so every lap's
+    /// navigate() call uses the same routing mode the user chose.
     var useStraightLine: Bool = false
+    /// Full stop list; preserved so lap restarts replay the same route.
+    var allStops: [Coordinate] = []
+    /// Total laps requested (1 = single trip).
+    var totalLaps: Int = 1
+    /// 1-indexed current lap number.
+    var currentLap: Int = 1
+    /// Laps remaining AFTER the current one. 0 = this is the last lap.
+    var remainingDwellLaps: Int = 0
+}
+
+/// Position-based dwell pause tracker. The full multi-stop route runs as
+/// ONE navigate RPC; this struct drives `location.pause` / `location.resume`
+/// when the simulated position arrives near each waypoint in order.
+struct DwellMonitor: Sendable {
+    let udid: String
+    /// Route-snapped trigger coordinates (intermediate stops only; the
+    /// last stop is handled by the idle event, not proximity detection).
+    let stops: [Coordinate]
+    var nextIndex: Int = 0
+    /// True while a pause+sleep+resume Task is in flight — prevents
+    /// a second trigger on the same stop from consecutive 1 Hz events.
+    var isDwelling: Bool = false
+    let dwellSeconds: Int
+    /// Proximity radius in metres. 35 m gives enough margin for the
+    /// gap between a user's off-road drop and the OSRM road-snap.
+    let thresholdM: Double
+}
+
+/// Multi-stop lap tracking. Set by navigate() when routeLaps > 1.
+/// applyStateEvent teleports to stops[0] and fires the next lap on
+/// natural idle, mirroring the loopContext pattern for route replay.
+struct MultiStopLapContext: Sendable {
+    let udid: String
+    let stops: [Coordinate]
+    let profile: TravelProfile
+    let speed: Double
+    var remainingLaps: Int
 }
 
 struct NavigationVM: Sendable, Equatable {
@@ -4417,6 +4541,13 @@ struct NavigationVM: Sendable, Equatable {
     var currentLocation: Coordinate
     var progress: Double            // 0...1
     var laps: Int = 1               // 1 = single trip, 2+ = looped
+    /// Dwell-mode lap display. When the App manually orchestrates laps via
+    /// DwellContext (multi-stop dwell), progress-based currentLap is wrong
+    /// because `laps` is clamped to 1 (daemon runs one lap at a time).
+    /// These fields let BottomBar show the correct lap counter in dwell mode.
+    /// 0 = not in dwell-lap mode; use progress-based currentLap / laps instead.
+    var dwellCurrentLap: Int = 0
+    var dwellTotalLaps: Int = 0
     /// Wall-clock instant the trip started. Preserved across position-event
     /// NavigationVM rebuilds so the elapsed counter doesn't reset every tick.
     var startedAt: Date = .now

@@ -114,23 +114,16 @@ struct MultiStopPanel: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                // v1.11.0: sidebar mirror of the on-map "Show controls"
-                // chip. When the user X-dismissed the ControlPanel popup,
-                // they may not look back to the map to find the chip —
-                // surface the re-open entry here too so it's reachable
-                // wherever the user happens to be focused.
-                if state.navigationControlsHidden {
-                    Button {
-                        state.navigationControlsHidden = false
-                    } label: {
-                        Label("Show route controls",
-                              systemImage: "list.bullet.below.rectangle")
-                    }
-                    .controlSize(.small)
-                    .buttonStyle(.bordered)
-                    .hoverHighlight(cornerRadius: 5)
-                    .help(LocalizedStringKey("Reopen the route controls"))
+                Button {
+                    state.navigationControlsHidden = false
+                } label: {
+                    Label("Show route controls",
+                          systemImage: "list.bullet.below.rectangle")
                 }
+                .controlSize(.small)
+                .buttonStyle(.bordered)
+                .hoverHighlight(cornerRadius: 5)
+                .help(LocalizedStringKey("Reopen the route controls"))
                 stopsSummary
             }
 

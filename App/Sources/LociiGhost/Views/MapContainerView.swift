@@ -387,16 +387,13 @@ struct MapContainerView: NSViewRepresentable {
                 refreshAnnotations(on: map)
                 return
             }
-            // Stop-adding only when Multi-stop mode is the active
-            // panel, OR when a multi-stop dwell navigation is already
-            // running (canQueueStop covers both). Without this gate
-            // every stray map click would sprout a red pin even when
-            // the user is just panning around looking for somewhere to
-            // teleport — a real annoyance the previous version surfaced.
-            // Right-click ALWAYS pops the context menu (see
-            // `handleRightClick`), so there's still a one-step "add as
-            // stop" path available regardless of mode.
-            guard state.canQueueStop else { return }
+            // Left-click stop-adding: only when Multi-stop mode is the
+            // active panel AND no navigation is running. Once a trip
+            // is in flight, left-click is disabled to prevent accidental
+            // stops — use the right-click context menu to inject stops
+            // mid-trip (right-click "Add as stop" is not restricted).
+            guard state.activeMovementMode == .multiStop,
+                  !state.navigationActive else { return }
             // Append rather than replace so successive clicks build a
             // multi-stop trip. In dwell mode this also injects the new
             // coord into dwellContext.remainingStops so the iPhone

@@ -28,12 +28,25 @@ struct StartRouteSheet: View {
     /// on in that case anyway.
     @State private var lapText: String = ""
 
+    /// Per-execution dwell choice. Defaults to OFF so routes play
+    /// back smoothly without stopping. User can enable from this
+    /// sheet; the choice does NOT persist to the global dwellEnabled
+    /// toggle (routes and multi-stop are independent settings).
+    @State private var routeDwell: Bool = false
+    @State private var routeDwellText: String = "5"
+
     private var resolvedLapCount: Int {
         guard loop else { return 1 }
         let trimmed = lapText.trimmingCharacters(in: .whitespaces)
         if trimmed.isEmpty { return 0 }
         if let n = Int(trimmed), n >= 2 { return n }
         return 0
+    }
+
+    private var resolvedDwellSeconds: Int {
+        let trimmed = routeDwellText.trimmingCharacters(in: .whitespaces)
+        if let n = Int(trimmed), n >= 1 { return n }
+        return 5
     }
 
     /// v1.11.2 bug #3: when a navigation / random walk / joystick is
@@ -120,6 +133,37 @@ struct StartRouteSheet: View {
                 .padding(.leading, 22)
             }
 
+            Toggle(isOn: $routeDwell) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Pause at each waypoint",
+                         comment: "Start-route sheet — per-waypoint dwell checkbox label")
+                        .font(.callout)
+                    Text("Stop and wait at each point along the route before continuing.",
+                         comment: "Start-route sheet — per-waypoint dwell checkbox explanation")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .toggleStyle(.checkbox)
+
+            if routeDwell {
+                HStack(spacing: 8) {
+                    Text("Pause seconds:",
+                         comment: "Start-route sheet — dwell seconds field label")
+                        .font(.callout)
+                    TextField("5", text: $routeDwellText)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 60)
+                    Text("sec per waypoint",
+                         comment: "Start-route sheet — dwell seconds unit label")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(.leading, 22)
+            }
+
             HStack {
                 Spacer()
                 Button("Cancel") {
@@ -135,10 +179,14 @@ struct StartRouteSheet: View {
                     }
                     let r = route
                     let lapCount = resolvedLapCount
+                    let dwell = routeDwell
+                    let dwellSecs = resolvedDwellSeconds
                     state.routePendingConfirm = nil
                     dismiss()
                     Task { @MainActor in
-                        await state.runRoute(r, udid: udid, lapCount: lapCount)
+                        await state.runRoute(r, udid: udid, lapCount: lapCount,
+                                             allowDwell: dwell,
+                                             dwellSecondsForRoute: dwellSecs)
                     }
                 } label: {
                     Text(hasActiveSession
@@ -152,5 +200,10 @@ struct StartRouteSheet: View {
         }
         .padding(24)
         .frame(minWidth: 460)
+        .onAppear {
+            // Pre-fill dwell seconds from global setting so user doesn't need
+            // to re-enter if they already tuned it in the Multi-Stop panel.
+            routeDwellText = "\(state.dwellSeconds)"
+        }
     }
 }

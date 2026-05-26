@@ -427,3 +427,66 @@
 "Your current simulation will stop before this route starts." = "目前的模擬會在這條路線開始前停止。";
 "Stop & start" = "停止並開始";
 "Switch to Multi-stop mode first" = "請先切到多點模式";
+
+/* ─── v1.11.2 — missing strings catch-up ───────────────────────────── */
+// AppHeaderBar / SettingsView
+"Settings" = "設定";
+
+// RecentPlacesButton
+"Recent" = "最近";
+"Recent Places" = "最近位置";
+"Clear" = "清除";
+"No history yet" = "尚無記錄";
+"Teleports, searches, and navigations show up here so you can jump back with one tap." = "瞬移、搜尋與導航記錄都會顯示在此，可一鍵跳回。";
+
+// BottomBar — travel-mode picker
+"Custom speed" = "自訂速度";
+"Change travel mode mid-route. Speed updates immediately; route stays the same." = "可在路線途中更換交通方式，速度即時生效，路線維持不變。";
+"Default travel mode for the next Navigate." = "下一次導航使用的預設交通方式。";
+
+// BottomBar — stop + clear confirmations
+"Clear staged stops?" = "清除已暫存的停靠點？";
+"Navigation stopped. Do you also want to remove the %lld staged stops from the map?" = "導航已停止。是否也要從地圖移除 %lld 個已暫存的停靠點？";
+"Clear all stops and movement state?" = "清除所有停靠點與移動狀態？";
+"Clear all" = "全部清除";
+"All staged stops, routes, and movement state will be removed. The iPhone stays at its current simulated position." = "所有已暫存的停靠點、路線及移動狀態都將移除。iPhone 會停留在目前的模擬位置。";
+
+// BookmarksSection — sort menu
+"Sort order" = "排序方式";
+"By date added" = "按新增日期";
+"By name (A–Z)" = "按名稱 (A–Z)";
+"Manual order" = "手動排序";
+"Import bookmarks from JSON (export + bulk paste live in Settings — Cmd-,)" = "從 JSON 匯入書籤（匯出與批次貼上在設定中 — Cmd-,）";
+
+// BulkPasteBookmarksSheet
+"Bulk-add bookmarks" = "批次新增書籤";
+"Paste one bookmark per line. Each line can be `name, lat, lng` or `lat, lng, name`. Comma, tab, or semicolon all work. Lines starting with # are ignored." = "每行貼上一個書籤。格式可為 `名稱, lat, lng` 或 `lat, lng, 名稱`，逗號、Tab 或分號皆可作分隔符，# 開頭的行視為注釋。";
+"Default category:" = "預設分類：";
+"Optional" = "選填";
+"Waiting for valid lines…" = "等待有效行…";
+"Add %lld" = "新增 %lld 個";
+
+// SavePresetSheet
+"Save as preset" = "儲存為預設";
+"e.g. Downtown Tokyo evening loop" = "例如：東京市中心傍晚散步";
+
+// LoadStopPresetSheet
+"Load these stops into the Multi-Stop panel. Choose whether to also teleport the iPhone to the first stop — Display Only just stages and re-centres the map, while Teleport to First moves the iPhone there immediately so Navigate starts cleanly." = "將這些停靠點載入多點面板。選擇是否同時瞬移 iPhone 到第一個停靠點 — 「僅顯示」只暫存並重新置中地圖，「瞬移到第一個」則立即移動 iPhone，讓導航從起點整潔開始。";
+"Display only" = "僅顯示";
+"Teleport to first" = "瞬移到第一個";
+
+// MultiStopPanel
+"Saved stop presets" = "已儲存的停靠點預設";
+
+// MapLayerPicker
+"Map Layer · %@" = "地圖圖層 · %@";
+
+// SettingsView
+"Google Directions needs an API key — paste one into the Geocoding section above." = "Google Directions 需要 API 金鑰 — 請貼到上方地理編碼區域。";
+"LocWarp" = "LocWarp";
+
+/* ─── v1.11.2 — route dwell per-execution (StartRouteSheet) ─────────── */
+"Pause at each waypoint" = "在每個停靠點暫停";
+"Stop and wait at each point along the route before continuing." = "在路線上的每個停靠點等待指定秒數後再繼續。";
+"Pause seconds:" = "停留秒數：";
+"sec per waypoint" = "秒/每停靠點";

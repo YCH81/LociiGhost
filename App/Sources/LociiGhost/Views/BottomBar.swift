@@ -16,6 +16,8 @@ private enum SpeedMode: Hashable {
 /// the empty state itself is information ("connect a device to begin").
 struct BottomBar: View {
     @Environment(AppState.self) private var state
+    @State private var showClearStopsAlert = false
+    @State private var showClearAllConfirm = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -114,6 +116,7 @@ struct BottomBar: View {
                 Divider().frame(height: 22)
                 pauseButton(udid: active.udid)
                 stopButton(udid: active.udid)
+                clearButton(udid: active.udid)
             }
 
             if let active = activeDevice, !active.connected {
@@ -199,29 +202,70 @@ struct BottomBar: View {
         }
     }
 
-    /// Stop the current trip. Always calls `stopNavigation` — the
-    /// user reported the previous "double-click flips into Restore"
-    /// behaviour was confusing and accidentally yanked the iPhone
-    /// back to real GPS. New rule: Stop is Stop, no matter how many
-    /// times you click it. Restore Real GPS lives on its own button
-    /// in the top status bar A and is the only path to that action.
+    /// Stop the current trip. Always calls `stopNavigation`. After
+    /// stopping, if the user is in multi-stop mode with staged stops,
+    /// offers to clear them (iPhone stays at last position either way).
     private func stopButton(udid: String) -> some View {
         Button(role: .destructive) {
-            Task { await state.stopNavigation(udid: udid) }
+            Task {
+                await state.stopNavigation(udid: udid)
+                if state.activeMovementMode == .multiStop,
+                   !state.pendingStops.isEmpty {
+                    showClearStopsAlert = true
+                }
+            }
         } label: {
             Label("Stop", systemImage: "stop.fill")
                 .foregroundStyle(.red)
                 .fontWeight(.semibold)
         }
-        // `.tint(.red)` on a `.bordered` button paints the chip's
-        // background tint, AND `.foregroundStyle(.red)` on the
-        // Label inside makes the icon+text themselves red as
-        // well — together the button reads as a clear "this is
-        // the destructive one" affordance even at a glance.
-        // The `.destructive` role is kept so accessibility
-        // tools still announce it as such.
         .tint(.red)
         .help(LocalizedStringKey("End navigation; iPhone stays at last simulated position."))
+        .confirmationDialog(
+            Text("Clear staged stops?",
+                 comment: "BottomBar — stop+clear confirmation dialog title"),
+            isPresented: $showClearStopsAlert,
+            titleVisibility: .visible
+        ) {
+            Button("Clear stops", role: .destructive) {
+                state.pendingStops = []
+            }
+            Button("Keep stops", role: .cancel) {}
+        } message: {
+            Text("Navigation stopped. Do you also want to remove the \(state.pendingStops.count) staged stops from the map?",
+                 comment: "BottomBar — stop+clear confirmation message")
+        }
+    }
+
+    /// Clears all simulation state (stops, routes, movement modes)
+    /// without snapping the iPhone back to real GPS. Prompts first.
+    private func clearButton(udid: String) -> some View {
+        Button {
+            showClearAllConfirm = true
+        } label: {
+            Label("Clear", systemImage: "xmark.circle")
+        }
+        .help(LocalizedStringKey("Clear all staged stops and movement state. iPhone stays at its current simulated position."))
+        .confirmationDialog(
+            String(localized: "Clear all stops and movement state?",
+                   comment: "Clear-all confirmation title"),
+            isPresented: $showClearAllConfirm,
+            titleVisibility: .visible
+        ) {
+            Button(role: .destructive) {
+                Task { await state.clearAllState(udid: udid) }
+            } label: {
+                Text("Clear all",
+                     comment: "Clear-all confirmation destructive button")
+            }
+            Button(role: .cancel) {} label: {
+                Text("Cancel",
+                     comment: "Clear-all confirmation cancel button")
+            }
+        } message: {
+            Text("All staged stops, routes, and movement state will be removed. The iPhone stays at its current simulated position.",
+                 comment: "Clear-all confirmation message")
+        }
     }
 
     private var activeDevice: DeviceVM? {
@@ -251,10 +295,16 @@ private struct NavigationProgressBlock: View {
                     HStack(spacing: 6) {
                         Text(progressLabel(nav))
                             .font(.callout.monospacedDigit())
-                        if nav.laps > 1 {
+                        // Dwell-mode laps (DwellContext, multi-stop): use explicit
+                        // fields since NavigationVM.laps is clamped to 1 in dwell
+                        // mode (daemon runs one leg at a time). Regular laps (loop
+                        // route or multi-stop without dwell): use progress-based fields.
+                        let displayLaps = nav.dwellTotalLaps > 1 ? nav.dwellTotalLaps : nav.laps
+                        let displayCurrentLap = nav.dwellTotalLaps > 1 ? nav.dwellCurrentLap : nav.currentLap
+                        if displayLaps > 1 {
                             HStack(spacing: 3) {
                                 Image(systemName: "arrow.triangle.2.circlepath")
-                                Text("Lap \(nav.currentLap) / \(nav.laps)")
+                                Text("Lap \(displayCurrentLap) / \(displayLaps)")
                             }
                             .font(.caption.monospacedDigit())
                             .padding(.horizontal, 6)

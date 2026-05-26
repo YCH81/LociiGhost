@@ -194,7 +194,13 @@ struct ControlPanel: View {
                 }
 
                 Button("Cancel") {
-                    state.pendingStops = []
+                    Task {
+                        if let udid = state.selectedUDID, state.navigationActive {
+                            await state.stopNavigation(udid: udid)
+                        }
+                        state.pendingStops = []
+                        state.schedulePreviewRefresh()
+                    }
                 }
                 .keyboardShortcut(.cancelAction)
             }

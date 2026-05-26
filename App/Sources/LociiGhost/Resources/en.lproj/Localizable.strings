@@ -428,3 +428,66 @@
 "Your current simulation will stop before this route starts." = "Your current simulation will stop before this route starts.";
 "Stop & start" = "Stop & start";
 "Switch to Multi-stop mode first" = "Switch to Multi-stop mode first";
+
+/* ─── v1.11.2 — missing strings catch-up ───────────────────────────── */
+// AppHeaderBar / SettingsView
+"Settings" = "Settings";
+
+// RecentPlacesButton
+"Recent" = "Recent";
+"Recent Places" = "Recent Places";
+"Clear" = "Clear";
+"No history yet" = "No history yet";
+"Teleports, searches, and navigations show up here so you can jump back with one tap." = "Teleports, searches, and navigations show up here so you can jump back with one tap.";
+
+// BottomBar — travel-mode picker
+"Custom speed" = "Custom speed";
+"Change travel mode mid-route. Speed updates immediately; route stays the same." = "Change travel mode mid-route. Speed updates immediately; route stays the same.";
+"Default travel mode for the next Navigate." = "Default travel mode for the next Navigate.";
+
+// BottomBar — stop + clear confirmations
+"Clear staged stops?" = "Clear staged stops?";
+"Navigation stopped. Do you also want to remove the %lld staged stops from the map?" = "Navigation stopped. Do you also want to remove the %lld staged stops from the map?";
+"Clear all stops and movement state?" = "Clear all stops and movement state?";
+"Clear all" = "Clear all";
+"All staged stops, routes, and movement state will be removed. The iPhone stays at its current simulated position." = "All staged stops, routes, and movement state will be removed. The iPhone stays at its current simulated position.";
+
+// BookmarksSection — sort menu
+"Sort order" = "Sort order";
+"By date added" = "By date added";
+"By name (A–Z)" = "By name (A–Z)";
+"Manual order" = "Manual order";
+"Import bookmarks from JSON (export + bulk paste live in Settings — Cmd-,)" = "Import bookmarks from JSON (export + bulk paste live in Settings — Cmd-,)";
+
+// BulkPasteBookmarksSheet
+"Bulk-add bookmarks" = "Bulk-add bookmarks";
+"Paste one bookmark per line. Each line can be `name, lat, lng` or `lat, lng, name`. Comma, tab, or semicolon all work. Lines starting with # are ignored." = "Paste one bookmark per line. Each line can be `name, lat, lng` or `lat, lng, name`. Comma, tab, or semicolon all work. Lines starting with # are ignored.";
+"Default category:" = "Default category:";
+"Optional" = "Optional";
+"Waiting for valid lines…" = "Waiting for valid lines…";
+"Add %lld" = "Add %lld";
+
+// SavePresetSheet
+"Save as preset" = "Save as preset";
+"e.g. Downtown Tokyo evening loop" = "e.g. Downtown Tokyo evening loop";
+
+// LoadStopPresetSheet
+"Load these stops into the Multi-Stop panel. Choose whether to also teleport the iPhone to the first stop — Display Only just stages and re-centres the map, while Teleport to First moves the iPhone there immediately so Navigate starts cleanly." = "Load these stops into the Multi-Stop panel. Choose whether to also teleport the iPhone to the first stop — Display Only just stages and re-centres the map, while Teleport to First moves the iPhone there immediately so Navigate starts cleanly.";
+"Display only" = "Display only";
+"Teleport to first" = "Teleport to first";
+
+// MultiStopPanel
+"Saved stop presets" = "Saved stop presets";
+
+// MapLayerPicker
+"Map Layer · %@" = "Map Layer · %@";
+
+// SettingsView
+"Google Directions needs an API key — paste one into the Geocoding section above." = "Google Directions needs an API key — paste one into the Geocoding section above.";
+"LocWarp" = "LocWarp";
+
+/* ─── v1.11.2 — route dwell per-execution (StartRouteSheet) ─────────── */
+"Pause at each waypoint" = "Pause at each waypoint";
+"Stop and wait at each point along the route before continuing." = "Stop and wait at each point along the route before continuing.";
+"Pause seconds:" = "Pause seconds:";
+"sec per waypoint" = "sec per waypoint";

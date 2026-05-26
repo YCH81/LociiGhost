@@ -60,7 +60,8 @@ struct MovementModesSection: View {
                                title: LocalizedStringKey("Random"))
                     modeButton(.multiStop,
                                symbol: "list.bullet.indent",
-                               title: LocalizedStringKey("Multi-stop"))
+                               title: LocalizedStringKey("Multi-stop"),
+                               blockedByRoute: state.navigationActive && state.activeMovementMode != .multiStop)
                     modeButton(.goldDitto,
                                symbol: "sparkles",
                                title: LocalizedStringKey("Gold Ditto"))
@@ -142,7 +143,8 @@ struct MovementModesSection: View {
     // buttons from re-rendering while a simulation is running.
     private var hasActiveSession: Bool { state.anySessionActive }
 
-    private func modeButton(_ mode: MovementMode, symbol: String, title: LocalizedStringKey) -> some View {
+    private func modeButton(_ mode: MovementMode, symbol: String, title: LocalizedStringKey,
+                             blockedByRoute: Bool = false) -> some View {
         let isActive = state.activeMovementMode == mode
         let target: MovementMode? = isActive ? nil : mode
         return Button {
@@ -170,11 +172,13 @@ struct MovementModesSection: View {
         }
         .buttonStyle(.plain)
         .hoverHighlight(cornerRadius: 6, changesCursor: false)
-        .disabled(state.selectedUDID == nil || state.isVirtualMapSelected)
+        .disabled(state.selectedUDID == nil || state.isVirtualMapSelected || blockedByRoute)
         .help(state.selectedUDID == nil
               ? LocalizedStringKey("Select a device first.")
               : (state.isVirtualMapSelected
                  ? LocalizedStringKey("Switch to a connected iPhone to use movement modes.")
-                 : title))
+                 : (blockedByRoute
+                    ? LocalizedStringKey("Stop the active route before switching to Multi-stop mode.")
+                    : title)))
     }
 }
