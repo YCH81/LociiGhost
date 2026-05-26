@@ -27,8 +27,8 @@
 
 ## 下載
 
-- **最新版本**：v1.11.1
-- **發布日期**：2026-05-19
+- **最新版本**：v1.12.0
+- **發布日期**：2026-05-26
 - **下載連結**：[Google Drive 下載資料夾](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) —— DMG 已通過 Apple Developer ID 簽名 + Apple notarize，雙擊即可開啟，不會被 Gatekeeper 擋下。**請務必用 DMG 安裝**，不要把 .app 解壓到 iCloud 同步的資料夾（Documents、Desktop），File Provider 會蓋上額外 xattr 把簽章弄壞
 
 ## 第一次使用？
@@ -50,6 +50,13 @@
 - **Apple Silicon 原生** —— 閒置 CPU 0%、無 Chromium 開銷、Bundle < 200 MB
 
 ## 最新更新
+
+**v1.12.0**（2026-05-26）
+
+- **路線每次執行可獨立開啟停留模式**。StartRouteSheet 新增「暫停各停靠點」勾選欄 + 停留秒數欄位，路線播放時可覆蓋全域設定，單次執行不影響其他路線。
+- **修復多停靠點 dwell 模式下 lap counter 消失**。之前開啟「每站停留」跑多圈路線時，ETA 下方的「Lap x / y」badge 不見了（因為 laps 被 clamp 到 1）。現在用 `dwellCurrentLap` / `dwellTotalLaps` 追蹤 dwell 模式下的圈數，底欄正確顯示進度。
+- **修復路線自動重複第二圈繼承全域 dwell 設定的 bug**。路線第一圈明確指定不用停留，第二圈卻會自動開 dwell mode（讀到全域 `dwellEnabled`）。現在 loopContext 明確傳遞 `allowDwell` 參數，每圈行為一致。
+- **補完繁中翻譯**。新增 37 個缺失字符串（Settings、Recent、Pause at each waypoint、sec per waypoint 等），UI 完全繁中化。
 
 **v1.11.1**（2026-05-19）
 

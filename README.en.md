@@ -29,8 +29,8 @@ if you're in Taiwan.
 
 ## Download
 
-- **Latest version**: v1.11.1
-- **Release date**: 2026-05-19
+- **Latest version**: v1.12.0
+- **Release date**: 2026-05-26
 - **Download**: [Google Drive folder](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) — DMG is Apple-Developer-ID-signed and notarised, so it opens with a double-click without the Gatekeeper warning. **Use the DMG, not a zip**: extracting a signed .app into an iCloud-synced folder (Documents, Desktop) lets the File Provider attach extra xattrs that break the signature and show "LociiGhost is damaged".
 
 ## New here?
@@ -60,6 +60,27 @@ if you're in Taiwan.
   under 200 MB.
 
 ## What's new
+
+**v1.12.0** (2026-05-26)
+
+- **Per-route dwell mode override.** StartRouteSheet now adds a
+  "Pause at each waypoint" toggle and "Pause seconds" field, so
+  each route execution can override the global `dwellEnabled` and
+  `dwellSeconds` without affecting other routes or permanently
+  changing settings.
+- **Fixed lap counter vanishing in dwell multi-lap routes.** When
+  running a multi-lap route with dwell mode ON, the "Lap x / y"
+  ETA badge disappeared (because `laps` was clamped to 1). Now
+  `dwellCurrentLap` / `dwellTotalLaps` track progress in dwell
+  mode, and the bottom bar shows the correct lap count.
+- **Fixed route auto-repeat lap 2 inheriting global dwell setting.**
+  If lap 1 explicitly disabled dwell but global `dwellEnabled` was
+  true, lap 2 would turn dwell ON (reading the global setting).
+  Now `loopContext` explicitly passes `allowDwell` to each
+  navigate() call, so every lap behaves consistently.
+- **Translation completeness.** Added 37 missing zh-Hant strings
+  (Settings, Recent, Pause at each waypoint, sec per waypoint,
+  etc.) — UI is now fully localized.
 
 **v1.11.1** (2026-05-19)
 
