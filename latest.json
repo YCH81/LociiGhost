@@ -1,5 +1,5 @@
 {
-  "version": "1.11.1",
+  "version": "1.12.0",
   "url": "https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing",
-  "notes": "v1.11.1 hotfix — 兩個改動：(1) Dwell mode 全程顯示 — 開啟「每站停留」時地圖會顯示完整的剩餘停靠點清單跟路徑（之前只顯示當前 leg 的下一個目的地）。(2) 新增「地圖置中」toggle — 標題列設定按鈕左邊新增 Auto-center 開關。開啟時地圖會跟著模擬定位走（v1.11.0 行為），關閉時地圖留在原處不再追蹤，要看其他位置不會被搶回去；瞬移、路線初始仍會帶地圖到起點一次，之後就要自己拖動地圖或點「現在位置」叫回。"
+  "notes": "v1.12.0 — 路線執行 per-execution dwell 模式、多圈 dwell lap counter 修復、自動重複第二圈 dwell 繼承 bug 修復、繁中翻譯完整補上（37 個缺失字符串）。"
 }
