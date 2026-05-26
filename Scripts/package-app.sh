@@ -45,6 +45,7 @@ mkdir -p "$OUT/Contents/MacOS" "$OUT/Contents/Resources"
 cp "$BIN" "$OUT/Contents/MacOS/LociiGhost"
 chmod +x "$OUT/Contents/MacOS/LociiGhost"
 
+
 # SwiftPM's auto-generated `Bundle.module` accessor (look in
 # .build/.../DerivedSources/resource_bundle_accessor.swift to
 # confirm) is unusable for packaged-.app distribution:
@@ -164,7 +165,10 @@ else
     echo "    because the app falls back to dev-mode staging from ~/Documents." >&2
 fi
 
-cat >"$OUT/Contents/Info.plist" <<'PLIST'
+# Extract daemon version for Info.plist CFBundleShortVersionString
+DAEMON_VERSION=$(grep -o '__version__ = "[^"]*"' "$ROOT/Daemon/lociighostd/__init__.py" | cut -d'"' -f2 || echo "1.0.0")
+
+cat >"$OUT/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -191,7 +195,7 @@ cat >"$OUT/Contents/Info.plist" <<'PLIST'
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.11.1</string>
+    <string>$DAEMON_VERSION</string>
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>NSHumanReadableCopyright</key>
