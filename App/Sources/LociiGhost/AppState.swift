@@ -214,14 +214,18 @@ final class AppState {
                   udid != Self.virtualMapUDID
             else { return }
             let old = simulatedLocationsByDevice[udid]
+            // See the same guard in `setSimulatedLocation(_:for:)` —
+            // near-identical-coord echoes from the simulated device
+            // cascade through @Observable, fire applyStateToMap, and
+            // starve user-pan handling. ≤1 cm delta = "no change".
+            if let o = old, let v = newValue, o.isApproximately(v) { return }
+            if old == nil && newValue == nil { return }
             if let v = newValue {
                 simulatedLocationsByDevice[udid] = v
             } else {
                 simulatedLocationsByDevice.removeValue(forKey: udid)
             }
-            if old != newValue {
-                scheduleWeatherAndTzRefresh()
-            }
+            scheduleWeatherAndTzRefresh()
         }
     }
 
@@ -232,6 +236,16 @@ final class AppState {
     /// its own slot — switching back to it shows the right pin.
     func setSimulatedLocation(_ coord: Coordinate?, for udid: String) {
         let old = simulatedLocationsByDevice[udid]
+        // Early-exit when the daemon echoes essentially the same
+        // coordinate it last sent. While the device is in simulated-
+        // location mode its CoreLocation reports back at ~1 Hz with
+        // the spoofed coord; the float values nearly always match but
+        // sometimes carry sub-mm noise from the device→daemon→app
+        // pipeline. Treat any ≤1 cm delta as "no change" so the
+        // observation cascade doesn't fire on every echo and starve
+        // user-pan handling on the main thread.
+        if let o = old, let c = coord, o.isApproximately(c) { return }
+        if old == nil && coord == nil { return }
         if let c = coord {
             simulatedLocationsByDevice[udid] = c
         } else {
@@ -239,7 +253,7 @@ final class AppState {
         }
         // Only fire the chip refresh if the event was for the
         // visible device — chips show selected-device state.
-        if udid == selectedUDID && old != coord {
+        if udid == selectedUDID {
             scheduleWeatherAndTzRefresh()
         }
     }
@@ -4496,6 +4510,17 @@ struct DeviceVM: Codable, Identifiable, Hashable, Sendable {
 struct Coordinate: Hashable, Sendable, Codable {
     let lat: Double
     let lng: Double
+
+    /// True when two coordinates are within ~1 cm on the ground. Used
+    /// by the position-event handler to short-circuit no-op echoes the
+    /// daemon emits while the device sits in simulated-location mode —
+    /// every echo's coord is the spoofed target, but float noise in
+    /// the device→daemon→app pipeline means exact equality fails.
+    /// 1e-7 degrees ≈ 1.1 cm at the equator; well below any meaningful
+    /// device motion, well above any rounding noise in a Double.
+    func isApproximately(_ other: Coordinate) -> Bool {
+        abs(lat - other.lat) < 1e-7 && abs(lng - other.lng) < 1e-7
+    }
 }
 
 /// Which inline panel the user has open in the Movement Modes

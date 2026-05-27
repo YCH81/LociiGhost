@@ -131,39 +131,13 @@ struct MapContainerView: NSViewRepresentable {
         // BottomBar / etc redraw.
         context.coordinator.startObserving()
 
-        // ── VectorKit tile-cache keep-alive ─────────────────────────
-        // VectorKit (MKMapView's Metal renderer) evicts GPU tile
-        // textures when the display link goes quiet — typically a few
-        // seconds after the last user interaction. The next pan/drag
-        // then starts with a cache miss: tiles reload from disk, producing
-        // a visible "loading" stutter on the FIRST frame. This is the
-        // root cause of the "first drag slow, then smooth" pattern.
-        //
-        // Fix: attach an invisible 0×0 CALayer with a 30-second rotation
-        // animation to MKMapView's backing layer. Core Animation keeps
-        // the display link running while any layer in the hierarchy has
-        // an active animation — VectorKit's display link co-schedules
-        // with CA's, so it never fully suspends. The layer is opacity=0,
-        // frame=zero, so it has zero visual or hit-testing impact. CPU
-        // overhead is negligible (one matrix multiply per frame for a
-        // layer with no content). Power impact is minimal — the GPU was
-        // already paged-in for the rest of the UI; keeping it at idle
-        // cadence avoids the MORE expensive page-in cost on next drag.
-        map.wantsLayer = true
-        if let rootLayer = map.layer {
-            let keepAlive = CALayer()
-            keepAlive.frame    = .zero
-            keepAlive.opacity  = 0
-            keepAlive.masksToBounds = false
-            rootLayer.addSublayer(keepAlive)
-            let spin = CABasicAnimation(keyPath: "transform.rotation.z")
-            spin.fromValue    = 0
-            spin.toValue      = 2 * Double.pi
-            spin.duration     = 30
-            spin.repeatCount  = .infinity
-            spin.timingFunction = CAMediaTimingFunction(name: .linear)
-            keepAlive.add(spin, forKey: "tileKeepAlive")
-        }
+        // Warm-keep mechanism removed — empirically didn't address the
+        // actual cause. Pure idle pan is already smooth; lag only
+        // appears in the "iPhone connected + teleported" state, which
+        // means the cause is something periodic that connection
+        // introduces (daemon-emitted events from the simulated device's
+        // CoreLocation echo, weather refresh tail, etc.), not a cold
+        // VectorKit pipeline.
 
         return map
     }
@@ -1312,6 +1286,7 @@ private final class StopAnnotation: MKPointAnnotation {
 private final class SimulatedAnnotation: MKPointAnnotation {}
 private final class MacAnnotation: MKPointAnnotation {}
 private final class DestinationAnnotation: MKPointAnnotation {}
+
 
 /// Marker dropped per saved bookmark when the user toggles "Show
 /// bookmarks on map" in the layer picker. Carries the SwiftData
