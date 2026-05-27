@@ -431,23 +431,43 @@ final class AppState {
     /// access list and crash. See v1.9.3 fix notes near
     /// `saveMapCamera`.
     @ObservationIgnored private var weatherRefreshTask: Task<Void, Never>?
+    /// Coordinate the in-flight `weatherRefreshTask` is fetching for.
+    /// Nil when no task is scheduled. Used so a stream of position
+    /// events that nudges `simulatedLocation` a few metres per tick
+    /// doesn't keep cancelling-and-restarting the same fetch, which
+    /// previously starved the chips entirely during route playback
+    /// (10 Hz position events meant the 400 ms sleep never completed).
+    @ObservationIgnored private var pendingWeatherTarget: Coordinate?
 
-    /// Cancel any in-flight weather/tz fetch and start a new one for
-    /// the current `simulatedLocation`. Debounced ~1 s so a multi-stop
-    /// navigation that updates the puck on every tick doesn't hammer
-    /// Open-Meteo.
+    /// Schedule a weather + reverse-geocode fetch for the current
+    /// `simulatedLocation`. Debounced ~400 ms and protected against
+    /// the cancel-cascade described above:
+    ///
+    ///   * Caller's coord within ~1 km of the in-flight fetch's
+    ///     target — keep the existing task running and bail. Weather
+    ///     / country / timezone are stable at the 1 km scale, so
+    ///     re-fetching for every puck twitch would be pure waste.
+    ///   * Caller's coord far from the in-flight target (or no task
+    ///     running) — cancel the previous, start fresh.
     private func scheduleWeatherAndTzRefresh() {
-        weatherRefreshTask?.cancel()
         // Source the coord from `currentMapFocus`, which auto-picks
         // browseCursor vs simulatedLocation based on selectedUDID.
         guard let coord = currentMapFocus else {
+            weatherRefreshTask?.cancel()
+            weatherRefreshTask = nil
+            pendingWeatherTarget = nil
             currentWeather = nil
             simulatedGeoContext = nil
             return
         }
-        // Snapshot the latest coord so the closure doesn't read a
-        // stale `simulatedLocation` if the user teleports again
-        // while the previous fetch is still mid-flight.
+        if let pending = pendingWeatherTarget,
+           StopOrdering.haversineMeters(coord, pending) < 1_000 {
+            // Streaming nudge — the existing fetch is still relevant.
+            // Don't cancel it; let it complete and update the chips.
+            return
+        }
+        weatherRefreshTask?.cancel()
+        pendingWeatherTarget = coord
         let target = coord
         weatherRefreshTask = Task { [weak self] in
             // Short coalescing window — under a second so the
@@ -481,8 +501,18 @@ final class AppState {
                       target.lat, target.lng)
             }
             await MainActor.run {
-                self?.currentWeather = s
-                self?.simulatedGeoContext = c
+                guard let self else { return }
+                self.currentWeather = s
+                self.simulatedGeoContext = c
+                // Clear the marker once the fetch this task started
+                // for has actually landed in state. A later schedule
+                // (e.g. user teleports to a new continent) will see
+                // nil and run a fresh fetch immediately.
+                if let pending = self.pendingWeatherTarget,
+                   pending.lat == target.lat,
+                   pending.lng == target.lng {
+                    self.pendingWeatherTarget = nil
+                }
             }
         }
     }
