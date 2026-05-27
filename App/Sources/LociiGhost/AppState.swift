@@ -745,6 +745,27 @@ final class AppState {
     /// users see in Maps.app.
     var mapTileLayer: MapTileLayer = .appleStandard
 
+    /// When true, MapContainerView paints every bookmark as a folder-pin
+    /// annotation on top of whatever base layer is active. Persisted so
+    /// the preference survives launches — power users who curate their
+    /// bookmarks want the overlay on by default; people who don't
+    /// shouldn't have to re-disable it every session.
+    var showBookmarksOnMap: Bool = UserDefaults.standard.bool(forKey: "map.showBookmarks") {
+        didSet { UserDefaults.standard.set(showBookmarksOnMap, forKey: "map.showBookmarks") }
+    }
+
+    /// Bumped on every bookmark mutation so the map coordinator's
+    /// observation set can detect SwiftData changes without subscribing
+    /// to the model context directly. The numeric value is meaningless
+    /// — only "did it change since last render" matters.
+    var bookmarksRevision: Int = 0
+
+    /// Set by MapContainerView when the user taps a bookmark pin. Drives
+    /// the photo-preview sheet in MainView. Cleared when the sheet
+    /// dismisses. Optional Bookmark so the .sheet(item:) presentation
+    /// pattern works naturally.
+    var mapPreviewingBookmark: Bookmark? = nil
+
     // MARK: - Mac proxy location
     let macLocation = LocationProxyService()
 
@@ -981,6 +1002,13 @@ final class AppState {
     @ObservationIgnored private var modelContext: ModelContext?
     @ObservationIgnored private var preferences: AppPreferences?
 
+    /// Read-only handle on the persistent context for callers that
+    /// need a one-off fetch without going through a dedicated method
+    /// (e.g. MapContainerView's bookmark-annotation sync). Returns nil
+    /// before bootstrap completes, in which case the caller should
+    /// gracefully render nothing.
+    var bookmarkFetchContext: ModelContext? { modelContext }
+
     /// Called from LociiGhostApp.task right before bootstrap so we
     /// can hydrate AppState from disk before the daemon connects.
     /// Idempotent — safe to call again on a hot reload.
@@ -1137,17 +1165,22 @@ final class AppState {
     /// further plumbing.
     func addBookmark(name: String, lat: Double, lng: Double,
                      category: String = "",
-                     iconSymbol: String = "mappin.circle.fill") {
+                     iconSymbol: String = "mappin.circle.fill",
+                     imageURL: String? = nil) {
         guard let ctx = modelContext else { return }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let nameToSave = trimmed.isEmpty
             ? String(format: "(%.5f, %.5f)", lat, lng)
             : trimmed
+        let imgTrimmed = imageURL?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let imgToSave = (imgTrimmed?.isEmpty ?? true) ? nil : imgTrimmed
         let bm = Bookmark(name: nameToSave, lat: lat, lng: lng,
                           category: category.trimmingCharacters(in: .whitespaces),
-                          iconSymbol: iconSymbol)
+                          iconSymbol: iconSymbol,
+                          imageURL: imgToSave)
         ctx.insert(bm)
         try? ctx.save()
+        bookmarksRevision &+= 1
     }
 
     /// Delete a bookmark. Save explicitly so the on-disk store
@@ -1157,6 +1190,7 @@ final class AppState {
         guard let ctx = modelContext else { return }
         ctx.delete(bm)
         try? ctx.save()
+        bookmarksRevision &+= 1
     }
 
     /// Rename / re-categorise / re-icon. Phase 5.3 keeps the edit
@@ -1177,6 +1211,98 @@ final class AppState {
             bm.iconSymbol = iconSymbol
         }
         try? ctx.save()
+        bookmarksRevision &+= 1
+    }
+
+    // MARK: - Bookmarks bulk + category operations
+
+    /// Delete every bookmark in `bookmarks` in one save. Safe to call
+    /// with an empty array (no-op). Used by the manager sheet's
+    /// multi-select delete action.
+    func bulkDeleteBookmarks(_ bookmarks: [Bookmark]) {
+        guard let ctx = modelContext, !bookmarks.isEmpty else { return }
+        for bm in bookmarks { ctx.delete(bm) }
+        try? ctx.save()
+        bookmarksRevision &+= 1
+    }
+
+    /// Reassign every bookmark in `bookmarks` to `category`. Empty
+    /// string moves them to the Uncategorized bin. One save at the end
+    /// — SwiftData batches the diff internally.
+    func bulkMoveBookmarks(_ bookmarks: [Bookmark], to category: String) {
+        guard let ctx = modelContext, !bookmarks.isEmpty else { return }
+        let trimmed = category.trimmingCharacters(in: .whitespaces)
+        for bm in bookmarks { bm.category = trimmed }
+        try? ctx.save()
+        bookmarksRevision &+= 1
+    }
+
+    /// Apply `prefix` and / or `suffix` to every bookmark's name.
+    /// Either argument may be empty. Names that would become empty
+    /// after trimming are left as-is so we don't accidentally erase
+    /// a row's identity.
+    func bulkRenameBookmarks(_ bookmarks: [Bookmark],
+                             prefix: String = "",
+                             suffix: String = "") {
+        guard let ctx = modelContext, !bookmarks.isEmpty,
+              !(prefix.isEmpty && suffix.isEmpty)
+        else { return }
+        for bm in bookmarks {
+            let newName = "\(prefix)\(bm.name)\(suffix)"
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !newName.isEmpty { bm.name = newName }
+        }
+        try? ctx.save()
+        bookmarksRevision &+= 1
+    }
+
+    /// Rename a category across every bookmark that currently uses it.
+    /// `from` is the exact existing category string (case-sensitive).
+    /// `to` is trimmed; renaming to "" effectively moves all those
+    /// bookmarks to Uncategorized. Returns the count of rows updated.
+    @discardableResult
+    func renameCategory(from oldName: String, to newName: String) -> Int {
+        guard let ctx = modelContext else { return 0 }
+        let target = newName.trimmingCharacters(in: .whitespaces)
+        if target == oldName { return 0 }
+        let predicate = #Predicate<Bookmark> { $0.category == oldName }
+        let descriptor = FetchDescriptor<Bookmark>(predicate: predicate)
+        guard let matches = try? ctx.fetch(descriptor), !matches.isEmpty else { return 0 }
+        for bm in matches { bm.category = target }
+        try? ctx.save()
+        bookmarksRevision &+= 1
+        return matches.count
+    }
+
+    /// Delete every bookmark that currently belongs to `category`.
+    /// Use this when the user picks "delete category and its bookmarks"
+    /// from the manager sheet. Returns the count of rows removed.
+    @discardableResult
+    func deleteCategoryWithBookmarks(_ category: String) -> Int {
+        guard let ctx = modelContext else { return 0 }
+        let predicate = #Predicate<Bookmark> { $0.category == category }
+        let descriptor = FetchDescriptor<Bookmark>(predicate: predicate)
+        guard let matches = try? ctx.fetch(descriptor), !matches.isEmpty else { return 0 }
+        for bm in matches { ctx.delete(bm) }
+        try? ctx.save()
+        bookmarksRevision &+= 1
+        return matches.count
+    }
+
+    /// Clear `category` from every matching bookmark, leaving the
+    /// records intact (they land in the Uncategorized bin). Returns
+    /// the count of rows updated.
+    @discardableResult
+    func deleteCategoryKeepingBookmarks(_ category: String) -> Int {
+        return renameCategory(from: category, to: "")
+    }
+
+    /// Merge `source` into `destination`: every bookmark that was in
+    /// `source` becomes a bookmark in `destination`. A degenerate merge
+    /// (same name) is a no-op. Returns the count of rows updated.
+    @discardableResult
+    func mergeCategory(_ source: String, into destination: String) -> Int {
+        return renameCategory(from: source, to: destination)
     }
 
     // MARK: - Recent Places (v1.9 — history capsule on map)
@@ -1306,7 +1432,8 @@ final class AppState {
             }
             for e in entries {
                 addBookmark(name: e.name, lat: e.lat, lng: e.lng,
-                            category: e.category)
+                            category: e.category,
+                            imageURL: e.imageURL)
             }
             lastError = String(
                 format: String(
@@ -1623,6 +1750,7 @@ final class AppState {
                     category: $0.category,
                     iconSymbol: $0.iconSymbol,
                     createdAt: $0.createdAt,
+                    imageURL: $0.imageURL,
                 )
             },
             routes: routes.map {
@@ -1809,6 +1937,7 @@ final class AppState {
                 lng: entry.lng,
                 category: entry.category,
                 iconSymbol: entry.iconSymbol,
+                imageURL: entry.imageURL,
                 createdAt: entry.createdAt ?? .now,
             )
             ctx.insert(bm)
@@ -1855,6 +1984,7 @@ final class AppState {
 
         do {
             try ctx.save()
+            if addedBookmarks > 0 { bookmarksRevision &+= 1 }
             lastError = String(
                 format: String(
                     localized: "Restored: %lld bookmarks · %lld routes · %lld presets added.",
@@ -3445,9 +3575,13 @@ final class AppState {
     @MainActor
     func checkForUpdates() async {
         guard let manifest = await UpdateService.fetchLatest() else { return }
+        // Compare against app version (from Info.plist CFBundleShortVersionString)
+        // rather than daemon version, so the update badge is relative to the
+        // app binary the user is actually running.
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
         if UpdateService.isNewer(
             remote: manifest.version,
-            than: Self.expectedDaemonVersion,
+            than: appVersion,
         ) {
             latestVersion = manifest.version
             latestVersionURL = manifest.url

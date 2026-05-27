@@ -34,6 +34,28 @@ struct MapLayerPicker: View {
                     }
                 }
             }
+            Divider()
+            // Bookmark-pin overlay sits ABOVE the base layer; toggling
+            // doesn't change the picked tile source. Treated as a layer
+            // because it's a visible-on-the-map setting, and a single
+            // overflow menu is friendlier than scattering toggles across
+            // the floating-button row.
+            Button {
+                state.showBookmarksOnMap.toggle()
+            } label: {
+                Label {
+                    HStack {
+                        Text("Show bookmarks on map",
+                             comment: "Map-layer menu — toggle bookmark pins overlay")
+                        if state.showBookmarksOnMap {
+                            Spacer()
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                } icon: {
+                    Image(systemName: "bookmark")
+                }
+            }
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "square.3.layers.3d")

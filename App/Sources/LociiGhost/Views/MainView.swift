@@ -230,6 +230,20 @@ struct MainView: View {
         )) {
             SavePresetSheet()
         }
+        // Bookmark photo preview when the user taps a bookmark pin on
+        // the map. `state.mapPreviewingBookmark` is set from the map's
+        // callout-accessory tap handler; clearing it dismisses the
+        // sheet through the standard SwiftUI item-binding contract.
+        .sheet(isPresented: Binding(
+            get: { state.mapPreviewingBookmark != nil },
+            set: { isOpen in
+                if !isOpen { state.mapPreviewingBookmark = nil }
+            },
+        )) {
+            if let bm = state.mapPreviewingBookmark {
+                BookmarkImageSheet(bookmark: bm)
+            }
+        }
         // v1.11.0 stop-preset "Load" confirmation sheet. Clicking a
         // preset row parks it here; the sheet then offers Display
         // Only / Teleport to First.

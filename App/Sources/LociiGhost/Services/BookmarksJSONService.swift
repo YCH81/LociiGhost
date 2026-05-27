@@ -14,6 +14,7 @@ import LociiGhostCore
 ///           "id": "...", "name": "...",
 ///           "lat": 24.135, "lng": 120.692,
 ///           "category_id": "...",  // matches a category.id; optional
+///           "image_url": "https://…/photo.jpg", // optional — shown via AsyncImage
 ///           "country_code": "tw"   // ignored — we re-derive on display
 ///         }
 ///       ]
@@ -36,6 +37,7 @@ enum BookmarksJSONService {
             let lat: Double?
             let lng: Double?
             let category_id: String?
+            let image_url: String?
         }
         let categories: [Category]?
         let bookmarks: [Bookmark]?
@@ -49,6 +51,7 @@ enum BookmarksJSONService {
         let lat: Double
         let lng: Double
         let category: String
+        let imageURL: String?
     }
 
     /// Decode a JSON file into a flat list of bookmark records.
@@ -81,11 +84,17 @@ enum BookmarksJSONService {
             } else {
                 category = ""
             }
+            let img: String? = {
+                guard let raw = b.image_url else { return nil }
+                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : trimmed
+            }()
             out.append(Imported(
                 name: name,
                 lat: lat,
                 lng: lng,
                 category: category,
+                imageURL: img,
             ))
         }
         return out
@@ -107,6 +116,7 @@ enum BookmarksJSONService {
             let lat: Double
             let lng: Double
             let category_id: String?
+            let image_url: String?
         }
         let version: String
         let exported_at: String
@@ -148,7 +158,10 @@ enum BookmarksJSONService {
             .map { bm in
                 let trimmed = bm.category.trimmingCharacters(in: .whitespacesAndNewlines)
                 let cid = trimmed.isEmpty ? nil : catIdByName[trimmed]
-                return .init(name: bm.name, lat: bm.lat, lng: bm.lng, category_id: cid)
+                let img = bm.imageURL?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let imgOut = (img?.isEmpty ?? true) ? nil : img
+                return .init(name: bm.name, lat: bm.lat, lng: bm.lng,
+                             category_id: cid, image_url: imgOut)
             }
 
         let formatter = ISO8601DateFormatter()
@@ -198,7 +211,8 @@ enum BookmarksJSONService {
                (-180.0...180.0).contains(lng) {
                 let name = parts.count >= 3 ? parts[2] : String(format: "%.5f, %.5f", lat, lng)
                 let category = parts.count >= 4 ? parts[3] : ""
-                out.append(Imported(name: name, lat: lat, lng: lng, category: category))
+                out.append(Imported(name: name, lat: lat, lng: lng,
+                                    category: category, imageURL: nil))
                 continue
             }
 
@@ -210,7 +224,8 @@ enum BookmarksJSONService {
                (-180.0...180.0).contains(lng) {
                 let name = parts[0]
                 let category = parts.count >= 4 ? parts[3] : ""
-                out.append(Imported(name: name, lat: lat, lng: lng, category: category))
+                out.append(Imported(name: name, lat: lat, lng: lng,
+                                    category: category, imageURL: nil))
                 continue
             }
 

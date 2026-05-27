@@ -2,6 +2,7 @@ import SwiftUI
 import MapKit
 import CoreLocation
 import Observation
+import SwiftData
 
 /// SwiftUI host for an MKMapView with three logical layers:
 ///
@@ -214,6 +215,17 @@ struct MapContainerView: NSViewRepresentable {
         private var lastMacSig: (Coordinate, Double?)?
         private var didCenterOnMac = false
         private var lastServicedFlyID: UUID?
+        /// Bookmark-pin cache. Key is the SwiftData persistent id so we
+        /// can diff fetched results against the current map state
+        /// without rebuilding from scratch every revision bump.
+        private var bookmarkAnnotations: [PersistentIdentifier: BookmarkAnnotation] = [:]
+        /// Last bookmarksRevision applied to the map; -1 forces the
+        /// first sync after the overlay is enabled.
+        private var lastBookmarksRevision: Int = -1
+        /// Whether the bookmark overlay is currently painted. Used to
+        /// detect transitions (off→on / on→off) so the sync function
+        /// can skip the redundant fetch when nothing changed.
+        private var lastBookmarksOverlayShown: Bool = false
 
         init(state: AppState) {
             self.state = state
@@ -259,6 +271,8 @@ struct MapContainerView: NSViewRepresentable {
                 _ = state.isVirtualMapSelected
                 _ = state.pendingMapFly
                 _ = state.mapTileLayer
+                _ = state.showBookmarksOnMap
+                _ = state.bookmarksRevision
                 if state.currentMapFocus == nil {
                     _ = state.macLocation.coordinate
                 }
@@ -279,6 +293,84 @@ struct MapContainerView: NSViewRepresentable {
             refreshAnnotations(on: mv)
             applyPendingFly(on: mv)
             Self.applyTileLayer(state.mapTileLayer, to: mv)
+            syncBookmarkAnnotations(on: mv)
+        }
+
+        /// Reconcile `bookmarkAnnotations` with the SwiftData store and
+        /// the user's overlay toggle. Three cases:
+        ///
+        ///   * Toggle OFF — strip every bookmark annotation, clear the
+        ///     cache, exit.
+        ///   * Toggle ON, no revision change since last sync, overlay
+        ///     already shown — nothing to do.
+        ///   * Toggle ON, otherwise — fetch the live bookmark list and
+        ///     diff: insert new ones, remove deleted, update coords or
+        ///     names on the survivors. Batched MapKit calls so 3000+
+        ///     pins don't redraw one-by-one.
+        private func syncBookmarkAnnotations(on map: MKMapView) {
+            if !state.showBookmarksOnMap {
+                if !bookmarkAnnotations.isEmpty {
+                    map.removeAnnotations(Array(bookmarkAnnotations.values))
+                    bookmarkAnnotations.removeAll(keepingCapacity: true)
+                }
+                lastBookmarksOverlayShown = false
+                return
+            }
+            if lastBookmarksOverlayShown,
+               lastBookmarksRevision == state.bookmarksRevision {
+                return
+            }
+            lastBookmarksRevision = state.bookmarksRevision
+            lastBookmarksOverlayShown = true
+
+            // Fetch the live list. The state's modelContext is the same
+            // one the sidebar's @Query sees, so we get the freshest
+            // post-save snapshot.
+            let fetched: [Bookmark] = {
+                guard let ctx = state.bookmarkFetchContext else { return [] }
+                return (try? ctx.fetch(FetchDescriptor<Bookmark>())) ?? []
+            }()
+            let fetchedIDs = Set(fetched.map(\.persistentModelID))
+
+            var toRemove: [BookmarkAnnotation] = []
+            for (id, ann) in bookmarkAnnotations where !fetchedIDs.contains(id) {
+                toRemove.append(ann)
+            }
+            if !toRemove.isEmpty {
+                map.removeAnnotations(toRemove)
+                for ann in toRemove { bookmarkAnnotations[ann.persistentID] = nil }
+            }
+
+            var toAdd: [BookmarkAnnotation] = []
+            for bm in fetched {
+                if let existing = bookmarkAnnotations[bm.persistentModelID] {
+                    // Keep the same annotation instance to preserve
+                    // MapKit's view recycling — only push field updates.
+                    if existing.coordinate.latitude != bm.lat ||
+                       existing.coordinate.longitude != bm.lng {
+                        existing.coordinate = CLLocationCoordinate2D(
+                            latitude: bm.lat, longitude: bm.lng,
+                        )
+                    }
+                    if existing.title != bm.name { existing.title = bm.name }
+                    let subtitle = bm.category.isEmpty ? nil : bm.category
+                    if existing.subtitle != subtitle { existing.subtitle = subtitle }
+                    existing.hasImage = (bm.imageURL?.isEmpty == false)
+                } else {
+                    let ann = BookmarkAnnotation(
+                        persistentID: bm.persistentModelID,
+                        hasImage: bm.imageURL?.isEmpty == false,
+                    )
+                    ann.coordinate = CLLocationCoordinate2D(
+                        latitude: bm.lat, longitude: bm.lng,
+                    )
+                    ann.title = bm.name
+                    ann.subtitle = bm.category.isEmpty ? nil : bm.category
+                    bookmarkAnnotations[bm.persistentModelID] = ann
+                    toAdd.append(ann)
+                }
+            }
+            if !toAdd.isEmpty { map.addAnnotations(toAdd) }
         }
 
         /// Last applied layer per MKMapView, keyed by ObjectIdentifier
@@ -1125,8 +1217,63 @@ struct MapContainerView: NSViewRepresentable {
                 v.canShowCallout = true
                 return v
 
+            case let bm as BookmarkAnnotation:
+                // Indigo bookmark pins. Distinct from every other tint
+                // currently in use (green/blue=simulated, red/blue=stops,
+                // purple=destination, orange=search-preview) so users
+                // don't mistake bookmarks for a navigable waypoint.
+                // Clustering keeps the map readable at low zoom with
+                // 3000+ entries; displayPriority .defaultLow yields the
+                // simulated puck + active waypoints when stacks form.
+                let id = "bookmark"
+                let v = (mapView.dequeueReusableAnnotationView(withIdentifier: id) as? MKMarkerAnnotationView)
+                    ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: id)
+                v.annotation = annotation
+                v.markerTintColor = .systemIndigo
+                v.glyphImage = NSImage(systemSymbolName: "bookmark.fill", accessibilityDescription: nil)
+                v.canShowCallout = true
+                v.clusteringIdentifier = "bookmark"
+                v.displayPriority = .defaultLow
+                // Right callout accessory — only when the bookmark has
+                // a photo to show. Tapping the button is intercepted by
+                // `calloutAccessoryControlTapped:` below and surfaces
+                // the photo sheet.
+                if bm.hasImage {
+                    let btn = NSButton(frame: NSRect(x: 0, y: 0, width: 24, height: 24))
+                    btn.bezelStyle = .accessoryBarAction
+                    btn.isBordered = false
+                    btn.image = NSImage(systemSymbolName: "photo",
+                                        accessibilityDescription: "View photo")
+                    btn.title = ""
+                    v.rightCalloutAccessoryView = btn
+                } else {
+                    v.rightCalloutAccessoryView = nil
+                }
+                return v
+
             default:
                 return nil
+            }
+        }
+
+        /// Trigger the photo-preview sheet when the user taps the
+        /// callout's photo button on a bookmark pin. The lookup goes
+        /// back through the SwiftData context so we get the live
+        /// Bookmark instance the @Model UI is bound to.
+        func mapView(
+            _ mapView: MKMapView,
+            annotationView view: MKAnnotationView,
+            calloutAccessoryControlTapped control: NSControl,
+        ) {
+            guard let ann = view.annotation as? BookmarkAnnotation,
+                  let ctx = state.bookmarkFetchContext
+            else { return }
+            let pid = ann.persistentID
+            let predicate = #Predicate<Bookmark> { $0.persistentModelID == pid }
+            var descriptor = FetchDescriptor<Bookmark>(predicate: predicate)
+            descriptor.fetchLimit = 1
+            if let match = (try? ctx.fetch(descriptor))?.first {
+                state.mapPreviewingBookmark = match
             }
         }
 
@@ -1165,6 +1312,23 @@ private final class StopAnnotation: MKPointAnnotation {
 private final class SimulatedAnnotation: MKPointAnnotation {}
 private final class MacAnnotation: MKPointAnnotation {}
 private final class DestinationAnnotation: MKPointAnnotation {}
+
+/// Marker dropped per saved bookmark when the user toggles "Show
+/// bookmarks on map" in the layer picker. Carries the SwiftData
+/// persistent id so the click-handler can resolve the matching
+/// `Bookmark` model object on demand and present its photo sheet.
+private final class BookmarkAnnotation: MKPointAnnotation {
+    let persistentID: PersistentIdentifier
+    /// Cached at sync time so the callout accessory view can decide
+    /// whether to render a "view photo" button without re-fetching
+    /// the Bookmark per render pass.
+    var hasImage: Bool
+    init(persistentID: PersistentIdentifier, hasImage: Bool) {
+        self.persistentID = persistentID
+        self.hasImage = hasImage
+        super.init()
+    }
+}
 /// v1.11.2: marker dropped by the search bar's Preview action so the
 /// user actually sees where they previewed. Cleared by teleport /
 /// navigate / a new preview (the previous marker just relocates).

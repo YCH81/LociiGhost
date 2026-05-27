@@ -55,6 +55,13 @@ struct BookmarksSection: View {
     /// Hash of the bookmark currently targeted as a drop destination
     /// in manual mode (drives the highlight background).
     @State private var draggingHash: Int?
+    /// Live filter for bookmark names. Empty means "no filter applied".
+    /// When non-empty the sidebar shows only matching rows and
+    /// auto-expands every category that still contains a hit so the
+    /// user can see results without manually opening each section.
+    @State private var searchText: String = ""
+    /// Drives the bookmark management sheet presentation.
+    @State private var showManager: Bool = false
 
     private var sortMode: BookmarkSortMode {
         BookmarkSortMode(rawValue: state.bookmarkSortMode) ?? .date
@@ -67,12 +74,64 @@ struct BookmarksSection: View {
                 if bookmarks.isEmpty {
                     emptyState
                 } else {
-                    ForEach(grouped, id: \.0) { (category, items) in
-                        categorySection(category: category, items: items)
+                    searchField
+                    if grouped.isEmpty {
+                        noMatchesState
+                    } else {
+                        ForEach(grouped, id: \.0) { (category, items) in
+                            categorySection(category: category, items: items)
+                        }
                     }
                 }
             }
         }
+        .sheet(isPresented: $showManager) {
+            BookmarkManagerSheet()
+        }
+    }
+
+    // MARK: - Search field
+
+    private var searchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            TextField(
+                String(localized: "Search bookmarks",
+                       comment: "Sidebar bookmark search placeholder"),
+                text: $searchText,
+            )
+            .textFieldStyle(.plain)
+            .font(.caption)
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+                .help(Text("Clear search",
+                           comment: "Tooltip for the sidebar search clear button"))
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .background(Color.secondary.opacity(0.08), in: .rect(cornerRadius: 5))
+    }
+
+    private var noMatchesState: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            Text("No bookmarks match.",
+                 comment: "Sidebar empty state shown when the search filter has no hits")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
     }
 
     // MARK: - Header
@@ -97,6 +156,18 @@ struct BookmarksSection: View {
             Spacer()
             if !bookmarks.isEmpty {
                 sortMenuButton
+                Button {
+                    showManager = true
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(2)
+                }
+                .buttonStyle(.borderless)
+                .hoverHighlight()
+                .help(Text("Manage bookmarks — rename, batch delete, organize categories",
+                           comment: "Tooltip on the Bookmarks manage button"))
             }
             Button {
                 Task { @MainActor in await state.importBookmarksJSON() }
@@ -203,8 +274,15 @@ struct BookmarksSection: View {
     // MARK: - Grouping + sort
 
     private var grouped: [(String, [Bookmark])] {
+        let q = searchText.trimmingCharacters(in: .whitespaces).lowercased()
+        let source: [Bookmark]
+        if q.isEmpty {
+            source = bookmarks
+        } else {
+            source = bookmarks.filter { $0.name.lowercased().contains(q) }
+        }
         var bins: [String: [Bookmark]] = [:]
-        for b in bookmarks { bins[b.category, default: []].append(b) }
+        for b in source { bins[b.category, default: []].append(b) }
         return bins
             .sorted { a, b in
                 if a.key.isEmpty { return true }
@@ -232,7 +310,12 @@ struct BookmarksSection: View {
     @ViewBuilder
     private func categorySection(category: String, items: [Bookmark]) -> some View {
         let key = category
-        let isExpanded = expanded.contains(key)
+        let searchActive = !searchText.trimmingCharacters(in: .whitespaces).isEmpty
+        // When a search is active every visible category is implicitly
+        // expanded so the user doesn't have to click through to find hits.
+        // The user's manual expanded set is preserved untouched and takes
+        // over again the moment they clear the filter.
+        let isExpanded = searchActive || expanded.contains(key)
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
@@ -360,6 +443,10 @@ private struct BookmarkRow: View {
     /// When true, prepends a drag-handle glyph. Only set in manual mode.
     var showDragHandle: Bool = false
     @Environment(AppState.self) private var state
+    /// Drives the photo preview sheet. Only used when the bookmark has
+    /// an `imageURL`; otherwise the trigger button is hidden so the
+    /// row's footprint and behaviour are identical to v1.10.
+    @State private var showImageSheet: Bool = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -381,45 +468,83 @@ private struct BookmarkRow: View {
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 4)
+            if bookmark.imageURL != nil {
+                Button {
+                    showImageSheet = true
+                } label: {
+                    Image(systemName: "photo")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(2)
+                }
+                .buttonStyle(.borderless)
+                .hoverHighlight(cornerRadius: 4, changesCursor: false)
+                .help(Text("View photo",
+                           comment: "Tooltip on bookmark row photo-preview button"))
+            }
         }
         .padding(.vertical, 3)
         .padding(.horizontal, 4)
         .contentShape(.rect)
         .hoverHighlight(cornerRadius: 5, changesCursor: false)
+        .sheet(isPresented: $showImageSheet) {
+            BookmarkImageSheet(bookmark: bookmark)
+        }
         .onTapGesture {
-            guard let udid = state.selectedUDID,
-                  state.devices.first(where: { $0.udid == udid })?.connected == true
-            else {
-                state.lastError = String(localized: "Connect a device first.")
-                return
-            }
+            // The primary tap is "show me this place on the map" — that
+            // works for every device state (real iPhone connected,
+            // disconnected, virtual-map browse, or none selected at all).
+            // Teleport is a bonus that only runs when a real iPhone is
+            // actually drivable; without one we still fly the camera so
+            // the user can preview locations without first having to
+            // plug a phone in.
             state.pendingMapFly = MapFlyRequest(
                 coordinate: Coordinate(lat: bookmark.lat, lng: bookmark.lng),
                 spanMeters: 2_000,
             )
-            Task {
-                await state.teleport(udid: udid,
-                                     lat: bookmark.lat, lng: bookmark.lng)
+            if let udid = state.selectedUDID,
+               udid != AppState.virtualMapUDID,
+               state.devices.first(where: { $0.udid == udid })?.connected == true {
+                Task {
+                    await state.teleport(udid: udid,
+                                         lat: bookmark.lat, lng: bookmark.lng)
+                }
             }
         }
         .contextMenu {
+            if bookmark.imageURL != nil {
+                Button {
+                    showImageSheet = true
+                } label: {
+                    Label {
+                        Text("View photo",
+                             comment: "Bookmark context-menu action to open the photo preview")
+                    } icon: {
+                        Image(systemName: "photo")
+                    }
+                }
+                Divider()
+            }
             Button {
                 state.editingBookmark = bookmark
             } label: {
                 Label("Edit…", systemImage: "pencil")
             }
             Button {
-                guard let udid = state.selectedUDID else { return }
                 state.pendingMapFly = MapFlyRequest(
                     coordinate: Coordinate(lat: bookmark.lat, lng: bookmark.lng),
                     spanMeters: 2_000,
                 )
-                Task {
-                    await state.teleport(udid: udid,
-                                         lat: bookmark.lat, lng: bookmark.lng)
+                if let udid = state.selectedUDID,
+                   udid != AppState.virtualMapUDID,
+                   state.devices.first(where: { $0.udid == udid })?.connected == true {
+                    Task {
+                        await state.teleport(udid: udid,
+                                             lat: bookmark.lat, lng: bookmark.lng)
+                    }
                 }
             } label: {
-                Label("Teleport here", systemImage: "wand.and.stars")
+                Label("Show on map", systemImage: "scope")
             }
             Divider()
             Button(role: .destructive) {

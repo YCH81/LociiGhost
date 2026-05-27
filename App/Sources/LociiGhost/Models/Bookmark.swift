@@ -27,6 +27,12 @@ final class Bookmark {
     /// BookmarksSection is in `.manual` sort mode; ignored otherwise.
     /// SwiftData migrates existing rows to the default (0) automatically.
     var sortOrder: Int = 0
+    /// Optional remote image URL. When set, the bookmark row shows a
+    /// camera button that opens a sheet rendering the image inline via
+    /// `AsyncImage`. Nothing is downloaded eagerly — the system
+    /// URLCache handles caching for the session. `nil` (the default
+    /// for migrated rows) hides the button entirely.
+    var imageURL: String? = nil
 
     init(
         name: String,
@@ -34,6 +40,7 @@ final class Bookmark {
         lng: Double,
         category: String = "",
         iconSymbol: String = "mappin.circle.fill",
+        imageURL: String? = nil,
         createdAt: Date = .now
     ) {
         self.name = name
@@ -41,6 +48,7 @@ final class Bookmark {
         self.lng = lng
         self.category = category
         self.iconSymbol = iconSymbol
+        self.imageURL = imageURL
         self.createdAt = createdAt
     }
 }

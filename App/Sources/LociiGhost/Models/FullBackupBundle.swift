@@ -32,6 +32,9 @@ struct FullBackupBundle: Codable {
         /// the importer falls back to `.now` so the entry still
         /// lands in the database.
         let createdAt: Date?
+        /// Optional remote image URL (added v1.11). Absent on backups
+        /// produced by older builds — the decoder maps that to nil.
+        let imageURL: String?
     }
 
     struct RouteEntry: Codable {
