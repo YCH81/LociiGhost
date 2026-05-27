@@ -1430,11 +1430,33 @@ final class AppState {
                 )
                 return
             }
+            guard let ctx = modelContext else { return }
+            // Batched insert. The previous loop called `addBookmark`
+            // per-entry, which fired `ctx.save()` AND bumped
+            // `bookmarksRevision` for every row. Each save flushed a
+            // SwiftData transaction and notified every active @Query —
+            // re-fetching the entire table 3000+ times on a large
+            // import froze the UI for tens of seconds. Insert in a
+            // tight loop, save once, bump once.
             for e in entries {
-                addBookmark(name: e.name, lat: e.lat, lng: e.lng,
-                            category: e.category,
-                            imageURL: e.imageURL)
+                let trimmed = e.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                let nameToSave = trimmed.isEmpty
+                    ? String(format: "(%.5f, %.5f)", e.lat, e.lng)
+                    : trimmed
+                let imgTrimmed = e.imageURL?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let imgToSave = (imgTrimmed?.isEmpty ?? true) ? nil : imgTrimmed
+                let bm = Bookmark(
+                    name: nameToSave,
+                    lat: e.lat,
+                    lng: e.lng,
+                    category: e.category.trimmingCharacters(in: .whitespaces),
+                    iconSymbol: "mappin.circle.fill",
+                    imageURL: imgToSave,
+                )
+                ctx.insert(bm)
             }
+            try? ctx.save()
+            bookmarksRevision &+= 1
             lastError = String(
                 format: String(
                     localized: "Imported %lld bookmarks.",
@@ -1572,12 +1594,28 @@ final class AppState {
             )
             return 0
         }
+        guard let ctx = modelContext else { return 0 }
+        // Same batching contract as importBookmarksJSON — single save +
+        // single revision bump so a 3000-line paste doesn't trigger
+        // 3000 @Query re-fetches.
         for e in entries {
             let category = e.category.isEmpty
                 ? defaultCategory.trimmingCharacters(in: .whitespacesAndNewlines)
                 : e.category
-            addBookmark(name: e.name, lat: e.lat, lng: e.lng, category: category)
+            let trimmed = e.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            let nameToSave = trimmed.isEmpty
+                ? String(format: "(%.5f, %.5f)", e.lat, e.lng)
+                : trimmed
+            let bm = Bookmark(
+                name: nameToSave,
+                lat: e.lat,
+                lng: e.lng,
+                category: category.trimmingCharacters(in: .whitespaces),
+            )
+            ctx.insert(bm)
         }
+        try? ctx.save()
+        bookmarksRevision &+= 1
         lastError = String(
             format: String(
                 localized: "Added %lld bookmarks from paste.",

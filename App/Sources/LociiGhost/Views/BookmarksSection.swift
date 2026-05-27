@@ -341,12 +341,18 @@ struct BookmarksSection: View {
             }
 
             if isExpanded {
-                // SwiftData-native ForEach — uses Bookmark's Identifiable
-                // conformance (PersistentIdentifier) directly. Avoids the
-                // Array(enumerated()) intermediate allocation and preserves
-                // SwiftData's internal diff optimisation.
-                ForEach(items) { bm in
-                    rowView(bm, in: items, category: category)
+                // LazyVStack defers row materialization until each row
+                // actually enters the enclosing sidebar ScrollView's
+                // viewport. Without this a category like "菇點" with
+                // 1800+ rows would build 1800 BookmarkRow instances
+                // synchronously on expand — each one attaches a
+                // `.sheet` and `.contextMenu`, and SwiftUI's view tree
+                // can't keep up. Lazy keeps the expand instant
+                // regardless of bookmark count.
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(items) { bm in
+                        rowView(bm, in: items, category: category)
+                    }
                 }
             }
         }
