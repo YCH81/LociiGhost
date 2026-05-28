@@ -449,10 +449,12 @@ private struct BookmarkRow: View {
     /// When true, prepends a drag-handle glyph. Only set in manual mode.
     var showDragHandle: Bool = false
     @Environment(AppState.self) private var state
-    /// Drives the photo preview sheet. Only used when the bookmark has
-    /// an `imageURL`; otherwise the trigger button is hidden so the
-    /// row's footprint and behaviour are identical to v1.10.
-    @State private var showImageSheet: Bool = false
+    // v1.13 unified the photo-preview presentation behind
+    // `state.mapPreviewingBookmark` and a custom dimmed-backdrop
+    // overlay in MainView, so this row no longer hosts its own
+    // sheet — clicking the photo button just sets the AppState
+    // slot. The overlay handles dismiss-on-outside-click, so users
+    // get the same affordance the map's bookmark pin tap uses.
 
     var body: some View {
         HStack(spacing: 8) {
@@ -476,7 +478,7 @@ private struct BookmarkRow: View {
             Spacer(minLength: 4)
             if bookmark.imageURL != nil {
                 Button {
-                    showImageSheet = true
+                    state.mapPreviewingBookmark = bookmark
                 } label: {
                     Image(systemName: "photo")
                         .font(.caption)
@@ -493,9 +495,6 @@ private struct BookmarkRow: View {
         .padding(.horizontal, 4)
         .contentShape(.rect)
         .hoverHighlight(cornerRadius: 5, changesCursor: false)
-        .sheet(isPresented: $showImageSheet) {
-            BookmarkImageSheet(bookmark: bookmark)
-        }
         .onTapGesture {
             // The primary tap is "show me this place on the map" — that
             // works for every device state (real iPhone connected,
@@ -520,7 +519,7 @@ private struct BookmarkRow: View {
         .contextMenu {
             if bookmark.imageURL != nil {
                 Button {
-                    showImageSheet = true
+                    state.mapPreviewingBookmark = bookmark
                 } label: {
                     Label {
                         Text("View photo",

@@ -47,8 +47,22 @@ struct MainView: View {
                 TopStatusBar()
                     .layoutPriority(1)
                 ZStack(alignment: .topLeading) {
-                    MapContainerView()
-                        .ignoresSafeArea(edges: .top)
+                    // Hybrid dispatcher: SwiftUI native `Map` for Apple-
+                    // rendered layers (much smoother on idle pan — the
+                    // NSViewRepresentable bridging overhead disappears),
+                    // MapContainerView for the raster tile sources that
+                    // SwiftUI Map doesn't support (OSM / Carto / ESRI).
+                    // Both share AppState so annotations, route line,
+                    // bookmark overlay etc. flow through whichever path
+                    // is currently active.
+                    Group {
+                        if state.mapTileLayer.usesNativeAppleMap {
+                            NativeMapView()
+                        } else {
+                            MapContainerView()
+                        }
+                    }
+                    .ignoresSafeArea(edges: .top)
                         // Block hit-testing while the selected
                         // iPhone is disconnected. The grey overlay
                         // below also catches mouse events, but
@@ -230,18 +244,39 @@ struct MainView: View {
         )) {
             SavePresetSheet()
         }
-        // Bookmark photo preview when the user taps a bookmark pin on
-        // the map. `state.mapPreviewingBookmark` is set from the map's
-        // callout-accessory tap handler; clearing it dismisses the
-        // sheet through the standard SwiftUI item-binding contract.
-        .sheet(isPresented: Binding(
-            get: { state.mapPreviewingBookmark != nil },
-            set: { isOpen in
-                if !isOpen { state.mapPreviewingBookmark = nil }
-            },
-        )) {
+        // Bookmark photo preview — custom overlay (not `.sheet`) so the
+        // user can click the dimmed backdrop to dismiss. macOS sheets
+        // don't dismiss on outside-click by default and the X-button
+        // alone felt unfriendly. ZIndex keeps the overlay above
+        // toolbar / sidebar so it sits on top of every floating
+        // element. All bookmark-preview entry points (sidebar
+        // photo button, manager sheet, map pin) funnel through
+        // `state.mapPreviewingBookmark`, so this one overlay covers
+        // them all.
+        .overlay {
             if let bm = state.mapPreviewingBookmark {
-                BookmarkImageSheet(bookmark: bm)
+                ZStack {
+                    Color.black.opacity(0.4)
+                        .ignoresSafeArea()
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            state.mapPreviewingBookmark = nil
+                        }
+                    BookmarkImageSheet(bookmark: bm) {
+                        state.mapPreviewingBookmark = nil
+                    }
+                    .background(
+                        RoundedRectangle(cornerRadius: 14)
+                            .fill(.regularMaterial),
+                    )
+                    .shadow(color: .black.opacity(0.3), radius: 30, y: 10)
+                    // Eat taps on the sheet itself so they don't bubble
+                    // up to the backdrop and dismiss.
+                    .contentShape(RoundedRectangle(cornerRadius: 14))
+                    .onTapGesture { /* swallow */ }
+                }
+                .transition(.opacity)
+                .zIndex(1000)
             }
         }
         // v1.11.0 stop-preset "Load" confirmation sheet. Clicking a

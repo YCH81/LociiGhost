@@ -16,7 +16,13 @@ import SwiftUI
 /// without dismissing the sheet manually first.
 struct BookmarkImageSheet: View {
     let bookmark: Bookmark
-    @Environment(\.dismiss) private var dismiss
+    /// Caller-provided dismiss closure. We can't rely on
+    /// `@Environment(\.dismiss)` because v1.13's presentation moved
+    /// from a `.sheet` modifier (which provides .dismiss) to a custom
+    /// overlay rooted in MainView (which doesn't). The overlay needs
+    /// to clear `state.mapPreviewingBookmark`; this closure lets the
+    /// presenter decide how.
+    let onDismiss: () -> Void
     @Environment(AppState.self) private var state
     /// Bumped to force `AsyncImage` to redo the network fetch when
     /// the user taps Retry on the error state.
@@ -50,7 +56,7 @@ struct BookmarkImageSheet: View {
             }
             Spacer()
             Button {
-                dismiss()
+                onDismiss()
             } label: {
                 Image(systemName: "xmark.circle.fill")
                     .font(.title3)
@@ -169,6 +175,6 @@ struct BookmarkImageSheet: View {
                                      lat: bookmark.lat, lng: bookmark.lng)
             }
         }
-        dismiss()
+        onDismiss()
     }
 }

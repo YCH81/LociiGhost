@@ -4604,6 +4604,18 @@ enum MapTileLayer: String, CaseIterable, Identifiable, Sendable {
             return "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
         }
     }
+
+    /// True when this layer is renderable through SwiftUI's native
+    /// `Map` view. MainView's hybrid dispatcher routes Apple layers
+    /// to NativeMapView (smoother pan, no NSViewRepresentable
+    /// bridging overhead) and raster layers to MapContainerView
+    /// (SwiftUI Map can't host MKTileOverlay).
+    var usesNativeAppleMap: Bool {
+        switch self {
+        case .appleStandard, .appleSatellite: return true
+        case .openStreetMap, .cartoVoyager, .esriSatellite: return false
+        }
+    }
 }
 
 struct MapFlyRequest: Hashable, Sendable {
