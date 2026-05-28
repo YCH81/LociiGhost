@@ -274,28 +274,30 @@
 
   <section class="card">
     <div class="version-line">
-      <strong>v1.11.1</strong>
+      <strong>v1.13.0</strong>
       <span class="status-pill">Released</span>
     </div>
-    <p>Released 2026-05-19. <strong>v1.11.0 + v1.11.1 bundled
-       update</strong>: (1) <strong>Performance overhaul</strong> — map
-       drags, mode switches, and long routes (200+ stops) no longer
-       lag; the simulated pin slides smoothly instead of flickering.
-       (2) <strong>Multi-Stop upgrades</strong> — staged stops persist
-       across Navigate, bulk-paste sheet height is locked, named
-       "Preset" favourites for stop lists, "Dwell N seconds at each
-       stop" mode with full-trip ETA, the on-map polyline shows every
-       remaining stop in dwell mode.
-       (3) <strong>Random Walk rebuilt</strong> — new "Straight line /
-       Map path" picker; map path follows real roads via OSRM rather
-       than straight-line hops; random walk also supports dwell.
-       (4) <strong>Auto-center toggle</strong> in the header bar — flip
-       off to keep the map where you left it during simulated motion.
-       (5) <strong>macOS 26 Tahoe support</strong> — first-launch
-       admin prompt fires automatically; WiFi multi-device discovery
-       fixed (mDNS browse was silently broken on Tahoe).
+    <p>Released 2026-05-28.
+       (1) <strong>Bookmark system overhaul</strong> — bookmarks can
+       carry photos (just add <code>image_url</code> to your import);
+       the photo window dismisses on click-outside, no need to hit X.
+       Manager panel (sidebar gear) supports multi-select bulk
+       delete / move / prefix-suffix; categories can be renamed,
+       merged, or deleted. Sidebar search filters as you type. Layer
+       picker has a new "Show bookmarks on map" toggle that paints
+       indigo pins on the map with auto-clustering at low zoom.
+       (2) <strong>Pan-after-teleport is much smoother</strong> —
+       Apple map layers switched to SwiftUI's native Map component;
+       OSM / Carto / ESRI keep their existing rendering path.
+       (3) <strong>Status-bar chips refresh during route
+       playback</strong> — country flag / weather / remote-time now
+       follow the moving simulated location in real time instead of
+       freezing.
+       (4) <strong>Large bookmark imports no longer freeze the
+       UI</strong> — 3 000+ bookmarks go from a multi-second hang to
+       instant.
        See
-       <a href="https://github.com/YCH81/LociiGhost/releases/tag/v1.11.1">v1.11.1 release notes</a>
+       <a href="https://github.com/YCH81/LociiGhost/releases/tag/v1.13.0">v1.13.0 release notes</a>
        for the full changelog.</p>
     <p class="meta">The DMG is Apple-Developer-ID-signed and notarised,
        so it opens with a double-click without a Gatekeeper warning.
