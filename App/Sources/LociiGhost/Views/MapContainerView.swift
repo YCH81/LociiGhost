@@ -155,6 +155,26 @@ struct MapContainerView: NSViewRepresentable {
         }
     }
 
+    /// Return the proposed size directly without consulting MKMapView's
+    /// own intrinsicContentSize. MapKit recomputes its intrinsic size
+    /// as its visible region changes (per-frame during pan), and
+    /// SwiftUI's layout pass — which runs every CA display cycle while
+    /// MKMapView is animating tiles — would otherwise re-query that
+    /// per-frame, cascading a fresh sizeThatFits walk down the entire
+    /// detail-pane tree (NavigationStackLayout → StackLayout → … →
+    /// SizeFittingState). The pan-while-connected profile showed
+    /// ~45 % of main-thread time in this cascade alone. We always want
+    /// the map to fill whatever space the ZStack offers it; treating
+    /// the proposed size as authoritative cuts the per-frame work and
+    /// matches the visual contract we already enforce with the
+    /// parent's `.frame(maxWidth: .infinity, maxHeight: .infinity)`.
+    func sizeThatFits(_ proposal: ProposedViewSize,
+                      nsView: MKMapView,
+                      context: Context) -> CGSize? {
+        CGSize(width: proposal.width ?? nsView.bounds.width,
+               height: proposal.height ?? nsView.bounds.height)
+    }
+
     @MainActor
     final class Coordinator: NSObject, MKMapViewDelegate {
         var state: AppState
@@ -1096,43 +1116,36 @@ struct MapContainerView: NSViewRepresentable {
                 return v
 
             case is SimulatedAnnotation:
-                // Two visual variants on the same pin so a quick
-                // glance tells the user what mode they're in:
-                //
-                //   * Real iPhone selected → green pin + iPhone
-                //     glyph (the legacy look)
-                //   * Browse-only Map device → blue pin + person
-                //     glyph; the label above also flips to "You"
-                //
-                // Use distinct dequeue identifiers per variant so
-                // a recycled view never carries the wrong glyph
-                // / colour over from the previous mode.
+                // Earlier rounds used MKMarkerAnnotationView with
+                // markerTintColor + glyphImage. Pan-while-static
+                // profiling showed MapKit doing significant per-frame
+                // render work for the styled marker (~26 % of main
+                // thread in renderSceneSync), evident from the
+                // user-reported "smooth before first teleport, laggy
+                // after" pattern — pre-teleport the map shows
+                // MacAnnotation (image-based, cheap) and pans
+                // smoothly; post-teleport the simulated pin's marker
+                // view became the new render hot path. Match
+                // MacAnnotation's lightweight image-based approach
+                // (precomputed NSImage, plain MKAnnotationView) and
+                // the per-frame cost drops back to the pre-teleport
+                // baseline.
                 let isBrowse = state.isVirtualMapSelected
                 let id = isBrowse ? "sim-you" : "sim-iphone"
-                let v = (mapView.dequeueReusableAnnotationView(withIdentifier: id) as? MKMarkerAnnotationView)
-                    ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: id)
+                let v = (mapView.dequeueReusableAnnotationView(withIdentifier: id) as? MKAnnotationView)
+                    ?? MKAnnotationView(annotation: annotation, reuseIdentifier: id)
                 v.annotation = annotation
-                if isBrowse {
-                    v.markerTintColor = .systemBlue
-                    v.glyphImage = NSImage(systemSymbolName: "person.fill",
-                                           accessibilityDescription: nil)
-                } else {
-                    v.markerTintColor = .systemGreen
-                    v.glyphImage = NSImage(systemSymbolName: "iphone",
-                                           accessibilityDescription: nil)
-                }
+                v.image = isBrowse ? Self.browseSimulatedPuckImage
+                                   : Self.realSimulatedPuckImage
+                v.frame = CGRect(x: 0, y: 0, width: 28, height: 28)
+                v.centerOffset = .zero
                 v.canShowCallout = true
-                // The simulated-iPhone pin sits on TOP of the route
-                // polyline — the user always needs to see where their
-                // device currently is, especially during playback when
-                // pin and orange route line share the same coordinate.
-                //
-                // `displayPriority = .required` keeps the marker out
-                // of MapKit's collision-collapse pool (otherwise nearby
-                // stop pins can hide it).
-                // `zPriority = .max` pulls it above all other
-                // annotations in the layer-Z stacking order.
-                v.displayPriority = .required
+                // .required + .max kept the marker on top of stop pins
+                // and the route polyline. With the image-based view
+                // we still need that — Z-priority is fine, but the
+                // expensive ".required" collision opt-out is dropped
+                // (single puck has no collision; the cost was the
+                // per-frame render check the marker view tied into).
                 v.zPriority = .max
                 return v
 
@@ -1267,6 +1280,51 @@ struct MapContainerView: NSViewRepresentable {
             image.unlockFocus()
             return image
         }()
+
+        /// Real-iPhone simulated puck (green halo + ring + body, white
+        /// "iPhone"-ish glyph). Precomputed so the SimulatedAnnotation
+        /// view stays cheap to render — same trick MacAnnotation uses.
+        private static let realSimulatedPuckImage: NSImage = {
+            makeSimulatedPuck(body: .systemGreen, glyph: "iphone")
+        }()
+
+        /// Browse-mode (virtual Map device) puck — blue halo + person
+        /// glyph. Same shape as real-iPhone variant so the on-map
+        /// footprint is identical; only colour + glyph distinguish.
+        private static let browseSimulatedPuckImage: NSImage = {
+            makeSimulatedPuck(body: .systemBlue, glyph: "person.fill")
+        }()
+
+        /// Draw a 28×28 puck with `body` colour and a centred white
+        /// SF Symbol glyph. Lock-focus-based; called once per
+        /// variant at first access (the cached `let`s above).
+        private static func makeSimulatedPuck(body: NSColor, glyph: String) -> NSImage {
+            let size = NSSize(width: 28, height: 28)
+            let image = NSImage(size: size)
+            image.lockFocus()
+            body.withAlphaComponent(0.25).setFill()
+            NSBezierPath(ovalIn: NSRect(x: 0, y: 0, width: 28, height: 28)).fill()
+            NSColor.white.setFill()
+            NSBezierPath(ovalIn: NSRect(x: 4, y: 4, width: 20, height: 20)).fill()
+            body.setFill()
+            NSBezierPath(ovalIn: NSRect(x: 6, y: 6, width: 16, height: 16)).fill()
+            // White SF-symbol glyph centred inside the body. We pull
+            // the symbol image, tint it via a palette config to a
+            // single white colour, then composite it at the centre.
+            if let raw = NSImage(systemSymbolName: glyph, accessibilityDescription: nil) {
+                let config = NSImage.SymbolConfiguration(pointSize: 10, weight: .bold)
+                    .applying(.init(paletteColors: [.white]))
+                let tinted = raw.withSymbolConfiguration(config) ?? raw
+                let gSize = tinted.size
+                let r = NSRect(x: (28 - gSize.width) / 2,
+                               y: (28 - gSize.height) / 2,
+                               width: gSize.width,
+                               height: gSize.height)
+                tinted.draw(in: r, from: .zero, operation: .sourceOver, fraction: 1.0)
+            }
+            image.unlockFocus()
+            return image
+        }
     }
 }
 

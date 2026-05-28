@@ -432,6 +432,17 @@ private struct CoordsChip: View {
 private struct TimesChip: View {
     @Environment(AppState.self) private var state
     @State private var nowTick: Date = .now
+    /// Stored so we only write `nowTick` when the visible string would
+    /// actually change. The format below stops at minute precision, so
+    /// 59 of every 60 timer fires emit the same string. Each redundant
+    /// nowTick write triggers a full SwiftUI body re-eval and (worse)
+    /// an AppKit `-[NSWindow layoutIfNeeded]` cascade that walks the
+    /// entire detail-pane tree (BottomBar pickers, MapContainer wrap,
+    /// etc.) — the 5-second pan-sample profile attributed ~26 % of
+    /// main-thread time to this cascade during "iPhone connected"
+    /// idle pan. Pure idle was smoother because the secondary
+    /// "iPhone TZ" row didn't render, halving the cost.
+    @State private var lastMinuteEpoch: Int = Int(Date().timeIntervalSince1970 / 60)
     private let clockTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -445,6 +456,7 @@ private struct TimesChip: View {
                 Text(formattedNow(in: TimeZone.current))
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
+                    .monospacedDigit()
             }
             if showRemote, let tz {
                 HStack(spacing: 5) {
@@ -454,6 +466,7 @@ private struct TimesChip: View {
                     Text(formattedNow(in: tz))
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
+                        .monospacedDigit()
                     Text(tz.abbreviation() ?? tz.identifier)
                         .foregroundStyle(.tertiary)
                         .font(.caption)
@@ -471,13 +484,37 @@ private struct TimesChip: View {
         )
         .hoverHighlight(cornerRadius: 6, changesCursor: false)
         .help(LocalizedStringKey("Mac time / Time at the simulated location"))
-        .onReceive(clockTimer) { nowTick = $0 }
+        .onReceive(clockTimer) { tick in
+            // Throttle to minute boundaries — that's the smallest unit
+            // the rendered string cares about. Saves ~59/60 of the
+            // body re-evals and (more importantly) the AppKit layout
+            // cascades they cause.
+            let minute = Int(tick.timeIntervalSince1970 / 60)
+            if minute != lastMinuteEpoch {
+                lastMinuteEpoch = minute
+                nowTick = tick
+            }
+        }
     }
 
-    private func formattedNow(in tz: TimeZone) -> String {
+    /// Static formatter cache — DateFormatter creation is heavy, and
+    /// the per-body-eval `let f = DateFormatter()` ran multiple times
+    /// per second before the minute-throttle landed. Keyed by tz id so
+    /// repeated lookups for the same zone are O(1).
+    private static let formatterCache = NSCache<NSString, DateFormatter>()
+    private static func formatter(for tz: TimeZone) -> DateFormatter {
+        let key = tz.identifier as NSString
+        if let cached = formatterCache.object(forKey: key) {
+            return cached
+        }
         let f = DateFormatter()
         f.dateFormat = "yyyy/MM/dd HH:mm"
         f.timeZone = tz
-        return f.string(from: nowTick)
+        formatterCache.setObject(f, forKey: key)
+        return f
+    }
+
+    private func formattedNow(in tz: TimeZone) -> String {
+        Self.formatter(for: tz).string(from: nowTick)
     }
 }

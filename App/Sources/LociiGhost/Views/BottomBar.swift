@@ -162,22 +162,31 @@ struct BottomBar: View {
         return Picker("", selection: binding) {
             ForEach(TravelProfile.allCases) { p in
                 Image(systemName: p.symbol)
-                    .help(p.label)
+                    // labelKey (LocalizedStringKey) instead of label
+                    // (String). Each .help(String) re-resolves the
+                    // localization via Foundation's ulocimp every body
+                    // eval — 3 profiles × 2 ViewThatFits branches ×
+                    // ~60 Hz layout cascade was burning ~36 ms / sec
+                    // on Foundation locale lookup alone, per the
+                    // pan-while-connected sample. labelKey is a lazy
+                    // wrapper SwiftUI resolves once per locale env.
+                    .help(p.labelKey)
                     .tag(SpeedMode.preset(p))
             }
             Image(systemName: "speedometer")
-                .help(String(localized: "Custom speed",
-                             comment: "BottomBar travel-mode picker — custom-speed segment tooltip"))
+                .help(LocalizedStringKey("Custom speed"))
                 .tag(SpeedMode.custom)
         }
         .pickerStyle(.segmented)
         .labelsHidden()
         .frame(width: 260)
+        // LocalizedStringKey instead of String(localized:) so the
+        // tooltip key is resolved lazily by SwiftUI's helper view
+        // instead of by Foundation on every body eval. See the
+        // matching note in the ForEach above for the perf rationale.
         .help(state.navigationActive
-              ? String(localized: "Change travel mode mid-route. Speed updates immediately; route stays the same.",
-                       comment: "BottomBar travel-mode picker help during navigation")
-              : String(localized: "Default travel mode for the next Navigate.",
-                       comment: "BottomBar travel-mode picker help when idle"))
+              ? LocalizedStringKey("Change travel mode mid-route. Speed updates immediately; route stays the same.")
+              : LocalizedStringKey("Default travel mode for the next Navigate."))
     }
 
     @ViewBuilder
