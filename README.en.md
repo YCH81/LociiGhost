@@ -29,8 +29,8 @@ if you're in Taiwan.
 
 ## Download
 
-- **Latest version**: v1.12.0
-- **Release date**: 2026-05-26
+- **Latest version**: v1.13.0
+- **Release date**: 2026-05-28
 - **Download**: [Google Drive folder](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) — DMG is Apple-Developer-ID-signed and notarised, so it opens with a double-click without the Gatekeeper warning. **Use the DMG, not a zip**: extracting a signed .app into an iCloud-synced folder (Documents, Desktop) lets the File Provider attach extra xattrs that break the signature and show "LociiGhost is damaged".
 
 ## New here?
@@ -60,6 +60,18 @@ if you're in Taiwan.
   under 200 MB.
 
 ## What's new
+
+**v1.13.0** (2026-05-28)
+
+- **Bookmark system overhaul**:
+  - **Photo preview**: bookmarks can carry an `image_url` (import / backup round-trip supported). The sidebar row, right-click menu, and map pin tap all open a floating photo window — **click anywhere outside to close**, no need to hit X.
+  - **Bookmark manager** (sidebar gear button): multi-select bulk delete, move to category, add prefix/suffix; categories can be renamed, merged, deleted with their bookmarks, or cleared while keeping the bookmarks.
+  - **Sidebar search**: filter bookmark names as you type; categories with matches auto-expand.
+  - **Map bookmark pin layer**: layer-picker menu adds "Show bookmarks on map" — every bookmark renders as an indigo pin, auto-clustered at low zoom, tap a pin to open its photo window.
+  - **Bookmark tap always flies the map**: previously you needed a connected iPhone to jump to a bookmark; now the map flies regardless. Teleport still only fires when a real iPhone is connected.
+- **Pan-after-teleport is much smoother now**. Apple map layers switched to SwiftUI's native Map component — the lag that showed up after teleporting with an iPhone connected is gone. Raster layers (OpenStreetMap, Carto, ESRI) keep their existing rendering path.
+- **Status bar chips now update during route playback**. The country flag / weather / remote-time chips used to freeze while a route was running; they now follow the moving simulated location in real time.
+- **Large bookmark imports no longer freeze the UI**. Importing 3 000+ bookmarks went from a multi-second hang to instant; expanding a category containing thousands of bookmarks is also responsive again.
 
 **v1.12.0** (2026-05-26)
 
