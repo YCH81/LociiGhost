@@ -274,30 +274,28 @@
 
   <section class="card">
     <div class="version-line">
-      <strong>v1.13.0</strong>
+      <strong>v1.14.0</strong>
       <span class="status-pill">Released</span>
     </div>
-    <p>Released 2026-05-28.
-       (1) <strong>Bookmark system overhaul</strong> — bookmarks can
-       carry photos (just add <code>image_url</code> to your import);
-       the photo window dismisses on click-outside, no need to hit X.
-       Manager panel (sidebar gear) supports multi-select bulk
-       delete / move / prefix-suffix; categories can be renamed,
-       merged, or deleted. Sidebar search filters as you type. Layer
-       picker has a new "Show bookmarks on map" toggle that paints
-       indigo pins on the map with auto-clustering at low zoom.
-       (2) <strong>Pan-after-teleport is much smoother</strong> —
-       Apple map layers switched to SwiftUI's native Map component;
-       OSM / Carto / ESRI keep their existing rendering path.
-       (3) <strong>Status-bar chips refresh during route
-       playback</strong> — country flag / weather / remote-time now
-       follow the moving simulated location in real time instead of
-       freezing.
-       (4) <strong>Large bookmark imports no longer freeze the
-       UI</strong> — 3 000+ bookmarks go from a multi-second hang to
-       instant.
+    <p>Released 2026-06-13.
+       (1) <strong>New S2 Map Grid System</strong> — Pikmin Bloom
+       decor-cell visualiser. One tap on the header "S2 Grid" pill
+       paints a Google S2 quad-cell grid; default L17 (~76 m)
+       matches Pikmin Bloom's decor-pikmin tile granularity, so
+       flying users can see which cells they have / haven't visited.
+       L13 (~1.2 km) – L20 (~9.5 m) selectable; wide viewports
+       auto-coarsen and the popover shows "Showing L13 — zoom in to
+       see L17 cells" when it kicks in.
+       (2) <strong>Fix: Random Walk state lost on device switch</strong>
+       — switching away mid-walk and back used to wipe the planned
+       path and drift the bounded disc onto the current position;
+       now it stays anchored at the original Start coordinate.
+       (3) <strong>Fix: travel-profile change during Random Walk
+       didn't update walker speed</strong> — flipping walking /
+       cycling / driving / custom now debounce-triggers an automatic
+       stop+restart so the new speed takes effect immediately.
        See
-       <a href="https://github.com/YCH81/LociiGhost/releases/tag/v1.13.0">v1.13.0 release notes</a>
+       <a href="https://github.com/YCH81/LociiGhost/releases/tag/v1.14.0">v1.14.0 release notes</a>
        for the full changelog.</p>
     <p class="meta">The DMG is Apple-Developer-ID-signed and notarised,
        so it opens with a double-click without a Gatekeeper warning.

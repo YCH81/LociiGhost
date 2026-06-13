@@ -29,8 +29,8 @@ if you're in Taiwan.
 
 ## Download
 
-- **Latest version**: v1.13.0
-- **Release date**: 2026-05-28
+- **Latest version**: v1.14.0
+- **Release date**: 2026-06-13
 - **Download**: [Google Drive folder](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) — DMG is Apple-Developer-ID-signed and notarised, so it opens with a double-click without the Gatekeeper warning. **Use the DMG, not a zip**: extracting a signed .app into an iCloud-synced folder (Documents, Desktop) lets the File Provider attach extra xattrs that break the signature and show "LociiGhost is damaged".
 
 ## New here?
@@ -60,6 +60,12 @@ if you're in Taiwan.
   under 200 MB.
 
 ## What's new
+
+**v1.14.0** (2026-06-13)
+
+- **New S2 Map Grid System** (Pikmin Bloom decor-cell visualiser). One tap on the new "S2 Grid" pill in the header bar paints a Google S2 quad-cell grid on the active map. Defaults to L17 (~76 m) — the granularity Pikmin Bloom uses to assign decor pikmin to ground tiles, so flying users can see which cells they have / haven't visited and plan covering routes. Levels L13 (~1.2 km) – L20 (~9.5 m) selectable; wide viewports auto-coarsen so the overlay never goes blank, with a "Showing L13 — zoom in to see L17 cells" hint in the popover.
+- **Fix: Random Walk state lost when switching devices.** Starting Random Walk on iPhone A, then switching to B or Map and back, used to wipe A's planned path and re-centre the bounded disc onto A's current position. Now each device's walker is preserved per-device, and the disc stays anchored at the original Start coordinate.
+- **Fix: travel-profile change during Random Walk didn't update walker speed.** Flipping walking / cycling / driving / custom mid-walk updated the ETA chip but the iPhone kept its old position cadence (the daemon snapshots its min/max band at start). AppState now detects the change and debounce-triggers a stop+restart RPC (250 ms) reusing the same centre / radius / routing engine, so the new speed takes effect immediately.
 
 **v1.13.0** (2026-05-28)
 

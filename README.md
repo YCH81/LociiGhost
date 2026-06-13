@@ -27,8 +27,8 @@
 
 ## 下載
 
-- **最新版本**：v1.13.0
-- **發布日期**：2026-05-28
+- **最新版本**：v1.14.0
+- **發布日期**：2026-06-13
 - **下載連結**：[Google Drive 下載資料夾](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) —— DMG 已通過 Apple Developer ID 簽名 + Apple notarize，雙擊即可開啟，不會被 Gatekeeper 擋下。**請務必用 DMG 安裝**，不要把 .app 解壓到 iCloud 同步的資料夾（Documents、Desktop），File Provider 會蓋上額外 xattr 把簽章弄壞
 
 ## 第一次使用？
@@ -50,6 +50,12 @@
 - **Apple Silicon 原生** —— 閒置 CPU 0%、無 Chromium 開銷、Bundle < 200 MB
 
 ## 最新更新
+
+**v1.14.0**（2026-06-13）
+
+- **新增 S2 地圖網格系統**（皮克敏 decor 格子視覺化）。地圖右上「S2 Grid」按鈕一鍵開啟，預設 L17（約 76 m × 76 m）對應 Pikmin Bloom 把 decor pikmin 分配到地面格子的粒度；可在 L13 (~1.2 km) ↔ L20 (~9.5 m) 之間切換，方便飛人規劃覆蓋路線、看出哪些格子還沒拜訪。視野過大時自動降階確保網格不會空白，popover 同時顯示「目前顯示 L13 — 放大才能看到 L17 格子」提示。
+- **修復隨機漫步跨裝置切換時狀態遺失**。在 A 裝置開啟隨機漫步後，切到 B 或地圖再切回 A，原本紫色虛線計畫路徑會消失、隨機中心圓圈會跟著當下位置漂走（而非開始時的中心）。現在每台裝置的走者狀態獨立保存，圓圈永遠錨定在按下 Start 的座標。
+- **修復隨機漫步中切換移動模式速度沒實際套用**。走路 / 腳踏車 / 汽車 / 自訂切換時 UI 雖然顯示新速度，但 iPhone 實際移動節奏沒變（daemon 走者在 start 時 snapshot 速度帶）。現在 AppState 偵測到 travelProfile 或 customSpeedMps 改動時，會延遲 250 ms 自動 stop+restart 走者（沿用同樣中心 / 半徑 / 路徑引擎），速度即時生效。
 
 **v1.13.0**（2026-05-28）
 

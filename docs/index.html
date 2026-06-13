@@ -274,16 +274,15 @@
 
   <section class="card">
     <div class="version-line">
-      <strong>v1.13.0</strong>
+      <strong>v1.14.0</strong>
       <span class="status-pill">已發佈</span>
     </div>
-    <p>發布日期：2026-05-28。
-       (1) <strong>書籤系統大幅升級</strong> — 書籤可帶照片（匯入時附 <code>image_url</code> 即可）、點書籤跳出的照片視窗可點外面關閉；側邊欄齒輪鍵打開的書籤管理面板可批次刪除 / 移動 / 加前後綴，分類可重新命名 / 合併 / 刪除；側邊欄即時搜尋；地圖圖層選單新增「Show bookmarks on map」開關，靛紫色書籤 pin 自動 clustering。
-       (2) <strong>連 iPhone 瞬移後拖地圖大幅變順</strong> — Apple 圖層底層換成 SwiftUI 原生地圖元件，OSM / Carto / ESRI 保持原本表現。
-       (3) <strong>修正路線執行中右上角資訊欄卡住</strong> — 國旗、天氣、時間 chip 終於會即時跟著移動位置走。
-       (4) <strong>匯入大量書籤不再卡頓</strong> — 3000+ 筆書籤從凍住數十秒變成瞬間完成。
+    <p>發布日期：2026-06-13。
+       (1) <strong>新增 S2 地圖網格系統</strong> — 皮克敏 decor 格子視覺化。地圖右上「S2 Grid」一鍵開啟，預設 L17（約 76 m × 76 m）對應 Pikmin Bloom 給 decor pikmin 的格子粒度；可在 L13 (~1.2 km) – L20 (~9.5 m) 之間切換，飛人可看出哪些格子還沒拜訪。視野過大時自動降階，popover 同時顯示「目前顯示 L13 — 放大才能看到 L17 格子」提示。
+       (2) <strong>修正隨機漫步跨裝置切換時狀態遺失</strong> — 切走再切回後計畫路徑與中心圓圈會留在原始 Start 位置，不再漂走。
+       (3) <strong>修正隨機漫步切換移動模式速度沒實際套用</strong> — 走路 / 腳踏車 / 汽車 / 自訂切換現在會自動 stop+restart 走者，速度即時生效。
        完整變更紀錄見
-       <a href="https://github.com/YCH81/LociiGhost/releases/tag/v1.13.0">v1.13.0 release notes</a>。</p>
+       <a href="https://github.com/YCH81/LociiGhost/releases/tag/v1.14.0">v1.14.0 release notes</a>。</p>
     <p class="meta">DMG 已通過 Apple Developer ID 簽名 + Apple notarize，
        雙擊即可開啟，不會被 Gatekeeper 擋下。<strong>請務必用 DMG 安裝</strong>，
        不要把 .app 解壓到 iCloud 同步的資料夾（Documents、Desktop），
