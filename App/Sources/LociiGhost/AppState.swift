@@ -117,6 +117,16 @@ final class AppState {
     /// thinks their staging vanished.
     private var savedModesByDevice: [String: MovementMode] = [:]
     private var savedStopsByDevice: [String: [Coordinate]] = [:]
+    /// v1.13.1: per-device snapshot for the live RandomWalkVM. Walker
+    /// state — center, radius, planned path, current position — is a
+    /// global singleton on AppState (we render at most one walker at
+    /// a time), so switching from iPhone A (mid-walk) to iPhone B
+    /// would otherwise wipe A's visual state and force a daemon
+    /// round-trip to rebuild it. Per-device storage keeps the dashed
+    /// path + bounded centre disc on screen the moment the user
+    /// flips back to A, anchored at the ORIGINAL centre rather than
+    /// drifting with the walker's current position.
+    private var savedRandomWalkByDevice: [String: RandomWalkVM] = [:]
 
     /// Snapshot the visible global mode + stops into the per-device
     /// dicts. Called from MainView's selectedUDID onChange just
@@ -132,6 +142,15 @@ final class AppState {
         } else {
             savedStopsByDevice.removeValue(forKey: udid)
         }
+        // v1.13.1: also snapshot the random-walk singleton so the
+        // bounded-centre disc + planned-path polyline survive the
+        // device flip. The walker on the daemon side keeps running
+        // for the leaving device regardless of UI selection.
+        if let rw = randomWalk {
+            savedRandomWalkByDevice[udid] = rw
+        } else {
+            savedRandomWalkByDevice.removeValue(forKey: udid)
+        }
     }
 
     /// Restore the per-device snapshot for the arriving device.
@@ -144,6 +163,12 @@ final class AppState {
         let savedStops = savedStopsByDevice[udid] ?? []
         activeMovementMode = savedMode
         pendingStops = savedStops
+        // v1.13.1: restore the per-device walker. nil here means
+        // either "no walker was ever running on this device" or
+        // "walker stopped while we were away" — both render as the
+        // walker being off, which is correct. The next position
+        // event for this device will refresh `current` / `speedMps`.
+        randomWalk = savedRandomWalkByDevice[udid]
     }
 
     /// Snapshot of `pendingStops` captured at the moment a multi-
@@ -544,12 +569,32 @@ final class AppState {
     /// `didSet` persists immediately so the user's last choice survives
     /// a relaunch.
     var travelProfile: TravelProfile = .driving {
-        didSet { persistRoutingPrefs() }
+        didSet {
+            persistRoutingPrefs()
+            // v1.13.1: keep an active Random Walker in sync with the
+            // user's freshly-picked travel profile. The daemon-side
+            // walker snapshots its min/max speed band at start, so
+            // a profile flip mid-walk would otherwise update the UI
+            // (ETA, "Speed:" chip) but leave the actual position
+            // cadence untouched. We debounce so a quick segmented-
+            // picker click (which also clears customSpeedMps as a
+            // side effect) doesn't fire two back-to-back restarts.
+            schedulePendingRandomWalkSpeedRestart()
+        }
     }
     /// Override speed in m/s. nil means "use the profile default".
     var customSpeedMps: Double? {
-        didSet { persistRoutingPrefs() }
+        didSet {
+            persistRoutingPrefs()
+            // Same rationale as travelProfile above.
+            schedulePendingRandomWalkSpeedRestart()
+        }
     }
+    /// Debounce handle for `schedulePendingRandomWalkSpeedRestart`.
+    /// Held outside the didSet so back-to-back writes from a single
+    /// user action (e.g. picking a preset clears customSpeedMps too)
+    /// only schedule one restart.
+    private var randomWalkSpeedRestartTask: Task<Void, Never>?
     /// When true, the next Navigate skips OSRM and walks the iPhone
     /// straight-line between consecutive stops. Cannot be toggled mid-
     /// navigation — the route was already computed; if you want to
@@ -3379,6 +3424,42 @@ final class AppState {
         guard let client else { return }
         _ = try? await client.callRaw("location.stop", params: ["udid": AnyCodable(udid)])
         randomWalk = nil
+    }
+
+    /// v1.13.1: when the user flips travelProfile or customSpeedMps mid-
+    /// walk, schedule a debounced stop+restart so the daemon's walker
+    /// rebuilds its min/max speed band with the new value. Keeps the
+    /// same centre, radius, and routing engine — we're only adjusting
+    /// speed. The debounce window collapses the picker's "change
+    /// profile → also nil customSpeedMps" pair into one restart.
+    private func schedulePendingRandomWalkSpeedRestart() {
+        guard randomWalk != nil else { return }
+        guard let udid = selectedUDID else { return }
+        if udid == Self.virtualMapUDID { return }
+        randomWalkSpeedRestartTask?.cancel()
+        randomWalkSpeedRestartTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(250))
+            guard let self else { return }
+            if Task.isCancelled { return }
+            // Re-check on the other side of the sleep — the user
+            // may have pressed Stop, switched to another device, or
+            // started a totally different mode while we were waiting.
+            guard let walker = self.randomWalk else { return }
+            guard let liveUDID = self.selectedUDID, liveUDID == udid else { return }
+            let speed = self.customSpeedMps ?? self.travelProfile.defaultSpeedMps
+            let minMps = max(0.1, speed * 0.85)
+            let maxMps = speed * 1.15
+            let routingEngine = UserDefaults.standard.string(forKey: "randomWalk.routingEngine") ?? "straight"
+            await self.stopRandomWalk(udid: udid)
+            await self.startRandomWalk(
+                udid: udid,
+                center: walker.center,
+                radiusM: walker.radiusM,
+                minSpeedMps: minMps,
+                maxSpeedMps: maxMps,
+                routingEngine: routingEngine,
+            )
+        }
     }
 
     // ------------------------------------------------------------------

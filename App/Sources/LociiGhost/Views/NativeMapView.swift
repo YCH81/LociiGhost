@@ -176,9 +176,16 @@ struct NativeMapView: View {
                     ),
                 )
         }
-        // ── Random walk preview disc ────────────────────────────────
-        if let center = state.randomWalkPreviewCenter,
-           let radius = state.randomWalkPreviewRadiusM {
+        // ── Random walk bounded centre disc ─────────────────────────
+        // Prefers the LIVE walker's own centre + radius so the disc
+        // stays anchored at the spot where the user pressed Start,
+        // even after we've switched away from this iPhone and back
+        // (v1.13.1: pre-fix, the disc drifted onto the live position
+        // because RandomWalkPanel kept resetting `randomWalkPreview…`
+        // to `simulatedLocation`). Falls back to the preview values
+        // while the panel is open but the walker hasn't started yet.
+        if let center = state.randomWalk?.center ?? state.randomWalkPreviewCenter,
+           let radius = state.randomWalk?.radiusM ?? state.randomWalkPreviewRadiusM {
             MapCircle(center: center.cl, radius: radius)
                 .foregroundStyle(Color.purple.opacity(0.12))
                 .stroke(

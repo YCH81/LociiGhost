@@ -162,6 +162,16 @@ struct MainView: View {
             if let leaving = oldSelection {
                 state.snapshotModeAndStops(forLeaving: leaving)
             }
+            // Wipe the remaining per-singleton nav state (NavigationVM /
+            // JoystickVM) BEFORE restore so the arriving device starts
+            // from a clean slate. RandomWalkVM is now managed by
+            // snapshotModeAndStops / restoreModeAndStops (v1.13.1 fix
+            // for "switch away + back → walker centre drifts onto
+            // current position"), so we deliberately don't nil it
+            // here — restoreModeAndStops writes the saved value (or
+            // nil if no walker was running on the arriving device).
+            state.navigation = nil
+            state.joystick = nil
             if let arriving = newSelection {
                 state.restoreModeAndStops(forArriving: arriving)
             }
@@ -176,14 +186,7 @@ struct MainView: View {
             // selection change any more — those are per-device
             // (read from `tripsByDevice` keyed on selectedUDID).
             // Switching to iPhone B and back to A naturally
-            // re-shows A's route. Per-singleton nav state
-            // (NavigationVM / RandomWalkVM / JoystickVM) is
-            // still global, so we wipe those — daemon events
-            // re-populate for the newly-selected device when
-            // an action fires.
-            state.navigation = nil
-            state.randomWalk = nil
-            state.joystick = nil
+            // re-shows A's route.
         }
         // v1.11.2 round 8 perf fix: the map-follow trigger lives in
         // AppState.applyPositionEvent now (state-layer instead of

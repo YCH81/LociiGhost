@@ -741,13 +741,19 @@ struct MapContainerView: NSViewRepresentable {
         }
 
         func refreshAnnotations(on map: MKMapView) {
-            // --- Random walk preview disc -------------------------------
+            // --- Random walk bounded centre disc ------------------------
             // Drawn while the user has the Random Walk panel open so they
             // can see exactly which area the iPhone will wander before
-            // pressing Start. Cleared when the panel closes or a real
-            // walker takes over.
-            let rwCenter = state.randomWalkPreviewCenter
-            let rwRadius = state.randomWalkPreviewRadiusM
+            // pressing Start. After Start, we switch over to the LIVE
+            // walker's own centre + radius so the disc stays anchored
+            // at the original Start position even after switching away
+            // from this iPhone and back (v1.13.1: pre-fix, the disc
+            // drifted onto the live position because RandomWalkPanel
+            // kept rewriting `randomWalkPreviewCenter` to whatever
+            // `simulatedLocation` happened to be when the walker was
+            // restored).
+            let rwCenter = state.randomWalk?.center ?? state.randomWalkPreviewCenter
+            let rwRadius = state.randomWalk?.radiusM ?? state.randomWalkPreviewRadiusM
             let rwSig: (Coordinate, Double)? =
                 (rwCenter != nil && rwRadius != nil) ? (rwCenter!, rwRadius!) : nil
             let rwSigChanged: Bool = {
