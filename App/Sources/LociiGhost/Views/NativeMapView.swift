@@ -2,6 +2,7 @@ import SwiftUI
 import MapKit
 import CoreLocation
 import SwiftData
+import LociiGhostCore
 
 /// SwiftUI-native map view used when the active `MapTileLayer` is one
 /// of the Apple-rendered options. Sits behind the same `AppState`
@@ -51,6 +52,31 @@ struct NativeMapView: View {
     /// `saveCameraTask` pattern in MapContainerView so back-to-back
     /// pans don't write to SwiftData on every pixel.
     @State private var saveCameraTask: Task<Void, Never>?
+    /// Cached scanline polylines for the S2 grid overlay; rebuilt by
+    /// `recomputeS2(region:)` after the camera has settled. Scanlines
+    /// (one per i or j boundary) instead of per-cell polygons cut
+    /// the render-side workload from O(cells) to O(√cells) which is
+    /// what makes the layer usable at city zoom.
+    @State private var s2Lines: [[CLLocationCoordinate2D]] = []
+    /// Mutable scratch state held inside a class so writes don't
+    /// invalidate the SwiftUI view's body — SwiftUI tracks @State
+    /// references by identity, so mutating properties on a stored
+    /// class instance is invisible to the diff. Used for the
+    /// camera-region cache (consulted when a toggle / level picker
+    /// change forces a recompute outside a camera-change callback).
+    @State private var s2Holder = S2GridHolder()
+    /// Smallest cell:viewport-height ratio we'll bother rendering at.
+    /// 0.0005 ≈ 0.5 px on a typical 1 000 px-tall map area — leaves
+    /// the grid visible from city-block detail right out to "all of
+    /// Taiwan" zoom for coarse levels (L13 at 1.2 km cells covers
+    /// the whole island within the scanline cap). Finer levels fall
+    /// off naturally once their cells are sub-pixel.
+    private static let s2SuppressionRatio: Double = 0.0005
+    /// Max horizontal + vertical scanlines we'll hand to MapKit.
+    /// At 2 000 polylines the `MapPolyline` ForEach still rebuilds
+    /// in well under a frame; beyond that the grid would be denser
+    /// than the screen has pixels to draw it anyway.
+    private static let s2ScanlineCap = 2_000
 
     var body: some View {
         MapReader { proxy in
@@ -63,6 +89,20 @@ struct NativeMapView: View {
             .mapStyle(currentMapStyle)
             .onMapCameraChange(frequency: .onEnd) { context in
                 scheduleSave(region: context.region)
+                // The S2 grid piggybacks on the camera-end notification
+                // rather than `.continuous` — `.onEnd` fires once when
+                // the user lets go of the pan / scroll-zoom, exactly
+                // when we want to recompute. `.continuous` fired at
+                // 60 Hz and the resulting @State writes invalidated
+                // body each tick.
+                s2Holder.lastObservedRegion = context.region
+                recomputeS2(region: context.region)
+            }
+            .onChange(of: state.showS2GridOnMap) { _, _ in
+                recomputeFromCachedRegion()
+            }
+            .onChange(of: state.s2GridLevel) { _, _ in
+                recomputeFromCachedRegion()
             }
             .onChange(of: state.pendingMapFly) { _, new in
                 guard let new, new.id != lastServicedFlyID else { return }
@@ -215,6 +255,21 @@ struct NativeMapView: View {
                 coordinate: mac,
             ) {
                 macPuck
+            }
+        }
+        // ── S2 grid overlay ─────────────────────────────────────────
+        // One `MapPolyline` per grid scanline (horizontal or vertical),
+        // not per cell — a typical level-17 city viewport that needed
+        // ~4 000 polygons now needs ~130 polylines. The MapContent
+        // diff at 60 Hz body re-evals (every state.* touch) was the
+        // main bottleneck of the per-polygon version.
+        if state.showS2GridOnMap {
+            let weight = state.s2GridLevel >= 18 ? 0.6
+                       : state.s2GridLevel >= 16 ? 0.8
+                       : 1.1
+            ForEach(Array(s2Lines.enumerated()), id: \.offset) { _, line in
+                MapPolyline(coordinates: line)
+                    .stroke(Color.indigo.opacity(0.6), lineWidth: weight)
             }
         }
         // ── Bookmark overlay ────────────────────────────────────────
@@ -408,6 +463,52 @@ struct NativeMapView: View {
                 spanMeters: snapshotSpan / 2,
             )
         }
+    }
+
+    // MARK: - S2 grid
+
+    /// Called by state observers (toggle, level picker) — recomputes
+    /// against the most recently observed camera region. Falls back
+    /// to clearing lines when nothing has been observed yet.
+    private func recomputeFromCachedRegion() {
+        if let region = s2Holder.lastObservedRegion {
+            recomputeS2(region: region)
+        } else if !state.showS2GridOnMap {
+            if !s2Lines.isEmpty { s2Lines = [] }
+        }
+    }
+
+    private func recomputeS2(region: MKCoordinateRegion) {
+        guard state.showS2GridOnMap else {
+            if !s2Lines.isEmpty { s2Lines = [] }
+            return
+        }
+        let level = state.s2GridLevel
+        let lat = region.center.latitude
+        let cellMeters = S2Grid.approxCellSizeMeters(level: level, lat: lat)
+        let viewportSpanMeters = region.span.latitudeDelta * 111_000.0
+        // Zoom suppression: when each cell would barely register as a
+        // few pixels the visualization is more noise than signal.
+        if cellMeters / max(viewportSpanMeters, 1) < Self.s2SuppressionRatio {
+            if !s2Lines.isEmpty { s2Lines = [] }
+            return
+        }
+        let viewport = ViewportBounds(
+            minLat: lat - region.span.latitudeDelta / 2,
+            maxLat: lat + region.span.latitudeDelta / 2,
+            minLng: region.center.longitude - region.span.longitudeDelta / 2,
+            maxLng: region.center.longitude + region.span.longitudeDelta / 2,
+        )
+        let result = S2GridEnumerator.gridLines(
+            viewport: viewport,
+            level: level,
+            scanlineCap: Self.s2ScanlineCap,
+        )
+        s2Lines = result.lines
+        // Surface auto-coarsen state on AppState so the popover can
+        // render a "zoom in to see L17" hint without recomputing the
+        // gridLines a second time.
+        state.s2EffectiveLevel = result.effectiveLevel
     }
 
     // MARK: - Tap handling
@@ -632,4 +733,16 @@ private extension Coordinate {
     var cl: CLLocationCoordinate2D {
         CLLocationCoordinate2D(latitude: lat, longitude: lng)
     }
+}
+
+/// Mutable scratch the SwiftUI view needs but doesn't want SwiftUI
+/// tracking — see `NativeMapView.s2Holder`. SwiftUI tracks `@State`
+/// references by identity, so mutating a class instance's stored
+/// properties is invisible to the diff and doesn't invalidate body
+/// on every camera-change tick.
+@MainActor
+fileprivate final class S2GridHolder {
+    var lastObservedRegion: MKCoordinateRegion?
+
+    init() {}
 }

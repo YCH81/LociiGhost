@@ -59,6 +59,13 @@
 "Refresh" = "Refresh";
 "Restore Real GPS" = "Restore Real GPS";
 "Resume" = "Resume";
+"S2 grid" = "S2 grid";
+"S2 Map Grid System" = "S2 Map Grid System";
+"S2 Map Grid System — visualise Pikmin Bloom decor cells (L17 ≈ 76 m) so you can plan routes that hit every cell." = "S2 Map Grid System — visualise Pikmin Bloom decor cells (L17 ≈ 76 m) so you can plan routes that hit every cell.";
+"Show grid on map" = "Show grid on map";
+"Cell level" = "Cell level";
+"Showing L%lld — zoom in to see L%lld cells." = "Showing L%lld — zoom in to see L%lld cells.";
+"L17 ≈ 76 m matches Pikmin Bloom's decor-pikmin cells. Coarser levels are useful for stop / gym uniqueness checks." = "L17 ≈ 76 m matches Pikmin Bloom's decor-pikmin cells. Coarser levels are useful for stop / gym uniqueness checks.";
 "Scan LAN for paired iPhones" = "Scan LAN for paired iPhones";
 "Scanning LAN for paired iPhones…" = "Scanning LAN for paired iPhones…";
 "Search address or place" = "Search address, place, or coordinates";

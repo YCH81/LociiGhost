@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import LociiGhostCore
 
 /// Slim chrome strip pinned to the very top of the window, above
 /// `TopStatusBar`. Renders three things:
@@ -22,6 +23,10 @@ struct AppHeaderBar: View {
     /// the source-of-truth single-rooted and lets the toggle button
     /// flip between EN and 中文 with no extra plumbing.
     @Binding var appLanguage: AppLanguage
+    /// Drives the S2-grid popover anchored on the `s2GridButton`. Local
+    /// to the header — no need to round-trip through AppState because
+    /// the popover's open/close is purely transient UI.
+    @State private var showingS2Picker: Bool = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -47,6 +52,7 @@ struct AppHeaderBar: View {
                 }
             }
             Spacer(minLength: 12)
+            s2GridButton
             autoRecenterToggle
             settingsButton
             languageToggle
@@ -243,5 +249,162 @@ struct AppHeaderBar: View {
     private var versionString: String {
         if !state.daemonVersion.isEmpty { return state.daemonVersion }
         return AppState.expectedDaemonVersion
+    }
+
+    // ── S2 grid button + popover ───────────────────────────────────
+    //
+    // Visual contract mirrors `autoRecenterToggle` so the header bar
+    // stays cohesive: capsule pill on hover, accent-coloured fill +
+    // border when ON, neutral grey when OFF. Click opens a small
+    // popover with the toggle + level picker so we don't burn three
+    // pills' worth of header real estate.
+
+    private var s2GridButton: some View {
+        @Bindable var state = state
+        return Button {
+            showingS2Picker.toggle()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: state.showS2GridOnMap
+                      ? "grid.circle.fill"
+                      : "grid.circle")
+                    .font(.caption)
+                    .foregroundStyle(state.showS2GridOnMap
+                                     ? Color.indigo
+                                     : Color.secondary)
+                Text(state.showS2GridOnMap
+                     ? "S2 L\(state.s2GridLevel)"
+                     : String(localized: "S2 grid",
+                              comment: "Header bar — button label for the S2 map grid system popover (off state)"))
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(state.showS2GridOnMap
+                                     ? .primary
+                                     : .secondary)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(
+                state.showS2GridOnMap
+                    ? AnyShapeStyle(Color.indigo.opacity(0.15))
+                    : AnyShapeStyle(Color.secondary.opacity(0.08)),
+                in: .capsule,
+            )
+            .overlay(
+                Capsule().strokeBorder(
+                    state.showS2GridOnMap
+                        ? Color.indigo.opacity(0.45)
+                        : Color.secondary.opacity(0.25),
+                    lineWidth: 0.5,
+                ),
+            )
+        }
+        .buttonStyle(.plain)
+        .hoverHighlight(cornerRadius: 12)
+        .popover(isPresented: $showingS2Picker, arrowEdge: .bottom) {
+            S2GridPopover()
+        }
+        .help(Text("S2 Map Grid System — visualise Pikmin Bloom decor cells (L17 ≈ 76 m) so you can plan routes that hit every cell.",
+                   comment: "Tooltip on the S2 map grid system header button"))
+    }
+}
+
+// MARK: - S2 grid popover
+
+private struct S2GridPopover: View {
+    @Environment(AppState.self) private var state
+
+    /// Levels offered in the picker. Spec defaults to L17 (Pikmin
+    /// Bloom decor) but the wider range lets the user zoom in to
+    /// individual gym L14 cells or out to L13 city-block grids.
+    private let levels: ClosedRange<Int> = 13...20
+
+    var body: some View {
+        @Bindable var state = state
+        VStack(alignment: .leading, spacing: 12) {
+            // Title — names the feature so the popover reads as one
+            // settings unit rather than a bare toggle.
+            HStack(spacing: 6) {
+                Image(systemName: "grid.circle.fill")
+                    .foregroundStyle(Color.indigo)
+                Text("S2 Map Grid System",
+                     comment: "S2 map grid system popover — title")
+                    .font(.callout.weight(.semibold))
+            }
+
+            Toggle(isOn: $state.showS2GridOnMap) {
+                Text("Show grid on map",
+                     comment: "S2 map grid system popover — main toggle label")
+                    .font(.callout)
+            }
+            .toggleStyle(.switch)
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("Cell level",
+                         comment: "S2 map grid system popover — section label for level picker")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(cellSizeLabel(level: state.s2GridLevel))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(state.showS2GridOnMap ? .primary : .secondary)
+                }
+                Picker(selection: $state.s2GridLevel) {
+                    ForEach(levels, id: \.self) { lvl in
+                        Text("L\(lvl) · \(cellSizeLabel(level: lvl))")
+                            .tag(lvl)
+                    }
+                } label: {
+                    Text("Level",
+                         comment: "S2 map grid system popover — picker label")
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .disabled(!state.showS2GridOnMap)
+            }
+
+            if state.showS2GridOnMap,
+               state.s2EffectiveLevel < state.s2GridLevel {
+                // Auto-coarsen feedback: the renderer's scanline budget
+                // forced a step down to keep the grid visible. Tell
+                // the user why their picked level looks "wrong" so
+                // they don't think the level switcher is broken.
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                    Text("Showing L\(state.s2EffectiveLevel) — zoom in to see L\(state.s2GridLevel) cells.",
+                         comment: "S2 map grid system popover — hint shown when the requested level was auto-coarsened because the viewport was too wide. %1$d = effective level, %2$d = requested level.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Text("L17 ≈ 76 m matches Pikmin Bloom's decor-pikmin cells. Coarser levels are useful for stop / gym uniqueness checks.",
+                 comment: "S2 map grid system popover — explanatory footer text")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .frame(width: 300)
+    }
+
+    /// Pretty cell-side at the standard reference latitude (Taipei,
+    /// 25°N — covers most Pikmin Bloom flying users by default). The
+    /// caller bar already shows the absolute level, so this is a
+    /// readability hint, not the source-of-truth.
+    private func cellSizeLabel(level: Int) -> String {
+        let m = S2Grid.approxCellSizeMeters(level: level, lat: 25)
+        if m >= 1_000 {
+            return String(format: "≈ %.1f km", m / 1_000)
+        } else if m >= 100 {
+            return String(format: "≈ %.0f m", m)
+        } else {
+            return String(format: "≈ %.1f m", m)
+        }
     }
 }

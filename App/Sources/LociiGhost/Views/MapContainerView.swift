@@ -3,6 +3,7 @@ import MapKit
 import CoreLocation
 import Observation
 import SwiftData
+import LociiGhostCore
 
 /// SwiftUI host for an MKMapView with three logical layers:
 ///
@@ -220,6 +221,15 @@ struct MapContainerView: NSViewRepresentable {
         /// detect transitions (off→on / on→off) so the sync function
         /// can skip the redundant fetch when nothing changed.
         private var lastBookmarksOverlayShown: Bool = false
+        /// Active S2 grid scanline overlays. Wiped + rebuilt on every
+        /// sync — the polyline count (≈ √cells) is small enough that
+        /// a full rebuild is cheaper than a diff.
+        private var s2GridOverlays: [S2GridPolyline] = []
+        /// 100 ms debounce handle for `syncS2Grid` — fires from
+        /// regionDidChange + observation ticks. Cancelled and rescheduled
+        /// on every region change so a rapid pan only does one pass
+        /// at the end.
+        private var s2RecomputeTask: Task<Void, Never>?
 
         init(state: AppState) {
             self.state = state
@@ -267,6 +277,8 @@ struct MapContainerView: NSViewRepresentable {
                 _ = state.mapTileLayer
                 _ = state.showBookmarksOnMap
                 _ = state.bookmarksRevision
+                _ = state.showS2GridOnMap
+                _ = state.s2GridLevel
                 if state.currentMapFocus == nil {
                     _ = state.macLocation.coordinate
                 }
@@ -288,6 +300,7 @@ struct MapContainerView: NSViewRepresentable {
             applyPendingFly(on: mv)
             Self.applyTileLayer(state.mapTileLayer, to: mv)
             syncBookmarkAnnotations(on: mv)
+            scheduleS2GridSync(on: mv)
         }
 
         /// Reconcile `bookmarkAnnotations` with the SwiftData store and
@@ -365,6 +378,86 @@ struct MapContainerView: NSViewRepresentable {
                 }
             }
             if !toAdd.isEmpty { map.addAnnotations(toAdd) }
+        }
+
+        // ── S2 grid overlay ─────────────────────────────────────────
+        //
+        // Driven by `state.showS2GridOnMap` / `state.s2GridLevel` +
+        // the map's visible region. Recompute is debounced 100 ms via
+        // `s2RecomputeTask` so a continuous pan only triggers one
+        // BFS pass; in-between ticks the existing polygons stay on
+        // screen (cheap to keep — MKMapView caches their renderers).
+
+        /// Cell-side-to-viewport-height ratio below which the grid is
+        /// hidden entirely. See the equivalent comment in
+        /// NativeMapView for the threshold rationale.
+        private static let s2SuppressionRatio: Double = 0.0005
+        /// Scanline budget — matches the SwiftUI Map side. MKMapKit
+        /// itself handles many more overlays, but `addOverlays` cost
+        /// scales linearly with count.
+        private static let s2ScanlineCap = 2_000
+
+        func scheduleS2GridSync(on map: MKMapView) {
+            // Toggling off → wipe immediately, no debounce wait.
+            if !state.showS2GridOnMap {
+                if !s2GridOverlays.isEmpty {
+                    map.removeOverlays(s2GridOverlays)
+                    s2GridOverlays.removeAll(keepingCapacity: true)
+                }
+                s2RecomputeTask?.cancel()
+                return
+            }
+            s2RecomputeTask?.cancel()
+            s2RecomputeTask = Task { @MainActor [weak self, weak map] in
+                try? await Task.sleep(for: .milliseconds(100))
+                guard !Task.isCancelled, let self, let map else { return }
+                self.syncS2Grid(on: map)
+            }
+        }
+
+        private func syncS2Grid(on map: MKMapView) {
+            guard state.showS2GridOnMap else { return }
+            let region = map.region
+            let level = state.s2GridLevel
+            let lat = region.center.latitude
+            let cellMeters = S2Grid.approxCellSizeMeters(level: level, lat: lat)
+            let viewportSpanMeters = max(1, region.span.latitudeDelta * 111_000)
+            if cellMeters / viewportSpanMeters < Self.s2SuppressionRatio {
+                if !s2GridOverlays.isEmpty {
+                    map.removeOverlays(s2GridOverlays)
+                    s2GridOverlays.removeAll(keepingCapacity: true)
+                }
+                return
+            }
+            let viewport = ViewportBounds(
+                minLat: lat - region.span.latitudeDelta / 2,
+                maxLat: lat + region.span.latitudeDelta / 2,
+                minLng: region.center.longitude - region.span.longitudeDelta / 2,
+                maxLng: region.center.longitude + region.span.longitudeDelta / 2,
+            )
+            let result = S2GridEnumerator.gridLines(
+                viewport: viewport,
+                level: level,
+                scanlineCap: Self.s2ScanlineCap,
+            )
+            state.s2EffectiveLevel = result.effectiveLevel
+
+            // Whole-overlay rebuild — scanline count (~√cells) is
+            // small enough that a diff isn't worth the bookkeeping.
+            if !s2GridOverlays.isEmpty {
+                map.removeOverlays(s2GridOverlays)
+                s2GridOverlays.removeAll(keepingCapacity: true)
+            }
+            if result.lines.isEmpty { return }
+            var toAdd: [S2GridPolyline] = []
+            toAdd.reserveCapacity(result.lines.count)
+            for coords in result.lines {
+                let poly = S2GridPolyline(coordinates: coords, count: coords.count)
+                poly.s2Level = level
+                toAdd.append(poly)
+            }
+            s2GridOverlays = toAdd
+            map.addOverlays(toAdd, level: .aboveRoads)
         }
 
         /// Last applied layer per MKMapView, keyed by ObjectIdentifier
@@ -1063,6 +1156,16 @@ struct MapContainerView: NSViewRepresentable {
             if let tile = overlay as? MKTileOverlay {
                 return MKTileOverlayRenderer(tileOverlay: tile)
             }
+            if let s2 = overlay as? S2GridPolyline {
+                let r = MKPolylineRenderer(polyline: s2)
+                r.strokeColor = NSColor.systemIndigo.withAlphaComponent(0.6)
+                r.lineWidth = s2.s2Level >= 18 ? 0.6
+                            : s2.s2Level >= 16 ? 0.8
+                            : 1.1
+                r.lineCap = .butt
+                r.lineJoin = .round
+                return r
+            }
             if let circle = overlay as? MKCircle {
                 let r = MKCircleRenderer(circle: circle)
                 r.fillColor = NSColor.systemPurple.withAlphaComponent(0.12)
@@ -1379,4 +1482,12 @@ private final class StyledPolyline: MKPolyline {
     /// True when this polyline shows the user's *next* trip (rendered
     /// thinner and translucent), false when it's the *active* one.
     var isPreview: Bool = false
+}
+
+/// MKPolyline subclass tagged with the S2 grid level it belongs to.
+/// One per horizontal or vertical scanline traversing the visible
+/// viewport — see `S2GridEnumerator.gridLines` for why we draw at
+/// the scanline granularity instead of per-cell.
+final class S2GridPolyline: MKPolyline {
+    var s2Level: Int = 17
 }

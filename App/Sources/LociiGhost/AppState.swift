@@ -810,6 +810,37 @@ final class AppState {
     /// pattern works naturally.
     var mapPreviewingBookmark: Bookmark? = nil
 
+    /// When true, the map paints an S2 quad-cell grid overlay (small
+    /// rectangles outlined on top of whatever base layer is active).
+    /// Pikmin Bloom flying users care about which L17 cell they're
+    /// standing in for decor mushroom collection; the grid lets them
+    /// visually confirm cell boundaries without tap-and-check.
+    /// Persisted across launches.
+    var showS2GridOnMap: Bool = UserDefaults.standard.bool(forKey: "map.s2Grid") {
+        didSet { UserDefaults.standard.set(showS2GridOnMap, forKey: "map.s2Grid") }
+    }
+
+    /// Active S2 cell level (13–20). Default 17 matches Pikmin Bloom's
+    /// decor-cell granularity (~76 m at the equator). Persisted.
+    var s2GridLevel: Int = {
+        // `integer(forKey:)` returns 0 if the key was never set; treat
+        // that as "use the default" instead of an invalid level.
+        let raw = UserDefaults.standard.integer(forKey: "map.s2GridLevel")
+        return (13...20).contains(raw) ? raw : 17
+    }() {
+        didSet {
+            UserDefaults.standard.set(s2GridLevel, forKey: "map.s2GridLevel")
+        }
+    }
+
+    /// Level the grid renderer actually drew at on the most recent
+    /// pass. Equal to `s2GridLevel` in the common case; smaller when
+    /// the renderer's scanline budget forced an auto-coarsen because
+    /// the viewport was too wide for the requested level. The popover
+    /// reads this to surface a "Currently showing Lx" hint without
+    /// recomputing.
+    var s2EffectiveLevel: Int = 17
+
     // MARK: - Mac proxy location
     let macLocation = LocationProxyService()
 

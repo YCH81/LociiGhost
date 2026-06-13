@@ -58,6 +58,13 @@
 "Refresh" = "重新整理";
 "Restore Real GPS" = "還原真實 GPS";
 "Resume" = "繼續";
+"S2 grid" = "S2 網格";
+"S2 Map Grid System" = "S2 地圖網格系統";
+"S2 Map Grid System — visualise Pikmin Bloom decor cells (L17 ≈ 76 m) so you can plan routes that hit every cell." = "S2 地圖網格系統 — 視覺化 Pikmin Bloom 裝飾皮克敏所屬格（L17 ≈ 76 公尺），方便規劃覆蓋每個格子的路線。";
+"Show grid on map" = "在地圖上顯示網格";
+"Cell level" = "格子層級";
+"Showing L%lld — zoom in to see L%lld cells." = "目前顯示 L%lld — 放大才能看到 L%lld 格子。";
+"L17 ≈ 76 m matches Pikmin Bloom's decor-pikmin cells. Coarser levels are useful for stop / gym uniqueness checks." = "L17 ≈ 76 公尺對應 Pikmin Bloom 的裝飾皮克敏格子；較粗的層級可拿來看 stop / gym 的唯一性。";
 "Scan LAN for paired iPhones" = "掃描區網上已配對的 iPhone";
 "Scanning LAN for paired iPhones…" = "掃描區網上已配對的 iPhone…";
 "Search address or place" = "搜尋地址、地點、經緯度";
