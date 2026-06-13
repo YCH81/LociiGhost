@@ -1,5 +1,5 @@
 {
-  "version": "1.13.0",
+  "version": "1.14.0",
   "url": "https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing",
-  "notes": "v1.13.0 — 書籤系統大幅升級：照片預覽（匯入 image_url）、批次管理（重新命名／移動／加前後綴／合併分類）、側邊欄搜尋、地圖書籤 pin 圖層（自動 clustering）；點擊照片背景即可關閉。Apple 圖層改用 SwiftUI 原生 Map → 連 iPhone+瞬移後拖地圖大幅變順。修正：路線執行中右上 chips（國旗、天氣、時間）未即時更新、3000+ 書籤批次匯入時 UI 不再卡頓、書籤點擊在無裝置/虛擬地圖模式也能飛地圖（瞬移按條件）。"
+  "notes": "v1.14.0 — 新增 S2 地圖網格系統（皮克敏 decor 格子視覺化），L13–L20 切換，視野過大自動降階。修正：隨機漫步跨裝置切換時計畫路徑與中心圓圈消失、切換移動模式時 daemon 走者速度沒實際套用（現在會自動 stop+restart 套用新速度）。"
 }
