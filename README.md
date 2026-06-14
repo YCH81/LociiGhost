@@ -19,6 +19,9 @@
 [LocWarp](https://github.com/keezxc1223/locwarp)（keezxc1223 著、MIT 授權）為
 靈感，但重建為原生 macOS app 。
 
+> 🖥 **Intel Mac 使用者** —— 本專案只支援 Apple Silicon (M 系列) + macOS 14+。
+> 如果你的 Mac 是 Intel CPU（2017–2020 的 MBP / MBA / iMac / Mac mini）並停留在 macOS 13 Ventura，請改用 [**LociiGhost for Intel**](https://github.com/YCH81/LociiGhost-for-Intel) —— 同一個工具的 Intel x86_64 / macOS 13 backport，功能行為一致，存檔格式互不相容（建議透過匯出書籤 JSON 搬移）。
+
 ## 支持作者
 
 如果 LociiGhost 對你有幫助，想支持開發者，歡迎贊助我一杯咖啡一杯手搖杯。

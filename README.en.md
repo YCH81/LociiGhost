@@ -20,6 +20,12 @@ A from-scratch, Apple-Silicon-only iOS location simulation tool inspired by
 but rebuilt as a native macOS application — not a port of the cross-platform
 Electron version.
 
+> 🖥 **Intel Mac users** — this project is Apple Silicon (M-series) + macOS 14+ only.
+> If you're on an Intel Mac (2017–2020 MBP / MBA / iMac / Mac mini) still on
+> macOS 13 Ventura, head over to [**LociiGhost for Intel**](https://github.com/YCH81/LociiGhost-for-Intel)
+> — the x86_64 / macOS 13 backport of the same tool. Same behaviour, separate
+> store format (export bookmarks as JSON to migrate between the two builds).
+
 ## Support
 
 If LociiGhost is useful to you, buy me a coffee — or a bubble tea,
