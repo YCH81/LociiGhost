@@ -152,6 +152,19 @@
     font-size: 12px;
     font-weight: 500;
   }
+  .arch-pill {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: rgba(99, 102, 241, 0.12);
+    color: #4F46E5;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .intel-card {
+    border-left: 3px solid #6366F1;
+    background: linear-gradient(180deg, rgba(99,102,241,0.04) 0%, var(--sand) 32%);
+  }
   .meta { color: var(--muted); font-size: 14px; margin-top: 12px; }
   a {
     color: var(--sage-dark);
@@ -303,6 +316,44 @@
        into an iCloud-synced folder (Documents, Desktop) lets the File
        Provider attach extra xattrs that break the signature and show
        "LociiGhost is damaged".</p>
+  </section>
+
+  <section class="card intel-card">
+    <div class="version-line">
+      <strong>Intel Mac build</strong>
+      <span class="arch-pill">x86_64 · macOS 13+</span>
+    </div>
+    <p>The main project above is Apple Silicon (M-series) + macOS 14+
+       only. If your Mac has an <strong>Intel CPU and is still on
+       macOS 13 Ventura</strong> (typical for 2017–2020 MBP / MBA /
+       iMac / Mac mini), use <strong>LociiGhost for Intel</strong>
+       instead — an x86_64 / macOS 13 backport of the same tool,
+       maintained as a separate GitHub project with its own releases.</p>
+    <p><strong>How to tell which one you need:</strong>
+       click  in the menu bar → About This Mac.
+       "Apple M1 / M2 / M3 / M4" → use the main build above.
+       "Intel Core i5 / i7 / i9" → use the Intel build below.</p>
+    <p><strong>Same feature behaviour as the main build</strong>: six
+       movement modes, dual-iPhone control, per-device route memory,
+       bookmark photos, S2 grid, random walk, live speed switching.
+       Architectural differences under the hood: map rendering goes
+       through MKMapView, bookmark / route persistence is JSON-file
+       backed (in <code>~/Library/Application Support/LociiGhost/</code>),
+       and the on-map compass / zoom / scale controls are hidden
+       (macOS 13 MapKit crashes them during initial layout).</p>
+    <p><strong>The two builds do NOT share storage.</strong> To move
+       data between an Apple Silicon Mac and an Intel Mac, export
+       bookmarks as JSON / routes as GPX from one and import on the
+       other.</p>
+    <p><a href="https://github.com/YCH81/LociiGhost-for-Intel/releases/latest"
+          target="_blank" rel="noopener"
+          class="download-button"
+          style="background:#6366F1;color:white !important;border:none;">
+        Download LociiGhost for Intel (DMG)</a></p>
+    <p class="meta">Source + release notes:
+       <a href="https://github.com/YCH81/LociiGhost-for-Intel">github.com/YCH81/LociiGhost-for-Intel</a>.
+       The Intel DMG is Developer-ID-signed and notarised the same
+       way the main build is; installation flow is identical.</p>
   </section>
 
   <h2>Support the author</h2>

@@ -152,6 +152,19 @@
     font-size: 12px;
     font-weight: 500;
   }
+  .arch-pill {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: rgba(99, 102, 241, 0.12);
+    color: #4F46E5;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .intel-card {
+    border-left: 3px solid #6366F1;
+    background: linear-gradient(180deg, rgba(99,102,241,0.04) 0%, var(--sand) 32%);
+  }
   .meta { color: var(--muted); font-size: 14px; margin-top: 12px; }
   a {
     color: var(--sage-dark);
@@ -287,6 +300,38 @@
        雙擊即可開啟，不會被 Gatekeeper 擋下。<strong>請務必用 DMG 安裝</strong>，
        不要把 .app 解壓到 iCloud 同步的資料夾（Documents、Desktop），
        iCloud File Provider 會蓋上額外 xattr 把簽章弄壞，導致顯示「damaged」。</p>
+  </section>
+
+  <section class="card intel-card">
+    <div class="version-line">
+      <strong>Intel Mac 版</strong>
+      <span class="arch-pill">x86_64 · macOS 13+</span>
+    </div>
+    <p>本專案主版只支援 Apple Silicon (M 系列) + macOS 14+。
+       如果你的 Mac 是 <strong>Intel CPU 且停留在 macOS 13 Ventura</strong>
+       （常見於 2017–2020 的 MBP / MBA / iMac / Mac mini），
+       可以改用 <strong>LociiGhost for Intel</strong> —— 同一個工具的
+       x86_64 / macOS 13 backport，獨立 GitHub 專案、獨立 release。</p>
+    <p><strong>怎麼確認自己是哪一種？</strong>
+       點左上角  → 關於這台 Mac。
+       看到「Apple M1 / M2 / M3 / M4」→ 用上面的主版本即可。
+       看到「Intel Core i5 / i7 / i9」→ 用下面的 Intel 版。</p>
+    <p><strong>功能行為跟主版一致</strong>：六種移動模式、雙手機控制、per-device
+       路線記憶、書籤照片、S2 grid、隨機漫步、即時切換速度全部都有。
+       底層架構差異：地圖渲染走 MKMapView、書籤 / 路線改成 JSON 檔
+       （存在 <code>~/Library/Application Support/LociiGhost/</code>）、
+       地圖右上指南針 / 縮放鍵 + 右下比例尺隱藏
+       （macOS 13 MapKit 在初始 layout 會 crash）。</p>
+    <p><strong>兩版的存檔格式不相容</strong> —— 要在 M 系列 ↔ Intel Mac 之間
+       搬資料，請走匯出書籤 JSON / 路線 GPX，再到另一台匯入。</p>
+    <p><a href="https://github.com/YCH81/LociiGhost-for-Intel/releases/latest"
+          target="_blank" rel="noopener"
+          class="download-button"
+          style="background:#6366F1;color:white !important;border:none;">
+        下載 LociiGhost for Intel (DMG)</a></p>
+    <p class="meta">原始碼 + release notes：
+       <a href="https://github.com/YCH81/LociiGhost-for-Intel">github.com/YCH81/LociiGhost-for-Intel</a>。
+       DMG 同樣已通過 Apple Developer ID 簽名 + notarize；安裝方式與主版一致。</p>
   </section>
 
   <h2>支持作者</h2>
