@@ -320,42 +320,30 @@
 
   <section class="card intel-card">
     <div class="version-line">
-      <strong>Intel Mac build</strong>
-      <span class="arch-pill">x86_64 · macOS 13+</span>
+      <strong>Intel build</strong>
+      <span class="arch-pill">x86_64 · macOS 13+ · unmaintained</span>
     </div>
-    <p>The main project above is Apple Silicon (M-series) + macOS 14+
-       only. If your Mac has an <strong>Intel CPU and is still on
-       macOS 13 Ventura</strong> (typical for 2017–2020 MBP / MBA /
-       iMac / Mac mini), use <strong>LociiGhost for Intel</strong>
-       instead — an x86_64 / macOS 13 backport of the same tool,
-       maintained as a separate GitHub project with its own releases.</p>
-    <p><strong>How to tell which one you need:</strong>
-       click  in the menu bar → About This Mac.
-       "Apple M1 / M2 / M3 / M4" → use the main build above.
-       "Intel Core i5 / i7 / i9" → use the Intel build below.</p>
-    <p><strong>Same feature behaviour as the main build</strong>: six
-       movement modes, dual-iPhone control, per-device route memory,
-       bookmark photos, S2 grid, random walk, live speed switching.
-       Architectural differences under the hood: map rendering goes
-       through MKMapView, bookmark / route persistence is JSON-file
-       backed (in <code>~/Library/Application Support/LociiGhost/</code>),
-       and the on-map compass / zoom / scale controls are hidden
-       (macOS 13 MapKit crashes them during initial layout).</p>
-    <p><strong>The two builds do NOT share storage.</strong> To move
-       data between an Apple Silicon Mac and an Intel Mac, export
-       bookmarks as JSON / routes as GPX from one and import on the
-       other.</p>
+    <p><strong>⚠️ This build will not be maintained going forward.
+       Works or doesn't — take it as-is.</strong>
+       Future main-build features and fixes will not be back-ported
+       to the Intel build; new Intel-only bugs will not be fixed.
+       Download with that expectation.</p>
+    <p>The main build above is Apple Silicon (M-series) + macOS 14+
+       only. If you're on Intel + macOS 13, you can try this one.
+       To check: click  in the menu bar → About This Mac.
+       "Apple M…" → use the main build. "Intel Core…" → this one.</p>
     <p><a href="https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing"
           target="_blank" rel="noopener"
           class="download-button"
           style="background:#6366F1;color:white !important;border:none;">
         Download LociiGhost for Intel (DMG)</a></p>
-    <p class="meta">Both builds live in the same Google Drive folder —
+    <p class="meta">Same Google Drive folder as the main build —
        grab the file named <code>LociiGhost-v1.15.0-Intel.dmg</code>.
-       Source + release notes:
+       Feature behaviour matches the main build; the two builds do
+       NOT share storage (export bookmarks as JSON / routes as GPX
+       to migrate). Source:
        <a href="https://github.com/YCH81/LociiGhost-for-Intel">github.com/YCH81/LociiGhost-for-Intel</a>.
-       The Intel DMG is Developer-ID-signed and notarised the same
-       way the main build is; installation flow is identical.</p>
+       The Intel DMG is Developer-ID-signed and notarised.</p>
   </section>
 
   <h2>Support the author</h2>
