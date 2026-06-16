@@ -497,3 +497,12 @@
 "Stop and wait at each point along the route before continuing." = "在路線上的每個停靠點等待指定秒數後再繼續。";
 "Pause seconds:" = "停留秒數：";
 "sec per waypoint" = "秒/每停靠點";
+
+/* ─── Route playback start-point picker (StartRouteSheet) ──────────── */
+"Start from" = "從哪裡開始";
+"Beginning" = "從頭開始";
+"Resume from last (#%lld)" = "從上次中斷處繼續（第 %lld 點）";
+"Resume from last (no saved progress)" = "從上次中斷處繼續（沒有儲存的進度）";
+"Specific stop" = "指定停靠點";
+"Stop #" = "第 # 點";
+"of %lld" = "／共 %lld 點";

@@ -498,3 +498,12 @@
 "Stop and wait at each point along the route before continuing." = "Stop and wait at each point along the route before continuing.";
 "Pause seconds:" = "Pause seconds:";
 "sec per waypoint" = "sec per waypoint";
+
+/* ─── Route playback start-point picker (StartRouteSheet) ──────────── */
+"Start from" = "Start from";
+"Beginning" = "Beginning";
+"Resume from last (#%lld)" = "Resume from last (#%lld)";
+"Resume from last (no saved progress)" = "Resume from last (no saved progress)";
+"Specific stop" = "Specific stop";
+"Stop #" = "Stop #";
+"of %lld" = "of %lld";
