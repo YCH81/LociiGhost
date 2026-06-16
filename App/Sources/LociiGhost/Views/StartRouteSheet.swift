@@ -35,6 +35,49 @@ struct StartRouteSheet: View {
     @State private var routeDwell: Bool = false
     @State private var routeDwellText: String = "5"
 
+    /// Where in the route to begin playback.
+    enum StartMode: Hashable { case beginning, resume, specific }
+    @State private var startMode: StartMode = .beginning
+    /// 1-based stop number bound to the Stepper while `startMode == .specific`.
+    /// Converted to a 0-based index when passed to `runRoute`.
+    @State private var specificStopNumber: Int = 1
+    @State private var specificStopText: String = "1"
+
+    /// True iff the Route has a saved snap progress AppState wrote on a
+    /// previous Stop (and hasn't been cleared by a natural completion).
+    /// The "Resume from last" radio is disabled when this is false so
+    /// users can't pick a meaningless option.
+    private var hasResumeProgress: Bool {
+        route.lastPlayedStopIndex > 0
+            && route.lastPlayedStopIndex < route.pointCount - 1
+    }
+
+    /// Translate the radio selection into the 0-based index `runRoute`
+    /// uses to slice `route.points`. The Stepper's value is 1-based for
+    /// human reading; we subtract one here so callers downstream don't
+    /// have to. Resume falls back to `0` when no progress is saved so
+    /// an accidental Resume + Start press still does the right thing
+    /// rather than no-op.
+    private var resolvedStartIndex: Int {
+        switch startMode {
+        case .beginning: return 0
+        case .resume:    return hasResumeProgress ? route.lastPlayedStopIndex : 0
+        case .specific:  return max(0, min(specificStopNumber - 1, route.pointCount - 1))
+        }
+    }
+
+    /// Parse the typed value back into the Stepper. Called on Submit
+    /// and again just before Start so a user who tabs out of the field
+    /// without pressing Enter still has their typed value honoured.
+    private func applySpecificStopText() {
+        let trimmed = specificStopText.trimmingCharacters(in: .whitespaces)
+        if let n = Int(trimmed), n >= 1, n <= route.pointCount {
+            specificStopNumber = n
+        } else {
+            specificStopText = "\(specificStopNumber)"
+        }
+    }
+
     private var resolvedLapCount: Int {
         guard loop else { return 1 }
         let trimmed = lapText.trimmingCharacters(in: .whitespaces)
@@ -96,6 +139,79 @@ struct StartRouteSheet: View {
                 }
                 .padding(10)
                 .background(Color.orange.opacity(0.12), in: .rect(cornerRadius: 6))
+            }
+
+            // Start-point picker. Three exclusive choices, modelled as
+            // a Picker rather than three Toggles so SwiftUI handles the
+            // single-active-radio invariant without us reinventing it.
+            // The Stepper for "specific" only shows when that option is
+            // selected; same pattern as the Loop sub-row below.
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Start from",
+                     comment: "Start-route sheet — header above the start-point radio buttons")
+                    .font(.callout.weight(.medium))
+                Picker("", selection: $startMode) {
+                    Text("Beginning",
+                         comment: "Start-route sheet — start from the first stop")
+                        .tag(StartMode.beginning)
+                    if hasResumeProgress {
+                        Text(String(
+                            format: String(
+                                localized: "Resume from last (#%lld)",
+                                comment: "Start-route sheet — resume from where the previous playback was stopped, %lld is the saved 1-based stop number"),
+                            route.lastPlayedStopIndex + 1
+                        ))
+                        .tag(StartMode.resume)
+                    } else {
+                        Text("Resume from last (no saved progress)",
+                             comment: "Start-route sheet — resume option disabled because no progress is saved for this route")
+                            .tag(StartMode.resume)
+                    }
+                    Text("Specific stop",
+                         comment: "Start-route sheet — start from a stop the user picks below")
+                        .tag(StartMode.specific)
+                }
+                .pickerStyle(.radioGroup)
+                .labelsHidden()
+
+                if startMode == .specific {
+                    HStack(spacing: 8) {
+                        Text("Stop #",
+                             comment: "Start-route sheet — label next to the specific-stop number field")
+                            .font(.callout)
+                        TextField("1", text: $specificStopText)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 80)
+                            .onSubmit {
+                                applySpecificStopText()
+                            }
+                        Stepper(value: $specificStopNumber,
+                                in: 1...max(1, route.pointCount),
+                                step: 1) {
+                            Text("of \(route.pointCount)",
+                                 comment: "Start-route sheet — \"of N\" suffix shown after the stop-number stepper, where N is total stop count")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                    }
+                    .padding(.leading, 22)
+                    .onChange(of: specificStopNumber) { _ in
+                        // Keep the text field in sync when the user nudges
+                        // the stepper — otherwise typing 47 then nudging
+                        // would silently revert the visible value.
+                        specificStopText = "\(specificStopNumber)"
+                    }
+                }
+            }
+            .onAppear {
+                // Default to Resume when there's recoverable progress —
+                // the most common reason to reopen this sheet is exactly
+                // that. Plain Beginning otherwise.
+                if hasResumeProgress { startMode = .resume }
+                specificStopNumber = max(1, min(route.lastPlayedStopIndex + 1,
+                                                route.pointCount))
+                specificStopText = "\(specificStopNumber)"
             }
 
             Toggle(isOn: $loop) {
@@ -177,16 +293,19 @@ struct StartRouteSheet: View {
                         dismiss()
                         return
                     }
+                    applySpecificStopText()
                     let r = route
                     let lapCount = resolvedLapCount
                     let dwell = routeDwell
                     let dwellSecs = resolvedDwellSeconds
+                    let startIdx = resolvedStartIndex
                     state.routePendingConfirm = nil
                     dismiss()
                     Task { @MainActor in
                         await state.runRoute(r, udid: udid, lapCount: lapCount,
                                              allowDwell: dwell,
-                                             dwellSecondsForRoute: dwellSecs)
+                                             dwellSecondsForRoute: dwellSecs,
+                                             startFromIndex: startIdx)
                     }
                 } label: {
                     Text(hasActiveSession

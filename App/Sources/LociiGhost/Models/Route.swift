@@ -52,6 +52,19 @@ final class Route {
     /// so don't.
     var pointCount: Int
 
+    /// 0-based index of the last stop the simulated location was
+    /// snapped to during this route's most recent play. `0` is the
+    /// canonical "no progress" sentinel (also what a freshly imported
+    /// route starts with) AND the value we reset to when a play ends
+    /// naturally — the StartRouteSheet's "Resume" picker option treats
+    /// 0 as "no saved progress" and disables itself. The value is
+    /// written by `AppState.flushRouteProgress` on a throttled timer
+    /// during navigate playback and immediately on user Stop, so a
+    /// mid-walk app crash loses at most ~2 s of progress. Default
+    /// value 0 means SwiftData auto-migrates existing rows without a
+    /// schema mismatch.
+    var lastPlayedStopIndex: Int = 0
+
     var createdAt: Date
 
     init(

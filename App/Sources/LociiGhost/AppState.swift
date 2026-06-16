@@ -940,6 +940,24 @@ final class AppState {
     /// Drives the phone-control sheet presentation.
     var showPhoneControlSheet: Bool = false
 
+    // MARK: - Saved-route playback progress (Resume)
+    /// SwiftData Route reference currently being played back. nil when
+    /// playback isn't a saved-Route flow (manual multi-stop, raw teleport,
+    /// random walk). Set by `runRoute` on Start; cleared by
+    /// `stopNavigation` and on natural completion. `position_update`
+    /// snapping reads this to find which on-disk Route to update.
+    @ObservationIgnored var currentlyPlayingRoute: Route?
+    /// 0-based snap progress into `currentlyPlayingRoute!.points`.
+    /// Mirrors what'll get written into Route.lastPlayedStopIndex on
+    /// the next periodic flush. Held in-memory so the per-tick
+    /// `applyPositionEvent` snap loop doesn't hit SwiftData on every
+    /// 10 Hz position update.
+    @ObservationIgnored private var currentRouteSnapIndex: Int = 0
+    /// Throttled persist task — coalesces 10 Hz snap updates into
+    /// at most one SwiftData write every 2 s. Cancelled+replaced on
+    /// each new snap; the flush body re-reads the latest value.
+    @ObservationIgnored private var routeProgressFlushTask: Task<Void, Never>?
+
     // MARK: - Movement modes (Phase 3)
     /// Latest snapshot from a `location.random_walk` session, populated
     /// from `event.position_update` / `event.state_changed` notifications.
@@ -2250,6 +2268,75 @@ final class AppState {
         try? ctx.save()
     }
 
+    /// Walk forward from the cached snap index until we find the
+    /// closest stop in `currentlyPlayingRoute.points` to `coord`. The
+    /// monotonic forward scan is bounded at `lookAhead` to keep the
+    /// 10 Hz position-update path cheap on 4000-pt routes — backward
+    /// snaps are intentionally not considered (the simulated walker
+    /// monotonically advances). Updates `currentRouteSnapIndex` and
+    /// schedules a debounced flush so SwiftData isn't written on
+    /// every tick.
+    @MainActor
+    func updateRouteSnap(toCoord coord: Coordinate) {
+        guard let route = currentlyPlayingRoute else { return }
+        let pts = route.points
+        let n = pts.count
+        guard n > 1, currentRouteSnapIndex < n - 1 else { return }
+        let lookAhead = 64       // points
+        let endIdx = min(n - 1, currentRouteSnapIndex + lookAhead)
+        var bestIdx = currentRouteSnapIndex
+        var bestDist = StopOrdering.haversineMeters(pts[bestIdx], coord)
+        var i = currentRouteSnapIndex + 1
+        while i <= endIdx {
+            let d = StopOrdering.haversineMeters(pts[i], coord)
+            if d < bestDist {
+                bestDist = d
+                bestIdx = i
+            }
+            i += 1
+        }
+        if bestIdx != currentRouteSnapIndex {
+            currentRouteSnapIndex = bestIdx
+            scheduleRouteProgressFlush()
+        }
+    }
+
+    @MainActor
+    private func scheduleRouteProgressFlush() {
+        routeProgressFlushTask?.cancel()
+        routeProgressFlushTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled, let self else { return }
+            self.flushRouteProgressNow()
+        }
+    }
+
+    /// Write the in-memory snap index to the Route's SwiftData column
+    /// immediately. Called by the debounced task above AND directly from
+    /// `stopNavigation` so a user Stop doesn't lose up to 2 s of recent
+    /// progress while waiting for the next flush tick.
+    @MainActor
+    func flushRouteProgressNow() {
+        guard let route = currentlyPlayingRoute else { return }
+        route.lastPlayedStopIndex = currentRouteSnapIndex
+        try? modelContext?.save()
+    }
+
+    /// Reset the saved progress to 0 and clear the in-memory anchor.
+    /// Called on natural route completion (idle → end-of-route) so the
+    /// next "Resume from last" picker option correctly treats the
+    /// route as fresh, not stuck at the last waypoint.
+    @MainActor
+    func clearRouteProgress() {
+        guard let route = currentlyPlayingRoute else { return }
+        route.lastPlayedStopIndex = 0
+        try? modelContext?.save()
+        currentlyPlayingRoute = nil
+        currentRouteSnapIndex = 0
+        routeProgressFlushTask?.cancel()
+        routeProgressFlushTask = nil
+    }
+
     /// Update name / category / icon on an existing Route. We don't
     /// expose a way to edit the coordinates after import — re-import
     /// the GPX if the path itself is wrong.
@@ -2344,13 +2431,31 @@ final class AppState {
     /// next teleport-and-navigate when the previous lap completes
     /// naturally. User-Stop emits `stopped` (not `idle`), which clears
     /// `loopContext` and breaks the cycle cleanly.
+    /// `startFromIndex`: 0-based offset into `route.points` to begin
+    /// playback at. `0` (default) is the canonical "from the top" path.
+    /// Larger values come from the StartRouteSheet's "Resume from last"
+    /// or "Start from specific stop" picker — both flow through here so
+    /// the teleport / navigate plumbing has one entry point. Values
+    /// past `route.points.count - 1` are clamped to the last stop.
     func runRoute(_ route: Route, udid: String, lapCount: Int = 1,
-                  allowDwell: Bool = false, dwellSecondsForRoute: Int = 5) async {
-        let coords = route.points
-        guard !coords.isEmpty else {
+                  allowDwell: Bool = false, dwellSecondsForRoute: Int = 5,
+                  startFromIndex: Int = 0) async {
+        let allCoords = route.points
+        guard !allCoords.isEmpty else {
             lastError = String(localized: "GPX file has no waypoints or track points.")
             return
         }
+        // Slice from the requested start. Clamped so a misbehaving
+        // caller asking for index 999 on a 100-point route still gets
+        // a usable single-point slice (the teleport below moves the
+        // pin there and the navigate guard bails cleanly).
+        let clampedStart = max(0, min(startFromIndex, allCoords.count - 1))
+        let coords = Array(allCoords[clampedStart...])
+        // Resume state: remember which Route we're playing AND seed
+        // the snap-progress index with the start offset so the next
+        // periodic flush doesn't reset the user back to 0 mid-walk.
+        currentlyPlayingRoute = route
+        currentRouteSnapIndex = clampedStart
         let connected = devices.first(where: { $0.udid == udid })?.connected == true
         guard connected else {
             lastError = String(localized: "Connect a device first.")
@@ -3346,6 +3451,16 @@ final class AppState {
         if multiStopLapContext?.udid == udid { multiStopLapContext = nil }
         _ = try? await client.callRaw("location.stop", params: ["udid": AnyCodable(udid)])
         navigation = nil
+        // Saved-route playback: persist the latest snap progress so the
+        // next "Resume from last" picks up where the user just stopped.
+        // Flush ahead of the 2-s debounce so a Stop-then-quit doesn't
+        // lose recent progress. Keep `currentlyPlayingRoute` non-nil so
+        // the Resume option in StartRouteSheet stays valid after Stop.
+        flushRouteProgressNow()
+        currentlyPlayingRoute = nil
+        currentRouteSnapIndex = 0
+        routeProgressFlushTask?.cancel()
+        routeProgressFlushTask = nil
         // Stop cancels THIS device's trip — wipe just its slot
         // in the per-device tripsByDevice dict. Other iPhones
         // running their own trips stay drawn.
@@ -4089,6 +4204,15 @@ final class AppState {
             setSimulatedLocation(coord, for: selected)
         }
 
+        // Saved-route playback progress: snap to nearest stop in the
+        // currently-playing Route and stage a debounced save. Only the
+        // selected device's events advance progress — events for a
+        // backgrounded device update the per-device simulated pin but
+        // don't muddy another device's route progress.
+        if eventUDID == nil || eventUDID == selectedUDID {
+            updateRouteSnap(toCoord: coord)
+        }
+
         // v1.11.2 round 8 perf fix: map-follow loop fires from here
         // (state-layer) instead of via .onChange(of: simulatedLocation)
         // on MainView. The view-layer observer was invalidating the
@@ -4399,6 +4523,16 @@ final class AppState {
 
         if stateRaw == "idle", wasRunning, alertSoundEnabled, !willLoopAgain, !willDwellNext {
             Task { @MainActor in AlertSoundService.playRouteComplete() }
+        }
+
+        // Natural route completion: the route ran to its last waypoint
+        // (idle ≠ user Stop). Reset the saved progress so the next time
+        // the user opens StartRouteSheet for this route, "Resume from
+        // last" reads as "no saved progress" rather than parking them
+        // one step before the end. We only clear when NOT looping into
+        // another lap — mid-lap completion is internal bookkeeping.
+        if stateRaw == "idle", wasRunning, !willLoopAgain, !willDwellNext {
+            clearRouteProgress()
         }
 
         if let mapped {
