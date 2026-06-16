@@ -71,6 +71,40 @@ struct NativeMapView: View {
     /// Taiwan" zoom for coarse levels (L13 at 1.2 km cells covers
     /// the whole island within the scanline cap). Finer levels fall
     /// off naturally once their cells are sub-pixel.
+    /// Stop-pin decimation matches MapContainerView's so users on both
+    /// rendering paths see the same sparse pin pattern for a long
+    /// recorded GPX route. Below the threshold all stops render; above
+    /// it only #1, every Nth, and the last point are kept.
+    private static let stopPinDecimationThreshold: Int = 100
+    private static let stopPinDecimationStep: Int = 101
+
+    /// Returns `[(index, coordinate)]` pairs for SwiftUI ForEach, with
+    /// the same decimation rule MapContainerView uses. Tuple shape lets
+    /// the call sites preserve the original `idx + 1` stop number on
+    /// each rendered badge while ForEach uses `idx` as its stable id.
+    static func decimatedStops(_ all: [Coordinate]) -> [(Int, Coordinate)] {
+        let n = all.count
+        if n <= stopPinDecimationThreshold {
+            return all.enumerated().map { ($0.offset, $0.element) }
+        }
+        var out: [(Int, Coordinate)] = []
+        out.reserveCapacity(n / stopPinDecimationStep + 2)
+        // First.
+        out.append((0, all[0]))
+        // Every step-th in between.
+        var i = stopPinDecimationStep
+        while i < n - 1 {
+            out.append((i, all[i]))
+            i += stopPinDecimationStep
+        }
+        // Last — only append when it isn't already the most recent
+        // entry (true whenever n - 1 isn't a multiple of step).
+        if out.last?.0 != n - 1 {
+            out.append((n - 1, all[n - 1]))
+        }
+        return out
+    }
+
     private static let s2SuppressionRatio: Double = 0.0005
     /// Max horizontal + vertical scanlines we'll hand to MapKit.
     /// At 2 000 polylines the `MapPolyline` ForEach still rebuilds
@@ -205,8 +239,20 @@ struct NativeMapView: View {
         // Only when not currently navigating; once Navigate fires
         // these get promoted into activeWaypoints (blue) and the
         // staging copies clear.
+        //
+        // SwiftUI native Map's `Annotation` API rasterises each badge
+        // into its own subview tree; rendering 1000+ at once freezes
+        // the layout pipeline (SwiftUI sizeThatFits dominates the
+        // main-thread profile). Once the underlying list crosses
+        // `stopPinDecimationThreshold`, we render only:
+        //   * stop #1 (start)
+        //   * stop #N (end)
+        //   * every `stopPinDecimationStep`-th stop in between
+        // The displayed number is the ORIGINAL stop index so the user
+        // can still tell which leg they're looking at. The daemon
+        // receives every stop unchanged.
         if !state.navigationActive {
-            ForEach(Array(state.pendingStops.enumerated()), id: \.offset) { idx, stop in
+            ForEach(Self.decimatedStops(state.pendingStops), id: \.0) { (idx, stop) in
                 Annotation(
                     "Stop \(idx + 1)",
                     coordinate: stop.cl,
@@ -216,7 +262,7 @@ struct NativeMapView: View {
             }
         }
         // ── Live waypoints (blue, numbered) ─────────────────────────
-        ForEach(Array(state.activeWaypoints.enumerated()), id: \.offset) { idx, wp in
+        ForEach(Self.decimatedStops(state.activeWaypoints), id: \.0) { (idx, wp) in
             Annotation(
                 "Waypoint \(idx + 1)",
                 coordinate: wp.cl,

@@ -941,9 +941,45 @@ struct MapContainerView: NSViewRepresentable {
                     map.removeAnnotations(pendingStopAnnotations)
                     pendingStopAnnotations.removeAll(keepingCapacity: true)
                 }
+                // Stop-pin decimation. Apple's MapKit chokes once the
+                // on-map MKAnnotation count grows past ~100 because each
+                // pin is a real NSView/CALayer with its own collision /
+                // hit-test / pixel-position recompute per frame. For
+                // recorded GPX tracks (1163-, 4000-pt routes) we'd
+                // otherwise drop frames every pan/zoom.
+                //
+                // When the underlying stop list crosses
+                // `decimationThreshold`, we render only:
+                //   * stop #1 (start)
+                //   * stop #N (end)
+                //   * every `decimationStep`-th stop in between
+                //
+                // The displayed badge text keeps the ORIGINAL stop
+                // number (1, 102, 203, …, 1163) so the user can still
+                // see which leg of the route they're looking at. The
+                // underlying `pendingStops` / `activeWaypoints` lists
+                // are untouched — the daemon receives every single
+                // stop and walks them all.
+                let decimationThreshold = 100
+                let decimationStep = 101
+                func shouldRenderIndex(_ idx: Int, count: Int) -> Bool {
+                    if count <= decimationThreshold { return true }
+                    if idx == 0 { return true }
+                    if idx == count - 1 { return true }
+                    return idx % decimationStep == 0
+                }
                 var batch: [MKAnnotation] = []
-                batch.reserveCapacity(pendingSig.count + waypointsSig.count)
+                let pendingDecimated = pendingSig.count > decimationThreshold
+                let waypointsDecimated = waypointsSig.count > decimationThreshold
+                let pendingRenderEst = pendingDecimated
+                    ? pendingSig.count / decimationStep + 2
+                    : pendingSig.count
+                let waypointsRenderEst = waypointsDecimated
+                    ? waypointsSig.count / decimationStep + 2
+                    : waypointsSig.count
+                batch.reserveCapacity(pendingRenderEst + waypointsRenderEst)
                 for (index, stop) in pendingSig.enumerated() {
+                    guard shouldRenderIndex(index, count: pendingSig.count) else { continue }
                     let pin = StopAnnotation(stopNumber: index + 1, isActive: false)
                     pin.coordinate = CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lng)
                     pin.title = "Stop \(index + 1)"
@@ -952,6 +988,7 @@ struct MapContainerView: NSViewRepresentable {
                     pendingStopAnnotations.append(pin)
                 }
                 for (index, stop) in waypointsSig.enumerated() {
+                    guard shouldRenderIndex(index, count: waypointsSig.count) else { continue }
                     let pin = StopAnnotation(stopNumber: index + 1, isActive: true)
                     pin.coordinate = CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lng)
                     pin.title = "Waypoint \(index + 1)"
@@ -1143,6 +1180,22 @@ struct MapContainerView: NSViewRepresentable {
             pendingCenter = mapView.region.center
             pendingSpan   = mapView.region.span.latitudeDelta * 111_000
 
+            // LOD: badge ↔ dot switch only triggers re-add when the
+            // user actually crosses the threshold, so a small pan
+            // within either zone is free. When crossing, we remove +
+            // re-add only the StopAnnotations (preserving other
+            // overlays + the simulated puck untouched) — MapKit re-
+            // dispatches viewFor on add, picking the new variant.
+            let zoomedInNow = Self.isZoomedInForLODCheck(mapView)
+            if zoomedInNow != lastLODZoomedIn, !pendingStopAnnotations.isEmpty {
+                lastLODZoomedIn = zoomedInNow
+                let snapshot = pendingStopAnnotations
+                mapView.removeAnnotations(snapshot)
+                mapView.addAnnotations(snapshot)
+            } else {
+                lastLODZoomedIn = zoomedInNow
+            }
+
             guard regionChanging else { return }
             regionChanging = false
 
@@ -1270,22 +1323,52 @@ struct MapContainerView: NSViewRepresentable {
                 //     into `activeWaypoints` at navigation start;
                 //     stays drawn while the iPhone walks the trip.
                 //
-                // Use distinct dequeue ids so a recycled view
-                // never carries the wrong tint over.
-                let id = stop.isActive ? "stop-active" : "stop-staging"
-                let v = (mapView.dequeueReusableAnnotationView(withIdentifier: id) as? MKMarkerAnnotationView)
-                    ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: id)
-                v.annotation = annotation
-                v.markerTintColor = stop.isActive ? .systemBlue : .systemRed
-                v.glyphText = "\(stop.stopNumber)"
-                v.canShowCallout = true
-                // .required opts stop pins out of MapKit's
-                // collision-avoidance pool. Without this, stops that
-                // are geographically close (common in dense walking
-                // routes) are silently hidden — the user sees 6 pins
-                // for a 7-stop route with no indication one is missing.
-                v.displayPriority = .required
-                return v
+                // Zoom-aware level-of-detail: at city / regional zoom
+                // a 1000-pt GPX track turns into a wall of overlapping
+                // MKMarkerAnnotationViews — each one rasterises a
+                // unique numbered badge image and MapKit hit-tests
+                // them per gesture, freezing the main thread. When
+                // the map is zoomed out (more than ~3 km of latitude
+                // visible) we fall back to a cheap precomputed
+                // coloured dot image; numbers come back as soon as
+                // the user zooms in enough to read them.
+                let id: String
+                let useNumberedBadge = Self.isZoomedInForLODCheck(mapView)
+                if useNumberedBadge {
+                    id = stop.isActive ? "stop-active" : "stop-staging"
+                } else {
+                    id = stop.isActive ? "stop-active-dot" : "stop-staging-dot"
+                }
+                if useNumberedBadge {
+                    let v = (mapView.dequeueReusableAnnotationView(withIdentifier: id) as? MKMarkerAnnotationView)
+                        ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: id)
+                    v.annotation = annotation
+                    v.markerTintColor = stop.isActive ? .systemBlue : .systemRed
+                    v.glyphText = "\(stop.stopNumber)"
+                    v.canShowCallout = true
+                    // .required opts stop pins out of MapKit's
+                    // collision-avoidance pool. Without this, stops
+                    // that are geographically close (common in dense
+                    // walking routes) are silently hidden — the user
+                    // sees 6 pins for a 7-stop route with no
+                    // indication one is missing.
+                    v.displayPriority = .required
+                    return v
+                } else {
+                    let v = (mapView.dequeueReusableAnnotationView(withIdentifier: id) as? MKAnnotationView)
+                        ?? MKAnnotationView(annotation: annotation, reuseIdentifier: id)
+                    v.annotation = annotation
+                    v.image = stop.isActive ? Self.activeStopDotImage : Self.stagingStopDotImage
+                    v.frame = CGRect(x: 0, y: 0, width: 10, height: 10)
+                    v.centerOffset = .zero
+                    v.canShowCallout = false
+                    // Dots stay opted INTO collision so MapKit can
+                    // hide overlapping ones at extreme zoom-outs;
+                    // visual density there reads as a coloured trail
+                    // not a stack of dots.
+                    v.displayPriority = .defaultHigh
+                    return v
+                }
 
             case is DestinationAnnotation:
                 let id = "dst"
@@ -1371,6 +1454,51 @@ struct MapContainerView: NSViewRepresentable {
             if let match = (try? ctx.fetch(descriptor))?.first {
                 state.mapPreviewingBookmark = match
             }
+        }
+
+        // Stop-pin LOD ───────────────────────────────────────────────
+        //
+        // Threshold expressed as latitude delta of the visible region.
+        // Below 0.03° (~3 km tall) we draw the heavy numbered MKMarker
+        // badge; above it we drop to a precomputed 10×10 coloured dot
+        // so a 4000-pt GPX track stays fluid when viewed at city scale.
+        // 0.03° is chosen empirically — at typical walking-route street
+        // density the numbered badges remain readable; above this users
+        // can't tell adjacent stops apart anyway, so trading the digit
+        // for a dot is information-neutral.
+        private static let stopLODLatitudeDelta: CLLocationDegrees = 0.03
+        static func isZoomedInForLODCheck(_ mapView: MKMapView) -> Bool {
+            return mapView.region.span.latitudeDelta <= stopLODLatitudeDelta
+        }
+        /// Tracks the LOD state at the last region change. When the
+        /// user pans / zooms through the threshold, the
+        /// `regionDidChange` handler removes + re-adds annotations so
+        /// `viewFor` re-fires and the renderer swaps badge ↔ dot.
+        private var lastLODZoomedIn: Bool = true
+
+        // 10×10 coloured dot precomputed once. Cheap NSImage drawn into
+        // the annotation view's `image` slot — no glyph rasterisation,
+        // no collision-priority work, no MKMarker shadow. Two tints
+        // mirror the badge variants so the dots colour-code the same
+        // staging-vs-active distinction.
+        private static let activeStopDotImage: NSImage = {
+            makeStopDot(body: .systemBlue)
+        }()
+        private static let stagingStopDotImage: NSImage = {
+            makeStopDot(body: .systemRed)
+        }()
+        private static func makeStopDot(body: NSColor) -> NSImage {
+            let size = NSSize(width: 10, height: 10)
+            let image = NSImage(size: size)
+            image.lockFocus()
+            // Subtle white border keeps the dot legible against both
+            // light and dark map tiles.
+            NSColor.white.setFill()
+            NSBezierPath(ovalIn: NSRect(x: 0, y: 0, width: 10, height: 10)).fill()
+            body.setFill()
+            NSBezierPath(ovalIn: NSRect(x: 1, y: 1, width: 8, height: 8)).fill()
+            image.unlockFocus()
+            return image
         }
 
         // Cached blue puck so we don't redraw it every annotation view.
