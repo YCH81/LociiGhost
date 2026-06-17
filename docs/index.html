@@ -287,15 +287,14 @@
 
   <section class="card">
     <div class="version-line">
-      <strong>v1.14.0</strong>
+      <strong>v1.15.0</strong>
       <span class="status-pill">已發佈</span>
     </div>
-    <p>發布日期：2026-06-13。
-       (1) <strong>新增 S2 地圖網格系統</strong> — 皮克敏 decor 格子視覺化。地圖右上「S2 Grid」一鍵開啟，預設 L17（約 76 m × 76 m）對應 Pikmin Bloom 給 decor pikmin 的格子粒度；可在 L13 (~1.2 km) – L20 (~9.5 m) 之間切換，飛人可看出哪些格子還沒拜訪。視野過大時自動降階，popover 同時顯示「目前顯示 L13 — 放大才能看到 L17 格子」提示。
-       (2) <strong>修正隨機漫步跨裝置切換時狀態遺失</strong> — 切走再切回後計畫路徑與中心圓圈會留在原始 Start 位置，不再漂走。
-       (3) <strong>修正隨機漫步切換移動模式速度沒實際套用</strong> — 走路 / 腳踏車 / 汽車 / 自訂切換現在會自動 stop+restart 走者，速度即時生效。
+    <p>發布日期：2026-06-17。
+       (1) <strong>路線播放新增「從哪裡開始」三選一</strong> — 點側邊欄的路線跑出來的 sheet 多了一欄：從頭開始、從上次中斷處繼續（#N）、或指定第 N 個點開始。AppState 每 2 秒記錄一次進度，Stop 後重開 sheet 預設選 Resume；自然走完則清零。
+       (2) <strong>修復長 GPX 路線匯入後 app 卡死</strong> — 1163 點之前要等 1-2 分鐘才能看到地圖；現在 stop pin 超過 100 點時自動縮點（保留 #1 + 終點 + 每 101 一個），渲染量 1163 → ~12 顆，daemon 仍收到完整 stops。MKMapView 拉遠時 badge 改成小色點。
        完整變更紀錄見
-       <a href="https://github.com/YCH81/LociiGhost/releases/tag/v1.14.0">v1.14.0 release notes</a>。</p>
+       <a href="https://github.com/YCH81/LociiGhost/releases/tag/v1.15.0">v1.15.0 release notes</a>。</p>
     <p class="meta">DMG 已通過 Apple Developer ID 簽名 + Apple notarize，
        雙擊即可開啟，不會被 Gatekeeper 擋下。<strong>請務必用 DMG 安裝</strong>，
        不要把 .app 解壓到 iCloud 同步的資料夾（Documents、Desktop），

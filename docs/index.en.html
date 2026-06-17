@@ -287,28 +287,27 @@
 
   <section class="card">
     <div class="version-line">
-      <strong>v1.14.0</strong>
+      <strong>v1.15.0</strong>
       <span class="status-pill">Released</span>
     </div>
-    <p>Released 2026-06-13.
-       (1) <strong>New S2 Map Grid System</strong> — Pikmin Bloom
-       decor-cell visualiser. One tap on the header "S2 Grid" pill
-       paints a Google S2 quad-cell grid; default L17 (~76 m)
-       matches Pikmin Bloom's decor-pikmin tile granularity, so
-       flying users can see which cells they have / haven't visited.
-       L13 (~1.2 km) – L20 (~9.5 m) selectable; wide viewports
-       auto-coarsen and the popover shows "Showing L13 — zoom in to
-       see L17 cells" when it kicks in.
-       (2) <strong>Fix: Random Walk state lost on device switch</strong>
-       — switching away mid-walk and back used to wipe the planned
-       path and drift the bounded disc onto the current position;
-       now it stays anchored at the original Start coordinate.
-       (3) <strong>Fix: travel-profile change during Random Walk
-       didn't update walker speed</strong> — flipping walking /
-       cycling / driving / custom now debounce-triggers an automatic
-       stop+restart so the new speed takes effect immediately.
+    <p>Released 2026-06-17.
+       (1) <strong>New "Start from" picker for saved-route playback</strong>
+       — the sheet that opens when you click a sidebar route now
+       offers three choices: Beginning, Resume from last (#N), or a
+       specific stop chosen with a Stepper. AppState writes the
+       closest-stop snap index back to SwiftData every ~2 s during
+       playback; pressing Stop preserves it for Resume, natural
+       completion resets to 0.
+       (2) <strong>Fix: importing a 1000+ point GPX track no longer
+       freezes the app</strong> — 1163-pt tracks used to lock SwiftUI/
+       MapKit's layout pipeline for 1-2 minutes. Stop pins now
+       decimate above 100: only stop #1, the endpoint, and every
+       101st in between render, with the original stop number kept
+       on each badge. The daemon still receives every stop. The
+       MKMapView path also drops badges to coloured dots above
+       ~3 km latitude span.
        See
-       <a href="https://github.com/YCH81/LociiGhost/releases/tag/v1.14.0">v1.14.0 release notes</a>
+       <a href="https://github.com/YCH81/LociiGhost/releases/tag/v1.15.0">v1.15.0 release notes</a>
        for the full changelog.</p>
     <p class="meta">The DMG is Apple-Developer-ID-signed and notarised,
        so it opens with a double-click without a Gatekeeper warning.

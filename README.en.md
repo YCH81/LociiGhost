@@ -35,8 +35,8 @@ if you're in Taiwan.
 
 ## Download
 
-- **Latest version**: v1.14.0
-- **Release date**: 2026-06-13
+- **Latest version**: v1.15.0
+- **Release date**: 2026-06-17
 - **Download**: [Google Drive folder](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) — DMG is Apple-Developer-ID-signed and notarised, so it opens with a double-click without the Gatekeeper warning. **Use the DMG, not a zip**: extracting a signed .app into an iCloud-synced folder (Documents, Desktop) lets the File Provider attach extra xattrs that break the signature and show "LociiGhost is damaged".
 
 ## New here?
@@ -66,6 +66,11 @@ if you're in Taiwan.
   under 200 MB.
 
 ## What's new
+
+**v1.15.0** (2026-06-17)
+
+- **New "Start from" picker for saved-route playback.** The sheet that opens when you click a sidebar route now offers three choices: Beginning, Resume from last (#N), or a specific stop chosen with a Stepper. AppState writes the closest-stop snap index back to SwiftData every ~2 s during playback; pressing Stop preserves it for the next "Resume" pick, natural completion resets to 0.
+- **Fix: importing a 1000+ point GPX track no longer freezes the app.** Long recorded GPX tracks (1163-pt was the trigger case) used to lock SwiftUI/MapKit's layout pipeline for 1-2 minutes before drawing the first map tile — every waypoint was an independent NSView with its own collision / hit-test pipeline. Stop pins now decimate above 100 stops: only stop #1, the endpoint, and every 101st in between are rendered, with the original stop number preserved on each badge (1, 102, 203, …, 1163). The daemon still receives every stop. The MKMapView path additionally drops badges to small coloured dots above ~3 km latitude span.
 
 **v1.14.0** (2026-06-13)
 

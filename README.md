@@ -30,8 +30,8 @@
 
 ## 下載
 
-- **最新版本**：v1.14.0
-- **發布日期**：2026-06-13
+- **最新版本**：v1.15.0
+- **發布日期**：2026-06-17
 - **下載連結**：[Google Drive 下載資料夾](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) —— DMG 已通過 Apple Developer ID 簽名 + Apple notarize，雙擊即可開啟，不會被 Gatekeeper 擋下。**請務必用 DMG 安裝**，不要把 .app 解壓到 iCloud 同步的資料夾（Documents、Desktop），File Provider 會蓋上額外 xattr 把簽章弄壞
 
 ## 第一次使用？
@@ -53,6 +53,11 @@
 - **Apple Silicon 原生** —— 閒置 CPU 0%、無 Chromium 開銷、Bundle < 200 MB
 
 ## 最新更新
+
+**v1.15.0**（2026-06-17）
+
+- **路線播放新增「從哪裡開始」三選一**。點側邊欄的路線跑出來的 sheet 多了一欄，可以選：從頭開始、從上次中斷處繼續（#N）、或指定第 N 個點開始。AppState 在路線播放期間每 2 秒記錄一次當前最接近的 stop index 到 SwiftData；按 Stop 後重開 sheet 預設選 Resume；自然走完則清零、下次回到「Beginning」。
+- **修復長 GPX 路線（1000+ 點）匯入後 app 完全卡死**。1163 點的 GPX 之前會讓 SwiftUI / MapKit 整個 layout pipeline 連跑 1-2 分鐘才看到第一張地圖。現在 stop pin 自動縮點：超過 100 點時只渲染 #1 + 終點 + 每 101 顯示一次（badge 編號保留原始 index 例如 1、102、203、…、1163；daemon 還是收到完整 stops）；1163 點實際渲染只剩 ~12 顆。MKMapView 路徑同時加 zoom-aware LOD：拉遠到約 3 km 視高度時 badge 自動改成小色點。
 
 **v1.14.0**（2026-06-13）
 
