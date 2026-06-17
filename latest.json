@@ -1,5 +1,5 @@
 {
-  "version": "1.14.0",
+  "version": "1.15.0",
   "url": "https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing",
-  "notes": "v1.14.0 — 新增 S2 地圖網格系統（皮克敏 decor 格子視覺化），L13–L20 切換，視野過大自動降階。修正：隨機漫步跨裝置切換時計畫路徑與中心圓圈消失、切換移動模式時 daemon 走者速度沒實際套用（現在會自動 stop+restart 套用新速度）。"
+  "notes": "v1.15.0 — 新增「Resume / Start from」路線播放選項：從頭、從上次中斷處（#N）、或指定第 N 個點開始；AppState 在播放中每 2 秒記錄一次進度，使用者按 Stop 後重開 sheet 就能接著走。修復長 GPX 路線（1000+ 點）匯入後 app 卡 1-2 分鐘的問題：stop pin 自動縮點（保留 #1 + 終點 + 每 101 一個），1163 點實際渲染只剩 ~12 顆，daemon 仍收到完整 stops。MKMapView 拉遠時 badge 改成小色點。"
 }
