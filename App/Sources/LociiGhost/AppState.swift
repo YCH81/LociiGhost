@@ -3399,7 +3399,32 @@ final class AppState {
                 dwellMonitor = nil
                 if !allowDwell { dwellContext = nil }
             }
-            multiStopLapContext = nil
+            // Multi-stop lap orchestration. allowDwell=true is the
+            // multi-stop / dwell entry point (daemon-side laps is
+            // forced to 1, the App drives the loop). The dwell variant
+            // already loops via `dwellContext.remainingDwellLaps` in
+            // applyStateEvent, so we only set multiStopLapContext when
+            // dwell is NOT also active — otherwise the two contexts
+            // would both fire on idle and double-navigate the next
+            // lap. For the !allowDwell path (saved-route playback)
+            // looping happens via `loopContext` set in `runRoute`;
+            // multiStopLapContext stays nil there.
+            //
+            // First lap: fresh context with routeLaps - 1 remaining.
+            // Lap continuations (isLapContinuation=true) leave the
+            // context alone — applyStateEvent's idle handler already
+            // decremented it before re-firing navigate.
+            if allowDwell, !isLapContinuation, dwellContext == nil, routeLaps >= 2 {
+                multiStopLapContext = MultiStopLapContext(
+                    udid: udid,
+                    stops: stops,
+                    profile: profile,
+                    speed: speed,
+                    remainingLaps: routeLaps - 1,
+                )
+            } else if !isLapContinuation {
+                multiStopLapContext = nil
+            }
             // v1.11.0: do NOT clear `pendingStops` after Navigate. Earlier
             // versions wiped the staging list as soon as the trip started,
             // which removed the on-panel coordinate list users wanted to
@@ -4521,7 +4546,44 @@ final class AppState {
             }
         }
 
-        if stateRaw == "idle", wasRunning, alertSoundEnabled, !willLoopAgain, !willDwellNext {
+        // Multi-stop lap continuation. Mirrors loopContext above but
+        // for the manual multi-stop trip path (allowDwell=true →
+        // daemon laps=1, App drives the loop). Only fires when the
+        // other two lap engines are idle so we never double-navigate
+        // the next lap. The dwellContext branch already covers
+        // "multi-stop WITH dwell" via remainingDwellLaps.
+        var willMultiStopLoop = false
+        if stateRaw == "idle", wasRunning,
+           loopContext == nil, dwellContext == nil,
+           var ctx = multiStopLapContext {
+            if ctx.remainingLaps > 0 {
+                ctx.remainingLaps -= 1
+                multiStopLapContext = ctx
+                willMultiStopLoop = true
+                let snap = ctx
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    // Teleport back to the first stop, then re-fire
+                    // navigate with isLapContinuation=true so navigate()
+                    // doesn't reset the context. Use the FULL stops
+                    // list (same as the user's original Navigate press).
+                    await self.teleport(udid: snap.udid,
+                                        lat: snap.stops[0].lat,
+                                        lng: snap.stops[0].lng)
+                    await self.navigate(udid: snap.udid,
+                                        through: snap.stops,
+                                        profile: snap.profile,
+                                        speed: snap.speed,
+                                        allowDwell: true,
+                                        isLapContinuation: true)
+                }
+            } else {
+                multiStopLapContext = nil
+            }
+        }
+
+        if stateRaw == "idle", wasRunning, alertSoundEnabled,
+           !willLoopAgain, !willDwellNext, !willMultiStopLoop {
             Task { @MainActor in AlertSoundService.playRouteComplete() }
         }
 
@@ -4531,7 +4593,8 @@ final class AppState {
         // last" reads as "no saved progress" rather than parking them
         // one step before the end. We only clear when NOT looping into
         // another lap — mid-lap completion is internal bookkeeping.
-        if stateRaw == "idle", wasRunning, !willLoopAgain, !willDwellNext {
+        if stateRaw == "idle", wasRunning,
+           !willLoopAgain, !willDwellNext, !willMultiStopLoop {
             clearRouteProgress()
         }
 
@@ -4540,14 +4603,14 @@ final class AppState {
                 nav.state = mapped
                 navigation = nav
             }
-        } else if !willLoopAgain, !willDwellNext {
+        } else if !willLoopAgain, !willDwellNext, !willMultiStopLoop {
             navigation = nil
         }
-        // When `willLoopAgain` or `willDwellNext` is true we leave
+        // When any of the lap-continuation flags is true we leave
         // `navigation` alone: the next `navigate(...)` call from the
         // queued Task will overwrite it with the fresh leg's state.
         // Clearing it here would make the BottomBar progress flicker
-        // between legs during a dwell sequence.
+        // between legs during a multi-lap sequence.
     }
 
     /// In dwell mode the daemon only knows about the current single-
