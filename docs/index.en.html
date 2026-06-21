@@ -287,27 +287,24 @@
 
   <section class="card">
     <div class="version-line">
-      <strong>v1.15.0</strong>
+      <strong>v1.15.1</strong>
       <span class="status-pill">Released</span>
     </div>
-    <p>Released 2026-06-17.
-       (1) <strong>New "Start from" picker for saved-route playback</strong>
-       — the sheet that opens when you click a sidebar route now
-       offers three choices: Beginning, Resume from last (#N), or a
-       specific stop chosen with a Stepper. AppState writes the
-       closest-stop snap index back to SwiftData every ~2 s during
-       playback; pressing Stop preserves it for Resume, natural
-       completion resets to 0.
-       (2) <strong>Fix: importing a 1000+ point GPX track no longer
-       freezes the app</strong> — 1163-pt tracks used to lock SwiftUI/
-       MapKit's layout pipeline for 1-2 minutes. Stop pins now
-       decimate above 100: only stop #1, the endpoint, and every
-       101st in between render, with the original stop number kept
-       on each badge. The daemon still receives every stop. The
-       MKMapView path also drops badges to coloured dots above
-       ~3 km latitude span.
+    <p>Released 2026-06-21. Hotfix:
+       <strong>multi-stop with lap count > 1 only walked once</strong>
+       (reported by multiple users). Root cause:
+       <code>multiStopLapContext</code> was defined but
+       <code>navigate()</code> never assigned to it, so
+       <code>applyStateEvent</code>'s idle handler had nothing to
+       react to. Multi-stop now follows the same loop pattern
+       saved-route playback uses: first lap ends → teleport back
+       to stops[0] → re-fire <code>navigate</code> with
+       <code>isLapContinuation: true</code>. Affects straight-line
+       and OSRM modes; dwell-mode multi-stop wasn't affected. All
+       v1.15.0 features (Resume / Start-from picker, long-GPX
+       decimation perf) are preserved.
        See
-       <a href="https://github.com/YCH81/LociiGhost/releases/tag/v1.15.0">v1.15.0 release notes</a>
+       <a href="https://github.com/YCH81/LociiGhost/releases/tag/v1.15.1">v1.15.1 release notes</a>
        for the full changelog.</p>
     <p class="meta">The DMG is Apple-Developer-ID-signed and notarised,
        so it opens with a double-click without a Gatekeeper warning.

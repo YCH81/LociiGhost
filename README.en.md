@@ -35,8 +35,8 @@ if you're in Taiwan.
 
 ## Download
 
-- **Latest version**: v1.15.0
-- **Release date**: 2026-06-17
+- **Latest version**: v1.15.1
+- **Release date**: 2026-06-21
 - **Download**: [Google Drive folder](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) — DMG is Apple-Developer-ID-signed and notarised, so it opens with a double-click without the Gatekeeper warning. **Use the DMG, not a zip**: extracting a signed .app into an iCloud-synced folder (Documents, Desktop) lets the File Provider attach extra xattrs that break the signature and show "LociiGhost is damaged".
 
 ## New here?
@@ -66,6 +66,10 @@ if you're in Taiwan.
   under 200 MB.
 
 ## What's new
+
+**v1.15.1** (2026-06-21)
+
+- **Fix: multi-stop with lap count > 1 only walked once.** Several users reported that staging multiple stops + selecting 2 or more laps walked every stop exactly once and stopped — never starting the second lap. Root cause: `multiStopLapContext` was defined but `navigate()` never assigned to it, so `applyStateEvent`'s idle handler had nothing to react to. Multi-stop now follows the same `loopContext` pattern saved-route playback uses: first lap ends → teleport back to stops[0] → re-fire `navigate(isLapContinuation: true)`. Affects **straight-line and OSRM** modes; dwell-mode multi-stop wasn't affected because it uses `dwellContext.remainingDwellLaps`, a separate mechanism.
 
 **v1.15.0** (2026-06-17)
 

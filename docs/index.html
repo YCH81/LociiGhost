@@ -287,14 +287,17 @@
 
   <section class="card">
     <div class="version-line">
-      <strong>v1.15.0</strong>
+      <strong>v1.15.1</strong>
       <span class="status-pill">已發佈</span>
     </div>
-    <p>發布日期：2026-06-17。
-       (1) <strong>路線播放新增「從哪裡開始」三選一</strong> — 點側邊欄的路線跑出來的 sheet 多了一欄：從頭開始、從上次中斷處繼續（#N）、或指定第 N 個點開始。AppState 每 2 秒記錄一次進度，Stop 後重開 sheet 預設選 Resume；自然走完則清零。
-       (2) <strong>修復長 GPX 路線匯入後 app 卡死</strong> — 1163 點之前要等 1-2 分鐘才能看到地圖；現在 stop pin 超過 100 點時自動縮點（保留 #1 + 終點 + 每 101 一個），渲染量 1163 → ~12 顆，daemon 仍收到完整 stops。MKMapView 拉遠時 badge 改成小色點。
+    <p>發布日期：2026-06-21。緊急修復：
+       <strong>多點模式選圈數 > 1 時只走一圈就停</strong>（多人回報）。
+       根因是 multiStopLapContext 雖然定義了，但 navigate() 從未把它 populate，
+       applyStateEvent 的 idle handler 因此看不到要再跑一圈。現在 multi-stop 第一圈結束後會 teleport 回 stop[0] 再走，跟 saved-route 的 loop 同一套機制。
+       影響直線 + OSRM 模式（停留模式不受影響）。
+       v1.15.0 的功能（Resume / Start-from picker、長 GPX 路線縮點）保持。
        完整變更紀錄見
-       <a href="https://github.com/YCH81/LociiGhost/releases/tag/v1.15.0">v1.15.0 release notes</a>。</p>
+       <a href="https://github.com/YCH81/LociiGhost/releases/tag/v1.15.1">v1.15.1 release notes</a>。</p>
     <p class="meta">DMG 已通過 Apple Developer ID 簽名 + Apple notarize，
        雙擊即可開啟，不會被 Gatekeeper 擋下。<strong>請務必用 DMG 安裝</strong>，
        不要把 .app 解壓到 iCloud 同步的資料夾（Documents、Desktop），

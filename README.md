@@ -30,8 +30,8 @@
 
 ## 下載
 
-- **最新版本**：v1.15.0
-- **發布日期**：2026-06-17
+- **最新版本**：v1.15.1
+- **發布日期**：2026-06-21
 - **下載連結**：[Google Drive 下載資料夾](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) —— DMG 已通過 Apple Developer ID 簽名 + Apple notarize，雙擊即可開啟，不會被 Gatekeeper 擋下。**請務必用 DMG 安裝**，不要把 .app 解壓到 iCloud 同步的資料夾（Documents、Desktop），File Provider 會蓋上額外 xattr 把簽章弄壞
 
 ## 第一次使用？
@@ -53,6 +53,10 @@
 - **Apple Silicon 原生** —— 閒置 CPU 0%、無 Chromium 開銷、Bundle < 200 MB
 
 ## 最新更新
+
+**v1.15.1**（2026-06-21）
+
+- **修復多點模式選擇圈數 > 1 時只走一圈就停**。多人回報的 bug：staging 多個停靠點並選 2 圈以上時，路線跑完所有點一次後就停了，完全沒進入第二圈。根因是 `multiStopLapContext` 雖然定義了，但 `navigate()` 從未把它 populate，`applyStateEvent` 的 idle handler 因此看不到要再跑一圈。現在 multi-stop 第一圈結束後會 teleport 回 stop[0] 並重 navigate，跟 saved-route 的 `loopContext` 同一套循環機制。影響**直線模式 + OSRM 模式**；停留模式之前就有用 `dwellContext.remainingDwellLaps`，未受影響。
 
 **v1.15.0**（2026-06-17）
 
