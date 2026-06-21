@@ -1,5 +1,5 @@
 {
-  "version": "1.15.0",
+  "version": "1.15.1",
   "url": "https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing",
-  "notes": "v1.15.0 — 新增「Resume / Start from」路線播放選項：從頭、從上次中斷處（#N）、或指定第 N 個點開始；AppState 在播放中每 2 秒記錄一次進度，使用者按 Stop 後重開 sheet 就能接著走。修復長 GPX 路線（1000+ 點）匯入後 app 卡 1-2 分鐘的問題：stop pin 自動縮點（保留 #1 + 終點 + 每 101 一個），1163 點實際渲染只剩 ~12 顆，daemon 仍收到完整 stops。MKMapView 拉遠時 badge 改成小色點。"
+  "notes": "v1.15.1 — 修復多點模式選圈數 > 1 時只走一圈就停（多人回報）。根因：multiStopLapContext 雖然定義了但 navigate() 從未 populate，applyStateEvent 的 idle handler 因此看不到要再跑一圈。現在 multi-stop 第一圈結束後會 teleport 回 stop[0] 再走，跟 saved-route 的 loop 同一套機制。影響直線 + OSRM 模式（停留模式不受影響，那個走 dwellContext.remainingDwellLaps）。"
 }
