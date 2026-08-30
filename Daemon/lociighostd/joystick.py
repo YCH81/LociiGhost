@@ -17,9 +17,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import time
 from dataclasses import dataclass
 from typing import Awaitable, Callable
 
+from .interpolator import normalize_latlng
 from .location_service import LocationService
 
 log = logging.getLogger(__name__)
@@ -50,6 +52,8 @@ EventEmitter = Callable[[str, JoystickStatus], Awaitable[None]]
 
 class JoystickController:
     TICK_S = 0.5
+    # See Navigator.MAX_TICK_CATCHUP_S (v1.15.2 audit W8).
+    MAX_TICK_CATCHUP_S = 5.0
 
     def __init__(
         self,
@@ -122,7 +126,9 @@ class JoystickController:
             await self._location.set(*self._current)
             await self._emit("event.position_update")
 
+            last_tick_at: float | None = None
             while not self._stop_event.is_set():
+                tick_started_at = time.monotonic()
                 async with self._lock:
                     speed = self._speed_mps
                     heading = self._heading_deg
@@ -132,19 +138,36 @@ class JoystickController:
                     await self._emit("event.state_changed")
                     self._input_event.clear()
                     await self._input_event.wait()
+                    # Parked time isn't travel time.
+                    last_tick_at = None
                     continue
 
+                # v1.15.2 audit (W8): elapsed-time stepping, same
+                # reasoning as Navigator — a stalled set() used to make
+                # the stick feel like it had gone sluggish because the
+                # step size stayed pinned to the nominal tick.
+                if last_tick_at is None:
+                    elapsed = self.TICK_S
+                else:
+                    elapsed = min(tick_started_at - last_tick_at,
+                                  self.MAX_TICK_CATCHUP_S)
+                last_tick_at = tick_started_at
+
                 self._state = "moving"
-                self._current = self._step(self._current, heading, speed * self.TICK_S)
+                self._current = self._step(self._current, heading,
+                                           speed * max(0.0, elapsed))
                 await self._location.set(*self._current)
                 await self._emit("event.position_update")
 
-                try:
-                    await asyncio.wait_for(self._stop_event.wait(), timeout=self.TICK_S)
-                    if self._stop_event.is_set():
-                        break
-                except asyncio.TimeoutError:
-                    pass
+                remaining = (tick_started_at + self.TICK_S) - time.monotonic()
+                if remaining > 0:
+                    try:
+                        await asyncio.wait_for(self._stop_event.wait(),
+                                               timeout=remaining)
+                        if self._stop_event.is_set():
+                            break
+                    except asyncio.TimeoutError:
+                        pass
         finally:
             self._state = "stopped"
             await self._emit("event.state_changed")
@@ -158,7 +181,7 @@ class JoystickController:
         dlng = (distance_m * math.sin(rad)) / (
             METRES_PER_DEGREE_LAT * max(math.cos(math.radians(current[0])), 1e-6)
         )
-        return (current[0] + dlat, current[1] + dlng)
+        return normalize_latlng(current[0] + dlat, current[1] + dlng)
 
     async def _emit(self, method: str) -> None:
         if self._on_event is None:

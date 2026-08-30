@@ -27,6 +27,7 @@ public actor DaemonClient {
         case responseDecodingFailed(String)
         case unexpectedResponse(String)
         case writeFailed(errno: Int32)
+        case timedOut(method: String, seconds: Double)
 
         public var description: String {
             switch self {
@@ -44,6 +45,8 @@ public actor DaemonClient {
                 return "Unexpected response shape: \(s)"
             case .writeFailed(let e):
                 return "write() failed (errno=\(e))"
+            case .timedOut(let m, let s):
+                return "\(m) got no reply from the daemon within \(Int(s))s"
             }
         }
     }
@@ -53,6 +56,26 @@ public actor DaemonClient {
     private var nextID: Int = 1
     private var pending: [Int: CheckedContinuation<AnyCodable, Error>] = [:]
     private var reader: ReaderThread?
+    /// Watchdogs keyed by request id, cancelled when the reply lands.
+    private var timeouts: [Int: Task<Void, Never>] = [:]
+    /// Method name per in-flight id, for a useful timeout message.
+    private var inFlightMethod: [Int: String] = [:]
+    /// Bumped on every connect/disconnect so a reader thread that
+    /// notices EOF after we've already reconnected can't tear down the
+    /// new connection.
+    private var epoch: Int = 0
+
+    /// How long a single RPC may wait for its reply.
+    ///
+    /// v1.15.2 audit (M1/W4): there was no timeout at all. The reader
+    /// thread returned silently on EOF without telling the actor, so if
+    /// the daemon died mid-call the continuation was never resumed and
+    /// the awaiting Task hung forever — the user pressed Navigate and
+    /// got no route, no error, and a status badge still reading
+    /// "connected" because `fd` was still >= 0. 20 s comfortably clears
+    /// the daemon's own bounded operations (the location retry ladder
+    /// tops out under 4 s, teardown at 1.5 s per resource).
+    public var callTimeoutSeconds: Double = 20.0
 
     /// Server-pushed notifications. Method begins with `event.`.
     public nonisolated let events: AsyncStream<RPCEvent>
@@ -97,14 +120,23 @@ public actor DaemonClient {
         }
 
         fd = s
+        epoch += 1
+        let myEpoch = epoch
 
         // Spawn the reader thread. It captures `s` (the fd) by value; closing
         // `s` from disconnect() causes the read syscall to fail with EBADF
         // and the thread exits cleanly.
-        let r = ReaderThread(fd: s) { [weak self] line in
+        let r = ReaderThread(fd: s, onFrame: { [weak self] line in
             guard let self else { return }
             Task { await self.dispatchIncoming(line) }
-        }
+        }, onClosed: { [weak self] in
+            // The socket went away without us asking (daemon crashed,
+            // was killed by Authenticate, or the peer hung up). Before
+            // this the thread just returned and every in-flight call
+            // waited forever.
+            guard let self else { return }
+            Task { await self.readerDidClose(epoch: myEpoch) }
+        })
         r.start()
         reader = r
     }
@@ -115,15 +147,42 @@ public actor DaemonClient {
         // Closing the fd unblocks the reader thread (read returns -1/EBADF).
         let oldFD = fd
         fd = -1
+        epoch += 1
         close(oldFD)
         reader = nil
 
         // Fail every in-flight call with notConnected.
+        for (_, t) in timeouts { t.cancel() }
+        timeouts.removeAll()
+        inFlightMethod.removeAll()
         let inFlight = pending
         pending.removeAll()
         for (_, cont) in inFlight {
             cont.resume(throwing: ConnectionError.notConnected)
         }
+    }
+
+    /// Called by the reader thread when its `read()` loop ends.
+    private func readerDidClose(epoch closedEpoch: Int) async {
+        // Ignore a late notification from a thread belonging to a
+        // connection we have already replaced or closed deliberately.
+        guard closedEpoch == epoch, fd >= 0 else { return }
+        await disconnect()
+    }
+
+    /// Fail one in-flight call that never got a reply.
+    private func timeOut(id: Int) {
+        timeouts.removeValue(forKey: id)
+        let method = inFlightMethod.removeValue(forKey: id) ?? "rpc"
+        guard let cont = pending.removeValue(forKey: id) else { return }
+        cont.resume(throwing: ConnectionError.timedOut(
+            method: method, seconds: callTimeoutSeconds))
+    }
+
+    private func finishPending(id: Int) -> CheckedContinuation<AnyCodable, Error>? {
+        timeouts.removeValue(forKey: id)?.cancel()
+        inFlightMethod.removeValue(forKey: id)
+        return pending.removeValue(forKey: id)
     }
 
     /// Issue a JSON-RPC call and decode the result into a typed value.
@@ -160,11 +219,20 @@ public actor DaemonClient {
 
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<AnyCodable, Error>) in
             pending[id] = cont
+            inFlightMethod[id] = method
             do {
                 try writeAll(line)
             } catch {
                 pending.removeValue(forKey: id)
+                inFlightMethod.removeValue(forKey: id)
                 cont.resume(throwing: error)
+                return
+            }
+            let seconds = callTimeoutSeconds
+            timeouts[id] = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                guard !Task.isCancelled else { return }
+                await self?.timeOut(id: id)
             }
         }
     }
@@ -203,7 +271,7 @@ public actor DaemonClient {
             return
         }
 
-        if let idAny = obj["id"], let id = idAny as? Int, let cont = pending.removeValue(forKey: id) {
+        if let idAny = obj["id"], let id = idAny as? Int, let cont = finishPending(id: id) {
             if let errObj = obj["error"] as? [String: Any] {
                 let code = (errObj["code"] as? Int) ?? -32603
                 let msg = (errObj["message"] as? String) ?? "rpc error"
@@ -243,16 +311,21 @@ public struct RPCEvent: Sendable {
 private final class ReaderThread: @unchecked Sendable {
     private let fd: Int32
     private let onFrame: @Sendable (Data) -> Void
+    private let onClosed: @Sendable () -> Void
     private var thread: Thread?
 
-    init(fd: Int32, onFrame: @escaping @Sendable (Data) -> Void) {
+    init(fd: Int32,
+         onFrame: @escaping @Sendable (Data) -> Void,
+         onClosed: @escaping @Sendable () -> Void) {
         self.fd = fd
         self.onFrame = onFrame
+        self.onClosed = onClosed
     }
 
     func start() {
-        let t = Thread { [fd, onFrame] in
+        let t = Thread { [fd, onFrame, onClosed] in
             ReaderThread.runLoop(fd: fd, onFrame: onFrame)
+            onClosed()
         }
         t.name = "LociiGhost.DaemonClient.reader"
         t.start()

@@ -98,8 +98,26 @@ class LocationService(ABC):
     _keepalive_task: Optional[asyncio.Task] = None
     _keepalive_tick_count: int = 0
 
+    # ── Liveness signal (v1.15.2 audit W5) ────────────────────────────
+    # The TCP probe in DeviceManager only proves the iPhone answers on
+    # its RemotePairing port. On iOS 26 the WiFi session commonly rides
+    # a USB DVT fallback, so the phone can be perfectly reachable on
+    # the LAN while the channel we actually push locations down is
+    # dead. The keepalive is the only thing that exercises that channel
+    # during idle, so its success rate — not a socket connect — is the
+    # honest liveness signal. DeviceManager's health loop reads these.
+    KEEPALIVE_DEGRADED_AFTER: int = 3     # ~9 s of silence
+    KEEPALIVE_DEAD_AFTER: int = 10        # ~30 s -> tear the session down
+    consecutive_keepalive_failures: int = 0
+    last_keepalive_ok_at: float = 0.0
+
+    # Set by subclasses in __init__. Declared here so the base-class
+    # keepalive loop can check it without knowing the subclass.
+    _call_lock: Optional[asyncio.Lock] = None
+
     @abstractmethod
-    async def set(self, lat: float, lng: float) -> None: ...
+    async def set(self, lat: float, lng: float, *,
+                  retries: Optional[int] = None) -> None: ...
 
     @abstractmethod
     async def clear(self) -> None: ...
@@ -132,6 +150,29 @@ class LocationService(ABC):
         except Exception:
             log.debug("location-keepalive exited with exception", exc_info=True)
 
+    def _note_keepalive(self, ok: bool) -> None:
+        """Record the outcome of one heartbeat tick."""
+        if ok:
+            if self.consecutive_keepalive_failures:
+                log.info("location keepalive recovered after %d failure(s)",
+                         self.consecutive_keepalive_failures)
+            self.consecutive_keepalive_failures = 0
+            self.last_keepalive_ok_at = time.monotonic()
+            return
+        self.consecutive_keepalive_failures += 1
+        n = self.consecutive_keepalive_failures
+        # First failure is a warning; after that only every Nth, so a
+        # long outage doesn't bury everything else in the log.
+        if n == 1 or n % self.KEEPALIVE_DEGRADED_AFTER == 0:
+            log.warning(
+                "location keepalive failing (%d consecutive; "
+                "degraded at %d, session dropped at %d)",
+                n, self.KEEPALIVE_DEGRADED_AFTER, self.KEEPALIVE_DEAD_AFTER,
+            )
+        else:
+            log.debug("location keepalive tick failed (%d consecutive)",
+                      n, exc_info=True)
+
     async def _keepalive_loop(self) -> None:
         while True:
             try:
@@ -139,6 +180,17 @@ class LocationService(ABC):
             except asyncio.CancelledError:
                 return
             try:
+                # v1.15.2 audit (W3): never queue behind a real set().
+                # The guard and the coordinate below are read outside
+                # the call lock, so if we blocked on it a mover could
+                # advance several ticks while we waited and we would
+                # then push a stale coordinate — visibly yanking the
+                # iPhone backwards. A held lock already means the
+                # channel is being exercised, which is the entire
+                # point of the heartbeat, so skipping is also correct.
+                lock = self._call_lock
+                if lock is not None and lock.locked():
+                    continue
                 if self.last_lat_lng is None:
                     # Nothing to re-push yet — user hasn't issued a
                     # first set() since this session was created. We
@@ -153,15 +205,20 @@ class LocationService(ABC):
                     continue
                 lat, lng = self.last_lat_lng
                 self._keepalive_tick_count += 1
-                await self.set(lat, lng)
+                # v1.15.2 audit (W4): retries=0. A heartbeat must never
+                # hold the call lock through the 3.75 s retry ladder —
+                # doing so blocked the user's own teleport / stop
+                # behind a background tick, and Navigator.stop() awaits
+                # the running loop, so a blip turned "Stop" into a
+                # ten-second spinner. The next tick is 3 s away; that
+                # IS the retry.
+                await self.set(lat, lng, retries=0)
             except asyncio.CancelledError:
                 return
             except Exception:
-                # Don't let one bad tick kill the loop — the WiFi
-                # health-check will catch a truly dead session and
-                # disconnect cleanly. We just log and retry next tick.
-                log.debug("location keepalive tick failed (will retry)",
-                          exc_info=True)
+                self._note_keepalive(False)
+            else:
+                self._note_keepalive(True)
 
 
 class DvtLocationService(LocationService):
@@ -174,9 +231,20 @@ class DvtLocationService(LocationService):
     # iPhone-just-came-back-from-screen-lock first call.
     _RETRY_BACKOFFS_S = (0.0, 0.25, 0.5, 1.0, 2.0)
 
-    def __init__(self, dvt_provider: DvtProvider, rsd_lockdown) -> None:
+    def __init__(self, dvt_provider: DvtProvider, rsd_lockdown,
+                 on_provider_replaced=None) -> None:
         self._dvt = dvt_provider
         self._rsd = rsd_lockdown
+        # v1.15.2 audit (W2): `_reconnect()` swaps `self._dvt` for a
+        # brand-new provider, but DeviceManager kept its own reference
+        # in `sess.dvt_provider`. Teardown therefore closed the already
+        # closed original and left the live one open, holding the
+        # iPhone's tunnel slot — which is exactly the 30-90 s "refuses
+        # a new tunnel" window documented in _teardown_session. With
+        # the retry ladder doing up to four reconnects per failed
+        # set(), a minute of flaky WiFi could strand dozens. This hook
+        # lets the session follow the swap.
+        self._on_provider_replaced = on_provider_replaced
         self._sim: LocationSimulation | None = None
         self._reconnect_lock = asyncio.Lock()
         # Serialises real set() vs keepalive set() so they can't race
@@ -211,12 +279,28 @@ class DvtLocationService(LocationService):
             new_dvt = DvtProvider(self._rsd)
             await new_dvt.__aenter__()
             self._dvt = new_dvt
+            if self._on_provider_replaced is not None:
+                try:
+                    self._on_provider_replaced(new_dvt)
+                except Exception:
+                    log.exception(
+                        "on_provider_replaced hook failed; the old "
+                        "provider reference may leak on teardown"
+                    )
             log.info("DVT provider reconnected")
 
-    async def set(self, lat: float, lng: float) -> None:
+    async def set(self, lat: float, lng: float, *,
+                  retries: Optional[int] = None) -> None:
+        # `retries=None` -> the full ladder (user-visible operations
+        # deserve the patience). `retries=0` -> one attempt, no sleep,
+        # no channel rebuild: what the keepalive wants.
+        backoffs = (
+            self._RETRY_BACKOFFS_S if retries is None
+            else self._RETRY_BACKOFFS_S[:max(1, retries + 1)]
+        )
         async with self._call_lock:
             last_exc: Optional[BaseException] = None
-            for attempt, sleep_before in enumerate(self._RETRY_BACKOFFS_S):
+            for attempt, sleep_before in enumerate(backoffs):
                 if sleep_before > 0:
                     await asyncio.sleep(sleep_before)
                 try:
@@ -231,7 +315,7 @@ class DvtLocationService(LocationService):
                     last_exc = exc
                     log.warning(
                         "DVT channel dropped (attempt %d/%d, %s)",
-                        attempt + 1, len(self._RETRY_BACKOFFS_S),
+                        attempt + 1, len(backoffs),
                         type(exc).__name__,
                     )
                     continue
@@ -317,11 +401,16 @@ class LegacyLocationService(LocationService):
         if inspect.isawaitable(result):
             await result
 
-    async def set(self, lat: float, lng: float) -> None:
+    async def set(self, lat: float, lng: float, *,
+                  retries: Optional[int] = None) -> None:
         async with self._call_lock:
             try:
                 await self._maybe_await(self._service().set(lat, lng))
             except _RECOVERABLE:
+                if retries == 0:
+                    # Heartbeat: don't rebuild the service under the
+                    # lock, just report and let the next tick try.
+                    raise
                 self._svc = None
                 await self._maybe_await(self._service().set(lat, lng))
             prev = self.last_lat_lng

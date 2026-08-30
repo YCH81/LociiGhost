@@ -145,6 +145,14 @@ class _Session:
     # which IP to probe).
     peer_ip: Optional[str] = None
     peer_port: Optional[int] = None
+    # v1.15.2 audit (W5): set once we've told the GUI this session is
+    # degraded, so the health loop reports the transition rather than
+    # re-announcing it every 5 s.
+    degraded: bool = False
+    # v1.15.2 audit (W6): enough to replay whichever connect path built
+    # this session, so a phone that roamed between APs or slept its
+    # radio can be picked back up instead of being dropped for good.
+    reconnect_hint: Optional[dict] = None
 
 
 class DeviceManager:
@@ -294,6 +302,8 @@ class DeviceManager:
         on_session_lost,
         interval: float = 30.0,
         probe_timeout: float = 2.5,
+        on_degraded=None,
+        on_reconnect=None,
     ) -> None:
         """Periodically TCP-probe every WiFi session's peer endpoint
         and disconnect (+ notify) the ones that don't respond. The
@@ -317,39 +327,139 @@ class DeviceManager:
             except asyncio.CancelledError:
                 return
             try:
-                await self._health_check_once(on_session_lost, probe_timeout)
+                await self._health_check_once(
+                    on_session_lost, probe_timeout,
+                    on_degraded=on_degraded, on_reconnect=on_reconnect,
+                )
             except asyncio.CancelledError:
                 return
             except Exception:
                 log.exception("health-check tick failed (will retry)")
 
-    async def _health_check_once(self, on_session_lost, probe_timeout: float) -> None:
+    @staticmethod
+    async def _fire(cb, *args) -> None:
+        if cb is None:
+            return
+        try:
+            result = cb(*args)
+            if asyncio.iscoroutine(result):
+                await result
+        except Exception:
+            log.exception("health-check callback raised")
+
+    async def _health_check_once(
+        self, on_session_lost, probe_timeout: float,
+        on_degraded=None, on_reconnect=None,
+    ) -> None:
+        """One liveness sweep over every session.
+
+        v1.15.2 audit (W5). This used to check exactly one thing — a
+        TCP connect to `peer_ip:peer_port` — and skip any session that
+        didn't have those set. Only `connect_wifi_ip` ever set them, so
+        every device connected the normal way (Bonjour, or a USB
+        CoreDeviceTunnelProxy) fell out at the `continue` and got no
+        monitoring whatsoever. The 5 s loop was running and finding
+        nothing to do.
+
+        Worse, the probe answers the wrong question. On iOS 26 a WiFi
+        session commonly runs its location traffic over a USB DVT
+        fallback (see `location_for`), so the phone can answer on its
+        RemotePairing port — probe green — while the channel we
+        actually push coordinates down is dead. The keepalive is the
+        only thing exercising that channel while idle, so its success
+        rate is the honest signal. The socket probe stays as a
+        secondary check for the sessions that can offer one.
+        """
         # Snapshot to avoid dict-mutated-during-iteration: disconnect
         # below pops from `_sessions`.
         snapshot = list(self._sessions.items())
         for udid, sess in snapshot:
-            if sess.transport != "network":
+            reason: Optional[str] = None
+
+            # (1) Application-level liveness — works for every transport.
+            loc = sess.location
+            if loc is not None:
+                fails = getattr(loc, "consecutive_keepalive_failures", 0)
+                if fails >= loc.KEEPALIVE_DEAD_AFTER:
+                    reason = (
+                        f"location keepalive failed {fails} times in a row "
+                        f"(~{fails * loc.KEEPALIVE_INTERVAL_S:.0f}s)"
+                    )
+                elif fails >= loc.KEEPALIVE_DEGRADED_AFTER and not sess.degraded:
+                    sess.degraded = True
+                    log.warning("health-check: %s degraded (%d keepalive "
+                                "failures)", udid, fails)
+                    await self._fire(on_degraded, udid, True, reason or
+                                     f"{fails} consecutive keepalive failures")
+                elif fails == 0 and sess.degraded:
+                    sess.degraded = False
+                    log.info("health-check: %s recovered", udid)
+                    await self._fire(on_degraded, udid, False, "")
+
+            # (2) Socket probe, for sessions that told us a peer.
+            if (reason is None and sess.transport == "network"
+                    and sess.peer_ip and sess.peer_port):
+                alive = await self._probe_peer(sess.peer_ip, sess.peer_port,
+                                               timeout=probe_timeout)
+                if not alive:
+                    reason = f"{sess.peer_ip}:{sess.peer_port} unreachable"
+
+            if reason is None:
                 continue
-            if not sess.peer_ip or not sess.peer_port:
-                continue
-            alive = await self._probe_peer(sess.peer_ip, sess.peer_port,
-                                           timeout=probe_timeout)
-            if alive:
-                continue
-            log.warning(
-                "health-check: %s at %s:%d is unreachable; disconnecting",
-                udid, sess.peer_ip, sess.peer_port,
-            )
+
+            log.warning("health-check: %s is unhealthy (%s); disconnecting",
+                        udid, reason)
+            hint = sess.reconnect_hint
             try:
                 await self.disconnect(udid, clear_simulation=False)
             except Exception:
                 log.exception("health-check disconnect failed for %s", udid)
+            await self._fire(on_session_lost, udid, reason)
+
+            # (3) v1.15.2 audit (W6): one bounded attempt to get the
+            # session back. A phone roaming between access points, or
+            # sleeping its radio behind a locked screen, used to be
+            # torn down permanently and take the running route with it.
+            # We deliberately do NOT auto-resume movement here — the
+            # route state lives on the Mac, and silently restarting a
+            # simulation the user can't see would be worse than making
+            # them press Resume.
+            if hint is not None:
+                asyncio.create_task(
+                    self._attempt_reconnect(udid, hint, on_reconnect),
+                    name=f"reconnect-{udid[:8]}",
+                )
+
+    RECONNECT_BACKOFFS_S = (2.0, 5.0, 10.0)
+
+    async def _attempt_reconnect(self, udid: str, hint: dict,
+                                 on_reconnect=None) -> None:
+        """Replay whichever connect path built this session, a few times."""
+        for attempt, delay in enumerate(self.RECONNECT_BACKOFFS_S, start=1):
+            await asyncio.sleep(delay)
+            if udid in self._sessions:
+                return          # user (or another path) already got there
             try:
-                result = on_session_lost(udid)
-                if asyncio.iscoroutine(result):
-                    await result
-            except Exception:
-                log.exception("on_session_lost callback raised for %s", udid)
+                if hint.get("kind") == "wifi_ip":
+                    await self.connect_wifi_ip(
+                        hint["ip"], hint["port"], udid=udid,
+                    )
+                else:
+                    await self.connect(
+                        udid, prefer_wifi=bool(hint.get("prefer_wifi")),
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                log.info("auto-reconnect %s attempt %d/%d failed: %s",
+                         udid, attempt, len(self.RECONNECT_BACKOFFS_S), exc)
+                continue
+            log.info("auto-reconnect %s succeeded on attempt %d", udid, attempt)
+            await self._fire(on_reconnect, udid, True)
+            return
+        log.warning("auto-reconnect gave up on %s after %d attempts",
+                    udid, len(self.RECONNECT_BACKOFFS_S))
+        await self._fire(on_reconnect, udid, False)
 
     @staticmethod
     async def _probe_peer(ip: str, port: int, *, timeout: float) -> bool:
@@ -706,6 +816,7 @@ class DeviceManager:
                     usbmux_lockdown=lockdown,
                 )
 
+        session.reconnect_hint = {"kind": "connect", "prefer_wifi": prefer_wifi}
         async with self._lock:
             self._sessions[udid] = session
 
@@ -1238,6 +1349,7 @@ class DeviceManager:
                 peer_port=port,
             )
 
+            session.reconnect_hint = {"kind": "wifi_ip", "ip": ip, "port": port}
             async with self._lock:
                 # Replace any stale session for this UDID first.
                 old = self._sessions.pop(real_udid, None)
@@ -1646,7 +1758,16 @@ class DeviceManager:
                 dvt = DvtProvider(sess.rsd)
                 await dvt.__aenter__()
                 sess.dvt_provider = dvt
-                sess.location = DvtLocationService(dvt, sess.rsd)
+                sess.location = DvtLocationService(
+                    dvt, sess.rsd,
+                    # W2: _reconnect() builds a replacement provider;
+                    # without this the session would keep closing the
+                    # dead original and leak the live one, pinning the
+                    # iPhone's tunnel slot for 30-90 s.
+                    on_provider_replaced=(
+                        lambda p, _s=sess: setattr(_s, "dvt_provider", p)
+                    ),
+                )
                 log.info("location_for[v0.2.3]: DVT path OK on primary RSD")
             except Exception as exc:
                 # iOS 26 over RemotePairing (Bonjour/WiFi) exposes an
@@ -1723,7 +1844,12 @@ class DeviceManager:
                     sess.fallback_tunnel_ctx = tunnel_ctx
                     sess.fallback_rsd = usb_rsd
                     sess.dvt_provider = dvt
-                    sess.location = DvtLocationService(dvt, usb_rsd)
+                    sess.location = DvtLocationService(
+                        dvt, usb_rsd,
+                        on_provider_replaced=(
+                            lambda p, _s=sess: setattr(_s, "dvt_provider", p)
+                        ),
+                    )
                     log.info(
                         "location_for[v0.2.3]: USB-DVT fallback OK for %s",
                         sess.udid,

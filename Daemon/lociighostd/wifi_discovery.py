@@ -104,6 +104,14 @@ class WiFiDiscovery:
             if not services:
                 raise WiFiNotReachable(udid)
 
+            # v1.15.2 audit (W7): this used to take services[0]
+            # unconditionally. Bonjour routinely lists the iPhone's
+            # link-local IPv6 address first, and that is precisely the
+            # address whose connection attempts hang until they time
+            # out — so the "first" candidate was systematically the
+            # worst one. Order by how likely the address is to work
+            # before committing.
+            services = sorted(services, key=_address_preference)
             chosen = services[0]
             # Close every other live connection get_remote_... opened
             # so we don't leak file descriptors. Same-IP-different-route
@@ -114,6 +122,35 @@ class WiFiDiscovery:
                 except Exception:
                     pass
             return chosen
+
+
+def _address_preference(service) -> tuple[int, str]:
+    """Sort key for candidate tunnel services: lower is better.
+
+    pymobiledevice3 exposes the peer address under a few different
+    attribute names across versions, so this reads defensively and
+    falls back to "no opinion" rather than raising — an unknown shape
+    must never make discovery worse than the arbitrary order it
+    replaced.
+    """
+    host = ""
+    for attr in ("hostname", "host", "address", "ip", "remote_address"):
+        v = getattr(service, attr, None)
+        if isinstance(v, (tuple, list)) and v:
+            v = v[0]
+        if isinstance(v, str) and v:
+            host = v
+            break
+    if not host:
+        return (2, "")
+    h = host.lower()
+    if h.startswith("fe80:") or "%" in h:
+        return (3, h)               # link-local IPv6: last resort
+    if h.startswith("169.254."):
+        return (3, h)               # IPv4 link-local
+    if ":" in h:
+        return (1, h)               # routable IPv6
+    return (0, h)                   # routable IPv4: best
 
 
 class WiFiNotReachable(RuntimeError):

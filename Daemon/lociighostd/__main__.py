@@ -110,15 +110,37 @@ async def _run(socket: str) -> int:
     # reflects in the GUI before the user looks again, and the probe
     # itself is a single TCP-connect-and-close so the network cost is
     # trivial even at 1 iPhone × 5s.
-    async def on_session_lost(udid: str) -> None:
+    async def on_session_lost(udid: str, reason: str = "") -> None:
         await server.broadcast_event("event.device_changed", {
             "udid": udid,
             "status": "disconnected",
-            "reason": "wifi_health_check_failed",
+            "reason": reason or "health_check_failed",
+        })
+
+    # v1.15.2 audit (W5): a session whose location keepalive has been
+    # failing for ~9 s is not yet dead, but it is no longer pushing
+    # positions. Saying so lets the GUI show "connection unstable"
+    # instead of a confidently green badge over a frozen map.
+    async def on_degraded(udid: str, degraded: bool, detail: str) -> None:
+        await server.broadcast_event("event.device_changed", {
+            "udid": udid,
+            "status": "degraded" if degraded else "connected",
+            "reason": detail,
+        })
+
+    async def on_reconnect(udid: str, succeeded: bool) -> None:
+        await server.broadcast_event("event.device_changed", {
+            "udid": udid,
+            "status": "connected" if succeeded else "disconnected",
+            "reason": ("auto_reconnected" if succeeded
+                       else "auto_reconnect_exhausted"),
         })
 
     health_task = asyncio.create_task(
-        manager.run_health_check_loop(on_session_lost, interval=5.0),
+        manager.run_health_check_loop(
+            on_session_lost, interval=5.0,
+            on_degraded=on_degraded, on_reconnect=on_reconnect,
+        ),
         name="wifi-health-check",
     )
 

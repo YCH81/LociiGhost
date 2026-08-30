@@ -69,6 +69,13 @@ final class AppState {
     /// actual failures so the colour coding in the overlay stays
     /// meaningful.
     var lastInfo: String?
+
+    /// UDIDs the daemon has flagged as degraded — reachable, but the
+    /// location channel has stopped acknowledging pushes.
+    /// v1.15.2 audit (W5): `device.list` only knows connected /
+    /// not-connected, so this transition has to ride on the event.
+    var degradedUDIDs: Set<String> = []
+
     // v1.15.2 audit (P13): see the note at `eventTask` -- an
     // un-ignored stored Task property gets a per-access observation
     // hook, which is what produced the _AccessList.addAccess crash.
@@ -4188,6 +4195,7 @@ final class AppState {
     private func handleEvent(_ event: RPCEvent) async {
         switch event.method {
         case "event.device_changed":
+            applyDeviceChangedEvent(event.params)
             await refreshDevices()
         case "event.position_update":
             applyPositionEvent(event.params)
@@ -4435,6 +4443,32 @@ final class AppState {
         return out
     }
 
+    /// Handle the daemon's richer device-status transitions. See
+    /// `degradedUDIDs`.
+    private func applyDeviceChangedEvent(_ params: [String: AnyCodable]) {
+        guard let udid = stringValue(params["udid"]) else { return }
+        let status = stringValue(params["status"]) ?? ""
+        let reason = stringValue(params["reason"]) ?? ""
+        switch status {
+        case "degraded":
+            if degradedUDIDs.insert(udid).inserted {
+                showInfo(String(localized: "Connection to the iPhone is unstable — locations may not be getting through."))
+            }
+        case "connected":
+            if degradedUDIDs.remove(udid) != nil {
+                showInfo(String(localized: "Connection to the iPhone recovered."))
+            }
+            if reason == "auto_reconnected" {
+                showInfo(String(localized: "Reconnected to the iPhone. Press Resume to pick the route back up."))
+            }
+        default:
+            degradedUDIDs.remove(udid)
+            if reason == "auto_reconnect_exhausted" {
+                lastError = String(localized: "Lost the iPhone and couldn't reconnect. Check Wi-Fi (or the USB cable), then connect again.")
+            }
+        }
+    }
+
     private func applyStateEvent(_ params: [String: AnyCodable]) {
         // Random walk state events also flow through here. They carry a
         // refreshed planned_path roughly every five minutes, so the map
@@ -4450,12 +4484,26 @@ final class AppState {
         }
 
         guard let stateRaw = stringValue(params["state"]) else { return }
+
+        // v1.15.2 audit (W9): the navigator now reports *why* it died
+        // rather than going quiet and leaving a "Task exception was
+        // never retrieved" in the daemon log. "failed" is deliberately
+        // distinct from "idle" — idle means the route finished, and
+        // the lap-continuation logic below keys off exactly that.
+        if stateRaw == "failed" {
+            let detail = stringValue(params["error"]) ?? ""
+            lastError = detail.isEmpty
+                ? String(localized: "The route stopped: lost the connection to the iPhone.")
+                : String(localized: "The route stopped: ") + detail
+        }
+
         let mapped: NavigationVM.State?
         switch stateRaw {
         case "moving":  mapped = .moving
         case "paused":  mapped = .paused
         case "idle":    mapped = nil          // navigation is over
         case "stopped": mapped = nil
+        case "failed":  mapped = nil
         default:        mapped = nil
         }
 

@@ -27,6 +27,32 @@ class Tick:
     segment_index: int                # which polyline segment we're on
 
 
+def normalize_latlng(lat: float, lng: float) -> tuple[float, float]:
+    """Fold an arbitrary (lat, lng) back onto the globe.
+
+    v1.15.2 audit (L12): the joystick and the random walker integrate
+    small deltas with no bounds check, so holding north near the pole
+    produced lat > 90 — and since the longitude scale divides by
+    cos(lat), guarded only by `max(..., 1e-6)`, the very next step's
+    longitude delta exploded and the iPhone shot across the map.
+    Sitting at lng 179.99 and walking east produced lng > 180, which
+    the DVT service accepts and renders nonsensically.
+
+    Crossing a pole puts you on the antipodal meridian, so the
+    longitude is rotated 180 degrees in that branch rather than merely
+    clamped — clamping would make a walk over the pole slide sideways
+    along it instead of continuing straight.
+    """
+    if not (math.isfinite(lat) and math.isfinite(lng)):
+        raise ValueError(f"non-finite coordinate ({lat}, {lng})")
+    lat = ((lat + 90.0) % 360.0) - 90.0        # -> [-90, 270)
+    if lat > 90.0:
+        lat = 180.0 - lat
+        lng += 180.0
+    lng = ((lng + 180.0) % 360.0) - 180.0
+    return (lat, lng)
+
+
 def haversine_m(a: tuple[float, float], b: tuple[float, float]) -> float:
     """Great-circle distance in metres between two (lat, lng) tuples."""
     lat1, lng1 = a

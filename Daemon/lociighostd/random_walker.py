@@ -21,7 +21,7 @@ import random
 from dataclasses import dataclass
 from typing import Awaitable, Callable
 
-from .interpolator import haversine_m
+from .interpolator import haversine_m, normalize_latlng
 from .location_service import LocationService
 from .routing import NoRouteError, OsrmClient, RoutingError
 
@@ -267,7 +267,8 @@ class RandomWalker:
         dlng = (r * math.sin(theta)) / (
             METRES_PER_DEGREE_LAT * max(math.cos(math.radians(self._center[0])), 1e-6)
         )
-        return (self._center[0] + dlat, self._center[1] + dlng)
+        return normalize_latlng(self._center[0] + dlat,
+                                self._center[1] + dlng)
 
     async def _walk_to(self, target: tuple[float, float], speed_mps: float) -> bool:
         """Step toward `target` at `speed_mps`. Returns False if interrupted.
