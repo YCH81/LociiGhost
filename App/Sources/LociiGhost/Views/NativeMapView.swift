@@ -104,12 +104,12 @@ struct NativeMapView: View {
             .onChange(of: state.activeWaypoints) { _, _ in rebuildMapContentCaches() }
             .onMapCameraChange(frequency: .onEnd) { context in
                 s2Holder.lastObservedRegion = context.region
-                if s2Holder.applyingProgrammaticFly {
+                if s2Holder.isWithinProgrammaticFly {
                     // Our own follow tick, not the user. Keep the zoom
                     // reading current (scheduleSave would have done
                     // that) but skip the SwiftData write and the S2
                     // recompute. See the flag's doc comment.
-                    s2Holder.applyingProgrammaticFly = false
+                    s2Holder.programmaticFlyAt = nil
                     lastCameraDistance = max(
                         CameraPersistencePolicy.minSpanMeters,
                         context.region.span.latitudeDelta * 111_000)
@@ -454,10 +454,10 @@ struct NativeMapView: View {
     // MARK: - pendingMapFly handling
 
     private func applyFly(_ req: MapFlyRequest) {
-        // See S2GridHolder.applyingProgrammaticFly. Set before the
-        // camera moves so the change callback this triggers can tell
-        // itself apart from a real user pan.
-        s2Holder.applyingProgrammaticFly = true
+        // See S2GridHolder.programmaticFlyAt. Stamped before the camera
+        // moves so the change callback this triggers can tell itself
+        // apart from a real user pan.
+        s2Holder.programmaticFlyAt = Date()
         let center = CLLocationCoordinate2D(latitude: req.coordinate.lat,
                                             longitude: req.coordinate.lng)
         // preserveZoom = follow-puck path; mirror MapContainerView's
@@ -753,8 +753,18 @@ private extension Coordinate {
 fileprivate final class S2GridHolder {
     var lastObservedRegion: MKCoordinateRegion?
 
-    /// True from the moment `applyFly` moves the camera itself until
-    /// the resulting camera-change callback has been absorbed.
+    /// When `applyFly` last moved the camera itself, or nil.
+    ///
+    /// A timestamp rather than a flag on purpose. The first version of
+    /// this fix set a Bool in `applyFly` and cleared it in the
+    /// camera-change callback — but with SwiftUI's Map that callback
+    /// is asynchronous and is not guaranteed to arrive at all: fly to
+    /// the coordinate the camera is already at, or have one fly
+    /// superseded by the next, and it never fires. The flag then stays
+    /// set and swallows the NEXT genuine user pan, whose camera
+    /// position is silently not saved. A timestamp can only ever
+    /// suppress for `programmaticFlyWindow`, so a missed callback
+    /// heals itself.
     ///
     /// v1.15.2 audit (P3): MapContainerView has had this guard for a
     /// while, with a comment spelling out what happens without it —
@@ -770,7 +780,18 @@ fileprivate final class S2GridHolder {
     /// It lives on the holder rather than in @State because writes here
     /// don't invalidate `body` — which is the entire point of the
     /// holder.
-    var applyingProgrammaticFly = false
+    var programmaticFlyAt: Date?
+
+    /// How long after a programmatic fly a camera change is still
+    /// assumed to be ours. Follow ticks arrive every 1000 ms and each
+    /// one refreshes the stamp, so continuous following stays
+    /// suppressed for as long as it continues.
+    static let programmaticFlyWindow: TimeInterval = 1.5
+
+    var isWithinProgrammaticFly: Bool {
+        guard let at = programmaticFlyAt else { return false }
+        return Date().timeIntervalSince(at) < Self.programmaticFlyWindow
+    }
 
     init() {}
 }

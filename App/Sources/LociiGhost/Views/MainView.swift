@@ -136,10 +136,21 @@ struct MainView: View {
         // The daemon keeps simulating throughout — this only pauses
         // drawing.
         .onReceive(NotificationCenter.default.publisher(
-            for: NSWindow.didChangeOcclusionStateNotification)) { note in
-            guard let window = note.object as? NSWindow,
-                  window.isMainWindow || window.isKeyWindow else { return }
-            state.windowIsVisible = window.occlusionState.contains(.visible)
+            for: NSWindow.didChangeOcclusionStateNotification)) { _ in
+            // Ask every window, not the one the notification names.
+            //
+            // The first version of this guarded on
+            // `window.isMainWindow || window.isKeyWindow`, which rules
+            // out the exact case it exists for: a window fully covered
+            // by ANOTHER app's window isn't key or main any more, and
+            // Cmd-H'ing the app doesn't leave it key either. So the
+            // one notification that mattered was the one being
+            // discarded. Recomputing from NSApp.windows also copes
+            // with the app outliving its last window, which it does —
+            // applicationShouldTerminateAfterLastWindowClosed is false.
+            state.windowIsVisible = NSApp.windows.contains {
+                $0.isVisible && $0.occlusionState.contains(.visible)
+            }
         }
         .onChange(of: state.pendingStops) { _, _ in
             state.schedulePreviewRefresh()
