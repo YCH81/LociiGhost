@@ -170,6 +170,38 @@ final class S2GridTests: XCTestCase {
         }
     }
 
+    /// v1.15.2 audit (L15): at a cube-face boundary the off-face
+    /// branch clamped its projection back onto the same face, so it
+    /// returned the cell itself — `cellsIn`'s BFS then hit `seen` and
+    /// stopped expanding right at the seam.
+    func testKeyToNeighbors_crossesFaceBoundaries() {
+        // Points near cube-face seams. The exact face split is an
+        // implementation detail, so rather than hardcode a seam we
+        // sweep a band and assert the invariant everywhere.
+        for lng in stride(from: -180.0, through: 175.0, by: 5.0) {
+            for lat in [-80.0, -45.0, 0.0, 45.0, 80.0] {
+                let key = S2Grid.latLngToKey(lat: lat, lng: lng, level: 12)
+                let neighbours = S2Grid.keyToNeighbors(key)
+                XCTAssertEqual(neighbours.count, 4, "@ \(lat),\(lng)")
+                XCTAssertFalse(neighbours.contains(key),
+                               "self returned as neighbour @ \(lat),\(lng)")
+                XCTAssertEqual(Set(neighbours).count, 4,
+                               "duplicate neighbour @ \(lat),\(lng)")
+            }
+        }
+    }
+
+    /// v1.15.2 audit (L16): a key with a character outside 0-3 used to
+    /// yield i/j with fewer bits than `level` claimed — a cell in a
+    /// completely different place, returned as if it were fine.
+    func testKeyToIJ_rejectsMalformedKeys() {
+        for bad in ["9/0123", "0/01x3", "0/", "nonsense", "0/012 3", "-1/0123"] {
+            let (face, i, j, level) = S2Grid.keyToIJ(bad)
+            XCTAssertEqual([face, i, j, level], [0, 0, 0, 0],
+                           "malformed key \(bad) was accepted")
+        }
+    }
+
     func testKeyToNeighbors_areAdjacentByDistance() {
         // Each neighbour's centre should be within ~2.0 * cellSize
         // (1 cell = direct neighbour; we give 2x slack for diagonal

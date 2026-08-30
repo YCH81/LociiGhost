@@ -145,22 +145,34 @@ class Navigator:
         await self.wait()
         self._state = "stopped"
 
-    async def pause(self) -> None:
+    async def pause(self) -> bool:
+        """Pause the loop. Returns whether it actually applied.
+
+        v1.15.2 audit (L8): this used to return None whether or not it
+        did anything, and the RPC handler reported the resulting state
+        as success. A dwell that fires in the last few metres — or any
+        pause arriving just after the route ended — was a silent no-op
+        that the Mac rendered as "paused", with the ETA frozen and a
+        resume that also did nothing. The caller now knows.
+        """
         if self._state != "moving":
-            return
+            return False
         self._resume_event.clear()
         self._state = "paused"
         await self._emit("event.state_changed")
+        return True
 
-    async def resume(self) -> None:
+    async def resume(self) -> bool:
+        """Resume a paused loop. Returns whether it actually applied."""
         if self._state != "paused":
-            return
+            return False
         self._resume_event.set()
         # W8: drop the anchor so the paused interval isn't billed as
         # travel time on the first tick back.
         self._last_tick_at = None
         self._state = "moving"
         await self._emit("event.state_changed")
+        return True
 
     async def apply_speed(self, new_speed_mps: float) -> None:
         """Hot-swap speed. The next tick recomputes step distance from

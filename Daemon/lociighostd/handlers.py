@@ -372,6 +372,23 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
                 profile=profile,
             )
             laps = max(1, int(laps))
+            # v1.15.2 audit (L13): the loop-closing step above operates
+            # on `waypoints`, which this branch skips entirely, so a
+            # multi-lap Mac-resolved route was concatenated open-ended:
+            # every seam became a straight line from the last point
+            # back to the first, WALKED at the configured speed rather
+            # than jumped. The App currently forces laps=1 on this
+            # path so it isn't reachable today — which is exactly why
+            # it needs closing now rather than after the next
+            # refactor re-enables it.
+            if laps > 1 and mac_coords[0] != mac_coords[-1]:
+                mac_coords = mac_coords + [mac_coords[0]]
+                base_route = Route(
+                    coordinates=mac_coords,
+                    distance_m=route_length_m(mac_coords),
+                    duration_s=0.0,
+                    profile=profile,
+                )
             # Skip the engine dispatch fork below.
             goto_after_routing = True
         else:
@@ -482,16 +499,19 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
         }
 
     @server.method("location.pause")
-    async def location_pause(udid: str) -> dict[str, str]:
+    async def location_pause(udid: str) -> dict[str, Any]:
         nav = await _navigator_for(manager, udid)
-        await nav.pause()
-        return {"state": nav.state}
+        applied = await nav.pause()
+        # `applied` lets the Mac tell "paused" from "there was nothing
+        # left to pause" instead of optimistically rendering the former
+        # (v1.15.2 audit L8).
+        return {"state": nav.state, "applied": applied}
 
     @server.method("location.resume")
-    async def location_resume(udid: str) -> dict[str, str]:
+    async def location_resume(udid: str) -> dict[str, Any]:
         nav = await _navigator_for(manager, udid)
-        await nav.resume()
-        return {"state": nav.state}
+        applied = await nav.resume()
+        return {"state": nav.state, "applied": applied}
 
     @server.method("location.stop")
     async def location_stop(udid: str) -> dict[str, bool]:

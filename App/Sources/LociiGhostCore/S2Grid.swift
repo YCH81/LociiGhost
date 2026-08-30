@@ -128,11 +128,23 @@ public enum S2Grid {
             }
             // Off-face: project the would-be neighbour's centre back
             // to lat/lng and re-encode.
+            //
+            // v1.15.2 audit (L15): `s`/`t` used to be clamped into
+            // [0, 1] here. For ni == -1 that clamped to 0, which
+            // re-encodes to the cell we started from — so this branch
+            // returned SELF at every face boundary, `seen` already
+            // contained it, and the BFS in `cellsIn` silently stopped
+            // expanding at cube-face edges. Letting s/t run past the
+            // face is what makes the projection land on the adjacent
+            // face: stToUV is defined outside [0, 1], faceUVToXYZ then
+            // yields a direction vector just past the edge, and
+            // xyzToLatLng normalises it onto the neighbouring face,
+            // which latLngToKey encodes with the correct face id.
             let cellSize = 1.0 / Double(1 << level)
             let s = (Double(ni) + 0.5) * cellSize
             let t = (Double(nj) + 0.5) * cellSize
-            let u = stToUV(max(0, min(1, s)))
-            let v = stToUV(max(0, min(1, t)))
+            let u = stToUV(s)
+            let v = stToUV(t)
             let (x, y, z) = faceUVToXYZ(face: face, u: u, v: v)
             let (lat, lng) = xyzToLatLng(x: x, y: y, z: z)
             return latLngToKey(lat: lat, lng: lng, level: level)
@@ -263,6 +275,15 @@ public enum S2Grid {
               let face = Int(parts[0])
         else { return (0, 0, 0, 0) }
         let positions = parts[1]
+        // v1.15.2 audit (L16): `level` used to be `positions.count`
+        // while the loop below skipped any character that wasn't 0-3.
+        // A key with one bad character therefore produced i/j with
+        // fewer bits than `level` claimed — a cell at a completely
+        // different place on the face, returned with no indication
+        // anything was wrong. Count what we actually consume.
+        guard face >= 0, face <= 5,
+              positions.allSatisfy({ ("0"..."3").contains($0) })
+        else { return (0, 0, 0, 0) }
         let level = positions.count
         var i = 0
         var j = 0

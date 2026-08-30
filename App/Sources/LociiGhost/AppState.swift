@@ -3627,9 +3627,35 @@ final class AppState {
         }
     }
 
+    /// v1.15.2 audit (L8): these used to `try?` the RPC away and then
+    /// update the view model regardless. The daemon answers "ok" when
+    /// there is nothing left to pause — a dwell firing in the last few
+    /// metres, or a pause arriving just after the route ended — so the
+    /// UI showed "paused" over a route that had already finished, with
+    /// a frozen ETA and a resume that also did nothing. The daemon now
+    /// reports `applied`; we only move the view model when it did.
+    @discardableResult
+    private func applyRunnerState(_ method: String, udid: String) async -> Bool {
+        guard let client else { return false }
+        do {
+            let raw = try await client.callRaw(
+                method, params: ["udid": AnyCodable(udid)])
+            // Older daemons don't send `applied`; treating a missing
+            // field as success keeps this forward-compatible in the
+            // only direction that matters.
+            if let dict = raw.value as? [String: Any],
+               let applied = dict["applied"] as? Bool {
+                return applied
+            }
+            return true
+        } catch {
+            lastError = String(describing: error)
+            return false
+        }
+    }
+
     func pauseNavigation(udid: String) async {
-        guard let client else { return }
-        _ = try? await client.callRaw("location.pause", params: ["udid": AnyCodable(udid)])
+        guard await applyRunnerState("location.pause", udid: udid) else { return }
         if var nav = navigation {
             nav.state = .paused
             nav.pausedAt = Date()
@@ -3638,8 +3664,7 @@ final class AppState {
     }
 
     func resumeNavigation(udid: String) async {
-        guard let client else { return }
-        _ = try? await client.callRaw("location.resume", params: ["udid": AnyCodable(udid)])
+        guard await applyRunnerState("location.resume", udid: udid) else { return }
         if var nav = navigation {
             nav.state = .moving
             nav.pausedAt = nil
@@ -4494,9 +4519,12 @@ final class AppState {
                             guard let self else { return }
                             await self.pauseNavigation(udid: snap.udid)
                             try? await Task.sleep(for: .seconds(snap.dwellSeconds))
-                            guard self.dwellMonitor != nil else { return }
+                            // L9: same monitor we started on, or nothing.
+                            guard self.dwellMonitor?.generation == snap.generation
+                            else { return }
                             await self.resumeNavigation(udid: snap.udid)
-                            if var dm = self.dwellMonitor {
+                            if var dm = self.dwellMonitor,
+                               dm.generation == snap.generation {
                                 dm.isDwelling = false
                                 dm.nextIndex += 1
                                 if dm.nextIndex >= dm.stops.count {
@@ -5299,6 +5327,16 @@ struct DwellContext: Sendable, Equatable {
 /// ONE navigate RPC; this struct drives `location.pause` / `location.resume`
 /// when the simulated position arrives near each waypoint in order.
 struct DwellMonitor: Sendable {
+    /// Identity for the in-flight dwell Task.
+    ///
+    /// v1.15.2 audit (L9): the pause-sleep-resume Task only checked
+    /// `dwellMonitor != nil` when it woke. Switching routes during a
+    /// dwell replaced the monitor with a fresh one, and the old Task
+    /// then sent a stray resume for the NEW route and pushed its
+    /// `nextIndex` from 0 to 1 — so the new route's first stop never
+    /// dwelled. If the user had also switched device, the resume went
+    /// to the wrong iPhone.
+    let generation: UUID = UUID()
     let udid: String
     /// Route-snapped trigger coordinates (intermediate stops only; the
     /// last stop is handled by the idle event, not proximity detection).

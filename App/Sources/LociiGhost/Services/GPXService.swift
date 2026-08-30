@@ -74,7 +74,14 @@ enum GPXService {
     static func write(coordinates: [Coordinate], to url: URL,
                       name: String = "LociiGhost route") throws {
         let txt = gpxString(coordinates: coordinates, name: name)
-        try txt.data(using: .utf8)?.write(to: url, options: .atomic)
+        // v1.15.2 audit (L18): `data(using:)?.write(...)` evaluates to
+        // nothing when the encode returns nil, and the function then
+        // returned successfully having written no file — the UI
+        // reported a successful export of something that wasn't there.
+        guard let data = txt.data(using: .utf8) else {
+            throw GPXError.unparseable("could not encode the route as UTF-8")
+        }
+        try data.write(to: url, options: .atomic)
     }
 }
 
