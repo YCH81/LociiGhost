@@ -4,9 +4,11 @@ import asyncio
 import inspect
 import json
 import logging
+import os
+import socket
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 log = logging.getLogger(__name__)
 
@@ -61,6 +63,58 @@ class Connection:
         if params is not None:
             msg["params"] = params
         await self.send(msg)
+
+
+
+def _peer_uid(sock) -> Optional[int]:
+    """uid of the process on the other end of a Unix socket, or None.
+
+    v1.15.2 audit (X9): the socket's file mode is the entire access
+    control story for 23 RPC methods on a root daemon — location.*,
+    wifi.connect_ip, daemon.shutdown. Checking the peer's credentials
+    as well costs nothing and catches the case where the mode is wrong
+    for any reason.
+
+    Deliberately returns None rather than raising on every failure
+    path: a platform without getpeereid, or a syscall that misbehaves,
+    must never lock the user out of their own daemon. The caller only
+    rejects on a POSITIVE mismatch.
+    """
+    try:
+        if hasattr(socket, "SO_PEERCRED"):        # Linux
+            import struct
+            raw = sock.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED,
+                                  struct.calcsize("3i"))
+            _pid, uid, _gid = struct.unpack("3i", raw)
+            return uid
+        # macOS: getpeereid(2) via libc.
+        import ctypes
+        import ctypes.util
+        libc_path = ctypes.util.find_library("c")
+        if not libc_path:
+            return None
+        libc = ctypes.CDLL(libc_path, use_errno=True)
+        uid = ctypes.c_uint32()
+        gid = ctypes.c_uint32()
+        if libc.getpeereid(sock.fileno(), ctypes.byref(uid),
+                           ctypes.byref(gid)) != 0:
+            return None
+        return int(uid.value)
+    except Exception:
+        log.debug("could not read peer credentials", exc_info=True)
+        return None
+
+
+def _expected_peer_uid() -> Optional[int]:
+    """Which uid is allowed to talk to us: the user who launched the
+    daemon (SUDO_UID when we were elevated), else our own."""
+    try:
+        sudo_uid = os.environ.get("SUDO_UID")
+        if sudo_uid is not None:
+            return int(sudo_uid)
+        return os.geteuid()
+    except (ValueError, AttributeError, OSError):
+        return None
 
 
 class RpcServer:
@@ -123,10 +177,21 @@ class RpcServer:
             except FileNotFoundError:
                 pass
 
-        self._server = await asyncio.start_unix_server(
-            self._handle_client,
-            path=self.socket_path,
-        )
+        # v1.15.2 audit (X9): bind under a restrictive umask. The
+        # socket used to be created with the process umask (commonly
+        # 0755) and only chmod'ed to 0600 several statements later —
+        # a window in which any local process could connect. The
+        # socket's file mode is the ONLY thing guarding 23 RPC methods
+        # that include location.navigate, wifi.connect_ip and
+        # daemon.shutdown on a root-owned daemon.
+        old_umask = os.umask(0o077)
+        try:
+            self._server = await asyncio.start_unix_server(
+                self._handle_client,
+                path=self.socket_path,
+            )
+        finally:
+            os.umask(old_umask)
 
         # When this daemon was launched via `sudo`, the socket file is created
         # owned by root. The unprivileged GUI app then cannot connect to a
@@ -155,6 +220,30 @@ class RpcServer:
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter,
     ) -> None:
+        # v1.15.2 audit (X9): verify who is on the other end. Rejection
+        # only happens on a POSITIVE mismatch — if the credentials
+        # can't be read at all we allow and log, because failing closed
+        # here would mean the user can't reach their own daemon.
+        sock = writer.get_extra_info("socket")
+        if sock is not None:
+            try:
+                uid = _peer_uid(sock)
+                expected = _expected_peer_uid()
+            except Exception:
+                log.debug("peer credential check failed", exc_info=True)
+                uid = expected = None
+            if uid is not None and expected is not None and uid not in (expected, 0):
+                log.warning(
+                    "rejecting RPC connection from uid %d (expected %d)",
+                    uid, expected,
+                )
+                try:
+                    writer.close()
+                    await writer.wait_closed()
+                except Exception:
+                    pass
+                return
+
         conn = Connection(writer)
         self._connections.add(conn)
         peer = writer.get_extra_info("peername") or writer.get_extra_info("sockname")

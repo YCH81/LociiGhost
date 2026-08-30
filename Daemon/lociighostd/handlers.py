@@ -144,9 +144,19 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
                     message="stops must have at least 2 waypoints",
                 )
             waypoints = []
-            for s in stops:
-                lat = float(s["lat"])
-                lng = float(s["lng"])
+            for i, s in enumerate(stops):
+                # v1.15.2 audit (X17): a missing or non-numeric key
+                # used to raise KeyError/TypeError, which rpc.py's
+                # catch-all turned into "Internal error: 'lat'" —
+                # technically safe, completely unactionable.
+                try:
+                    lat = float(s["lat"])
+                    lng = float(s["lng"])
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise errors.RpcError(
+                        code=errors.PYMD3_ERROR,
+                        message=f"stop #{i} needs numeric lat and lng",
+                    ) from exc
                 _validate_coord(lat, lng)
                 waypoints.append((lat, lng))
         else:
@@ -295,9 +305,19 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
                     message="stops must have at least origin + 1 destination",
                 )
             waypoints = []
-            for s in stops:
-                lat = float(s["lat"])
-                lng = float(s["lng"])
+            for i, s in enumerate(stops):
+                # v1.15.2 audit (X17): a missing or non-numeric key
+                # used to raise KeyError/TypeError, which rpc.py's
+                # catch-all turned into "Internal error: 'lat'" —
+                # technically safe, completely unactionable.
+                try:
+                    lat = float(s["lat"])
+                    lng = float(s["lng"])
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise errors.RpcError(
+                        code=errors.PYMD3_ERROR,
+                        message=f"stop #{i} needs numeric lat and lng",
+                    ) from exc
                 _validate_coord(lat, lng)
                 waypoints.append((lat, lng))
         else:
@@ -328,9 +348,16 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
         # daemon-resolved routes.
         if polyline is not None:
             mac_coords: list[tuple[float, float]] = []
-            for p in polyline:
-                lat = float(p["lat"])
-                lng = float(p["lng"])
+            for i, p in enumerate(polyline):
+                try:
+                    lat = float(p["lat"])
+                    lng = float(p["lng"])
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise errors.RpcError(
+                        code=errors.PYMD3_ERROR,
+                        message=f"polyline point #{i} needs numeric "
+                                f"lat and lng",
+                    ) from exc
                 _validate_coord(lat, lng)
                 mac_coords.append((lat, lng))
             if len(mac_coords) < 2:

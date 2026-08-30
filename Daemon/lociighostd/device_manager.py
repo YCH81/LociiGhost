@@ -231,9 +231,15 @@ class DeviceManager:
     def _save_device_cache(self) -> None:
         """Atomic write of the union of name/ios/dev_mode caches.
         Fire-and-forget — caller doesn't await; failure logs but does
-        not bubble. We chmod 0o666 so a future user-mode daemon launch
-        (before the user re-Authenticates) can still update the cache
-        with anything new it learns from a fresh USB connect."""
+        not bubble.
+
+        v1.15.2 audit (X11): this used to chmod 0o666 so a later
+        user-mode daemon launch could update the cache. That left a
+        world-writable file which a ROOT process parses on its next
+        start, and whose contents (ios_version) flow into the phone
+        UI's device header. Ownership is handed to the invoking user
+        instead — the user-mode daemon runs as that user, so it can
+        still write, and nobody else can."""
         import json
         import os
         import tempfile
@@ -263,9 +269,15 @@ class DeviceManager:
             tmp.close()
             os.replace(tmp.name, path)
             try:
-                os.chmod(path, 0o666)
+                os.chmod(path, 0o600)
+                sudo_uid = os.environ.get("SUDO_UID")
+                sudo_gid = os.environ.get("SUDO_GID")
+                if sudo_uid is not None and os.geteuid() == 0:
+                    os.chown(path, int(sudo_uid),
+                             int(sudo_gid) if sudo_gid is not None else -1)
             except OSError:
-                pass
+                log.debug("could not tighten permissions on %s", path,
+                          exc_info=True)
         except Exception:
             log.warning("device cache save failed", exc_info=True)
             try:

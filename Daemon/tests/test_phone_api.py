@@ -60,8 +60,13 @@ def rig(monkeypatch):
     monkeypatch.setattr(osrm, "route_through", fake_route_through)
 
     app = create_http_app(mgr, osrm, bound_port=8779, rpc_server=rpc)
-    client = TestClient(app, client=("127.0.0.1", 51234))
+    # base_url matters: the Host guard added for X5 rejects anything
+    # that isn't an IP literal, which is precisely what makes DNS
+    # rebinding impossible. TestClient's default "testserver" is a name.
+    client = TestClient(app, base_url="http://127.0.0.1:8779",
+                        client=("127.0.0.1", 51234))
 
+    # Reading /info is what opens the pairing window (X4).
     pin = client.get("/api/phone/info").json()["pin"]
     token = client.post("/api/phone/auth", json={"pin": pin}).json()["token"]
     client.headers.update({"X-Lociighost-Token": token})

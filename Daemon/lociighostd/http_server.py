@@ -29,12 +29,13 @@ and switches the iPhone to the typed lat/lng).
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
 import secrets
 import socket
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Annotated, Any, Optional
 
 import httpx
 import uvicorn
@@ -46,6 +47,7 @@ from fastapi import (
     Query,
     Request,
 )
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -53,7 +55,7 @@ from fastapi.responses import (
     RedirectResponse,
 )
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from . import errors
 from .device_manager import DeviceManager
@@ -124,9 +126,44 @@ class _PhoneAuth:
     # abandoned tabs eventually.
     SESSION_IDLE_TIMEOUT_S = 300.0
 
+    # ── Brute-force resistance (v1.15.2 audit X4) ─────────────
+    # The HTTP listener is on 0.0.0.0 because that is the whole
+    # point of phone control, so the PIN is the only thing between
+    # anyone on the same cafe/office/dorm WiFi and full control of
+    # the user's iPhone location. Six digits with no rate limit is
+    # about forty minutes at a conservative 200 req/s. Three
+    # independent changes fix that:
+    #
+    #   * eight digits instead of six (100x the space),
+    #   * a per-IP lockout with exponential backoff, so an attacker
+    #     gets a handful of guesses per minute rather than
+    #     thousands per second,
+    #   * a pairing WINDOW: the PIN is only accepted while the user
+    #     is actually looking at the pairing sheet. Already-issued
+    #     tokens keep working indefinitely, so a paired phone is
+    #     unaffected; a stranger only has a target during the few
+    #     minutes the user is pairing.
+    PIN_DIGITS = 8
+    PAIRING_WINDOW_S = 600.0          # 10 minutes
+    LOCKOUT_AFTER_FAILURES = 5
+    LOCKOUT_BASE_S = 30.0
+    LOCKOUT_MAX_S = 900.0
+    # Total failures across all peers before we assume we're being
+    # attacked and rotate the PIN out from under it.
+    GLOBAL_FAILURES_BEFORE_ROTATE = 25
+
+    def _fresh_pin(self) -> str:
+        upper = 10 ** self.PIN_DIGITS
+        return str(secrets.randbelow(upper)).zfill(self.PIN_DIGITS)
+
     def __init__(self) -> None:
-        self.pin: str = f"{secrets.randbelow(1_000_000):06d}"
+        self.pin: str = ""
         self.created_at: float = time.monotonic()
+        # Pairing is closed until the desktop asks for the PIN.
+        self.pairing_open_until: float = 0.0
+        # peer ip -> (consecutive failures, locked-out-until monotonic)
+        self._failures: dict[str, tuple[int, float]] = {}
+        self._global_failures: int = 0
         # Active sessions, keyed by token. Pretty small dict —
         # typical user has ≤ 2 phones, so O(n) scans below are
         # fine.
@@ -141,14 +178,77 @@ class _PhoneAuth:
         a kicked phone needs the new PIN to reconnect, but
         sessions already authenticated stay valid until they
         explicitly log out or go stale."""
-        self.pin = f"{secrets.randbelow(1_000_000):06d}"
+        self.pin = self._fresh_pin()
         self.created_at = time.monotonic()
+        self._failures.clear()
+        self._global_failures = 0
 
-    def authenticate(self, pin: str) -> Optional[_PhoneSession]:
+    # ── Pairing window ────────────────────────────────────────
+
+    def open_pairing(self) -> None:
+        """Start (or extend) the window in which the PIN is accepted.
+
+        Called when the desktop reads `/api/phone/info` — i.e. when
+        the user has the pairing sheet in front of them. A fresh PIN
+        is minted each time the window opens from closed, so a PIN
+        that was on screen an hour ago is not still live.
+        """
+        now = time.monotonic()
+        if now >= self.pairing_open_until:
+            self.rotate_pin()
+        self.pairing_open_until = now + self.PAIRING_WINDOW_S
+
+    @property
+    def pairing_is_open(self) -> bool:
+        return time.monotonic() < self.pairing_open_until
+
+    # ── Lockout ───────────────────────────────────────────────
+
+    def lockout_remaining(self, peer: str) -> float:
+        """Seconds this peer must wait before its next attempt."""
+        count, until = self._failures.get(peer, (0, 0.0))
+        del count
+        return max(0.0, until - time.monotonic())
+
+    def _record_failure(self, peer: str) -> None:
+        count, _ = self._failures.get(peer, (0, 0.0))
+        count += 1
+        wait = 0.0
+        if count >= self.LOCKOUT_AFTER_FAILURES:
+            over = count - self.LOCKOUT_AFTER_FAILURES
+            wait = min(self.LOCKOUT_MAX_S, self.LOCKOUT_BASE_S * (2 ** over))
+        self._failures[peer] = (count, time.monotonic() + wait)
+        self._global_failures += 1
+        if wait:
+            log.warning("phone auth: %s locked out for %.0fs after %d "
+                        "failed PINs", peer, wait, count)
+        if self._global_failures >= self.GLOBAL_FAILURES_BEFORE_ROTATE:
+            log.warning("phone auth: %d failed PIN attempts overall — "
+                        "rotating the PIN and closing pairing",
+                        self._global_failures)
+            self.rotate_pin()
+            self.pairing_open_until = 0.0
+
+    def authenticate(self, pin: str, peer: str = "?") -> Optional[_PhoneSession]:
         """Verify PIN; if good, mint a fresh session and return
-        it. Returns None on bad PIN — caller raises 403."""
-        if not secrets.compare_digest(pin, self.pin):
+        it. Returns None on bad PIN — caller raises 403.
+
+        `peer` is the requesting IP, used for the lockout counter.
+        Callers must check `lockout_remaining(peer)` first and
+        `pairing_is_open` — this method enforces both anyway so a
+        new caller can't forget.
+        """
+        if not self.pairing_is_open or not self.pin:
+            log.warning("phone auth: PIN attempt from %s while pairing "
+                        "is closed", peer)
             return None
+        if self.lockout_remaining(peer) > 0:
+            return None
+        if not secrets.compare_digest(pin, self.pin):
+            self._record_failure(peer)
+            return None
+        self._failures.pop(peer, None)
+        self._global_failures = 0
         token = secrets.token_hex(16)
         session = _PhoneSession(token)
         self.sessions[token] = session
@@ -212,6 +312,29 @@ def _is_localhost(request: Request) -> bool:
     return host in ("127.0.0.1", "::1", "localhost")
 
 
+def _looks_like_ip_literal(host: str) -> bool:
+    """True if `host` is a bare IPv4/IPv6 address rather than a name.
+
+    Used by the Host-header guard: DNS rebinding requires a name, so
+    refusing names is the whole defence. See the middleware in
+    `create_http_app` (v1.15.2 audit X5).
+    """
+    if not host:
+        return False
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        # Link-local IPv6 carries a zone id: fe80::1%en0
+        if "%" in host:
+            try:
+                ipaddress.ip_address(host.split("%", 1)[0])
+                return True
+            except ValueError:
+                return False
+        return False
+
+
 def _get_lan_ip() -> Optional[str]:
     """Return the Mac's primary LAN IPv4. Used to display
     "http://<ip>:8777/phone" to the user. Same UDP-connect trick as
@@ -230,32 +353,62 @@ def _get_lan_ip() -> Optional[str]:
 
 
 class AuthRequest(BaseModel):
-    pin: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+    # v1.15.2 audit (X4): widened 6 -> 8 digits. Accepts either length
+    # so a phone page cached from an older daemon still gets a clean
+    # 403 rather than an unhelpful 422.
+    pin: str = Field(min_length=6, max_length=8, pattern=r"^\d{6,8}$")
+
+
+# v1.15.2 audit (X10): every field below used to be a bare `float` or
+# an unbounded list, and the phone endpoints — unlike their RPC
+# counterparts — never called `_validate_coord`. An authenticated phone
+# (or anyone who got past the PIN) could send lat=1e308, a 1e12-metre
+# random-walk radius, or five thousand stops. `allow_inf_nan=False`
+# matters as much as the ranges: Python's json module accepts
+# `Infinity`, and a NaN reaching the navigator makes `_seg_len` NaN,
+# after which the advance loop can never make progress and the route
+# hangs forever with no error.
+
+_STRICT = ConfigDict(allow_inf_nan=False, extra="forbid")
+
+Latitude = Annotated[float, Field(ge=-90.0, le=90.0)]
+Longitude = Annotated[float, Field(ge=-180.0, le=180.0)]
+# 200 m/s is ~720 km/h; anything faster is a typo or an attack, and
+# the daemon's own profile presets top out around 11 m/s.
+SpeedMps = Annotated[float, Field(gt=0.0, le=200.0)]
+Profile = Annotated[str, Field(pattern=r"^(walking|cycling|driving)$")]
 
 
 class TeleportRequest(BaseModel):
-    lat: float
-    lng: float
+    model_config = _STRICT
+    lat: Latitude
+    lng: Longitude
     udid: Optional[str] = None
 
 
 class NavigateRequest(BaseModel):
-    lat: float
-    lng: float
-    profile: str = "driving"
-    speed: Optional[float] = None
+    model_config = _STRICT
+    lat: Latitude
+    lng: Longitude
+    profile: Profile = "driving"
+    speed: Optional[SpeedMps] = None
     udid: Optional[str] = None
 
 
 class StopPoint(BaseModel):
-    lat: float
-    lng: float
+    model_config = _STRICT
+    lat: Latitude
+    lng: Longitude
 
 
 class MultiStopRequest(BaseModel):
-    stops: list[StopPoint]
-    profile: str = "driving"
-    speed: Optional[float] = None
+    model_config = _STRICT
+    # A phone screen can't usefully stage more than a handful; the cap
+    # is really about not letting one request fan out into an unbounded
+    # (and, with Google Directions, billable) routing job.
+    stops: list[StopPoint] = Field(min_length=1, max_length=100)
+    profile: Profile = "driving"
+    speed: Optional[SpeedMps] = None
     udid: Optional[str] = None
 
 
@@ -264,23 +417,27 @@ class UdidOnlyRequest(BaseModel):
 
 
 class JoystickStartRequest(BaseModel):
-    lat: float
-    lng: float
+    model_config = _STRICT
+    lat: Latitude
+    lng: Longitude
     udid: Optional[str] = None
 
 
 class JoystickUpdateRequest(BaseModel):
-    heading_deg: float
-    speed_mps: float
+    model_config = _STRICT
+    heading_deg: Annotated[float, Field(ge=-360.0, le=360.0)]
+    # 0 parks the stick, so this one is ge rather than gt.
+    speed_mps: Annotated[float, Field(ge=0.0, le=200.0)]
     udid: Optional[str] = None
 
 
 class RandomWalkRequest(BaseModel):
-    center_lat: float
-    center_lng: float
-    radius_m: float
-    min_speed_mps: float = 0.8
-    max_speed_mps: float = 1.6
+    model_config = _STRICT
+    center_lat: Latitude
+    center_lng: Longitude
+    radius_m: Annotated[float, Field(gt=0.0, le=50_000.0)]
+    min_speed_mps: SpeedMps = 0.8
+    max_speed_mps: SpeedMps = 1.6
     udid: Optional[str] = None
 
 
@@ -304,6 +461,62 @@ def create_http_app(
         setattr(rpc_server, "phone_auth", auth)
     static_dir = Path(__file__).parent / "static"
     app = FastAPI(title="LociiGhost Phone Control")
+
+    @app.exception_handler(RequestValidationError)
+    async def _validation_error(request: Request,
+                                exc: RequestValidationError) -> JSONResponse:
+        """Return a clean 422 without echoing the offending input.
+
+        v1.15.2 audit (X10): FastAPI's default handler puts the input
+        value into the response body, and json.dumps cannot serialise
+        Infinity or NaN — so the exact values the new bounds exist to
+        reject turned what should be a 422 into an unhandled 500 with a
+        traceback. Reporting only the field names is also one less
+        place attacker-controlled bytes get reflected back.
+        """
+        fields = sorted({
+            ".".join(str(part) for part in err.get("loc", ())[1:])
+            for err in exc.errors()
+        })
+        return JSONResponse(
+            {"detail": "invalid_request", "fields": fields},
+            status_code=422,
+        )
+
+    @app.middleware("http")
+    async def _guard_host_and_origin(request: Request, call_next):
+        """Block DNS rebinding and cross-site calls.
+
+        v1.15.2 audit (X5). `_is_localhost` tests the *connecting IP*,
+        and a browser running on the user's own Mac connects from
+        127.0.0.1 — so a page on evil.com that re-points its own name
+        at 127.0.0.1 (classic DNS rebinding) reached `/api/phone/info`
+        as same-origin, read the PIN out of the response, and had full
+        control of the iPhone. The page never had to be trusted; the
+        user only had to visit it.
+
+        Rebinding needs a hostNAME, so requiring the Host header to be
+        an IP literal (or localhost) removes the attack. The Origin
+        check then covers ordinary cross-site scripting attempts.
+        """
+        host = (request.headers.get("host") or "").rsplit(":", 1)[0]
+        host = host.strip("[]").lower()          # IPv6 literal brackets
+        allowed_host = (
+            host in ("", "localhost", "127.0.0.1", "::1")
+            or _looks_like_ip_literal(host)
+        )
+        if not allowed_host:
+            log.warning("rejecting request with non-IP Host header %r "
+                        "(possible DNS rebinding)", host)
+            return JSONResponse({"detail": "bad_host"}, status_code=421)
+
+        origin = request.headers.get("origin")
+        if origin and request.url.path.startswith("/api/"):
+            expected = f"{request.url.scheme}://{request.headers.get('host', '')}"
+            if origin != expected:
+                log.warning("rejecting cross-origin API call from %r", origin)
+                return JSONResponse({"detail": "bad_origin"}, status_code=403)
+        return await call_next(request)
 
     # Token dependency — looks up the session that owns the
     # token and touches its heartbeat. Raises 401 if no session
@@ -332,12 +545,25 @@ def create_http_app(
     # ---- Auth / pairing ----
 
     @app.post("/api/phone/auth")
-    async def phone_auth(req: AuthRequest) -> dict[str, Any]:
+    async def phone_auth(req: AuthRequest, request: Request) -> dict[str, Any]:
         # Each successful PIN exchange mints a FRESH token + a
         # FRESH `_PhoneSession`. Multiple phones can authenticate
         # independently — each one ends up with its own session
         # and can target a different iPhone.
-        session = auth.authenticate(req.pin)
+        peer = (request.client.host if request.client else "") or "?"
+        # v1.15.2 audit (X4): tell a locked-out or too-late caller
+        # apart from a wrong PIN, so the phone UI can say something
+        # useful and an attacker learns nothing they couldn't time
+        # anyway.
+        wait = auth.lockout_remaining(peer)
+        if wait > 0:
+            raise HTTPException(
+                status_code=429, detail=f"locked_out:{int(wait) + 1}",
+                headers={"Retry-After": str(int(wait) + 1)},
+            )
+        if not auth.pairing_is_open:
+            raise HTTPException(status_code=409, detail="pairing_closed")
+        session = auth.authenticate(req.pin, peer=peer)
         if session is None:
             raise HTTPException(status_code=403, detail="bad_pin")
         # Mac listens for `event.phone_session` to update its
@@ -416,12 +642,22 @@ def create_http_app(
     async def phone_info(request: Request) -> dict[str, Any]:
         if not _is_localhost(request):
             raise HTTPException(status_code=404)
+        # v1.15.2 audit (X4): reading the PIN is what the desktop does
+        # when the user opens the pairing sheet, so it is the honest
+        # signal for "the user is pairing right now". Opening the
+        # window here mints a fresh PIN if the previous window had
+        # expired, which means a PIN that was on screen an hour ago is
+        # no longer live. Already-issued tokens are untouched, so a
+        # phone paired this morning keeps working.
+        auth.open_pairing()
         ip = _get_lan_ip() or "127.0.0.1"
         return {
             "url": f"http://{ip}:{bound_port}/phone",
             "pin": auth.pin,
             "lan_ip": ip,
             "port": bound_port,
+            "pairing_seconds_left": int(
+                max(0.0, auth.pairing_open_until - time.monotonic())),
         }
 
     @app.post("/api/phone/rotate")
@@ -436,6 +672,8 @@ def create_http_app(
         # what the button's label ("kick my phones") actually promises.
         auth.rotate_pin()
         auth.clear_all()
+        # Pressing "Change PIN" means the user is about to re-pair.
+        auth.pairing_open_until = time.monotonic() + auth.PAIRING_WINDOW_S
         return {"ok": True, "pin": auth.pin}
 
     # ---- State (read) ----
@@ -902,14 +1140,28 @@ def create_http_app(
             )
             r.raise_for_status()
             results = r.json()
-        return [
-            {
-                "name": item.get("display_name", ""),
-                "lat": float(item["lat"]),
-                "lng": float(item["lon"]),
-            }
-            for item in results
-        ]
+        # v1.15.2 audit (X16): Nominatim answers a rate-limited or
+        # malformed request with a JSON *object* (or HTML), not a list.
+        # Iterating that yielded strings, `item.get` raised
+        # AttributeError, and the phone saw a 500 with a traceback in
+        # the daemon log instead of "no results".
+        if not isinstance(results, list):
+            log.warning("geocode: unexpected response shape %s",
+                        type(results).__name__)
+            return []
+        out: list[dict[str, Any]] = []
+        for item in results:
+            if not isinstance(item, dict):
+                continue
+            try:
+                out.append({
+                    "name": str(item.get("display_name", "")),
+                    "lat": float(item["lat"]),
+                    "lng": float(item["lon"]),
+                })
+            except (KeyError, TypeError, ValueError):
+                continue
+        return out
 
     # ---- Static files / phone HTML ----
 
@@ -963,6 +1215,9 @@ def create_http_app(
                 log.debug("phone_session_sweeper iteration failed", exc_info=True)
 
     app.state.phone_session_sweeper = phone_session_sweeper
+    # Exposed so tests (and any future introspection RPC) can reach the
+    # auth state without reaching into the closure.
+    app.state.phone_auth = auth
 
     return app
 
@@ -971,9 +1226,18 @@ def create_http_app(
 
 
 def _pick_free_port(candidates: list[int]) -> Optional[int]:
-    """Return the first port in `candidates` we can actually bind on
-    0.0.0.0. Returns None if every candidate is occupied — caller
-    logs and continues without the HTTP server in that case."""
+    """Return the first port in `candidates` we can bind on 0.0.0.0.
+
+    Returns None if every candidate is occupied.
+
+    v1.15.2 audit (X19): this is a probe — it binds, closes, and hands
+    the port to uvicorn to bind again — so something else can take the
+    port in between. The window is small but the consequence was
+    silent: phone control just didn't come up, and the log said
+    nothing about why. `run_http_server` now treats a bind failure as
+    "try the next candidate" rather than as fatal, which closes the
+    race in practice.
+    """
     for p in candidates:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -1021,7 +1285,12 @@ async def run_http_server(
         lifespan="off",           # we own the lifecycle
     )
     server = uvicorn.Server(config)
-    log.info("phone-control HTTP server starting on 0.0.0.0:%d", bound_port)
+    log.info(
+        "phone-control HTTP server starting on 0.0.0.0:%d "
+        "(reachable from the LAN; pairing is only open while the "
+        "desktop's phone-control window has been opened)",
+        bound_port,
+    )
     # Spawn the zombie-session sweeper alongside the HTTP loop
     # so a phone tab that vanishes without logging out gets
     # auto-cleared and the Mac's lockout overlay drops. The

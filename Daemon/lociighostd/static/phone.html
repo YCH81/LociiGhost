@@ -876,10 +876,10 @@
 <!-- PIN entry -->
 <div id="pin-screen">
   <h1>LociiGhost</h1>
-  <p class="subtitle" id="pin-subtitle">Enter the 6-digit PIN shown on the Mac</p>
-  <input id="pin-input" type="tel" maxlength="6" pattern="\d{6}"
+  <p class="subtitle" id="pin-subtitle">Enter the PIN shown on the Mac</p>
+  <input id="pin-input" type="tel" maxlength="8" pattern="\d{8}"
          autocomplete="off" inputmode="numeric"
-         placeholder="------">
+         placeholder="--------">
   <button id="pin-submit" disabled>Connect</button>
   <p id="pin-error"></p>
   <p style="margin-top:24px;font-size:11px;line-height:1.4;color:#888;text-align:center;">
@@ -1298,8 +1298,9 @@
   const pinError = document.getElementById('pin-error');
 
   pinInput.addEventListener('input', () => {
-    pinInput.value = pinInput.value.replace(/\D/g, '').slice(0, 6);
-    pinSubmit.disabled = pinInput.value.length !== 6;
+    // v1.15.2 audit (X4): the PIN is 8 digits now.
+    pinInput.value = pinInput.value.replace(/\D/g, '').slice(0, 8);
+    pinSubmit.disabled = pinInput.value.length !== 8;
   });
   pinInput.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !pinSubmit.disabled) pinSubmit.click();
@@ -1315,7 +1316,20 @@
         body: JSON.stringify({ pin: pinInput.value }),
       });
       if (!r.ok) {
-        pinError.textContent = t('bad_pin');
+        // Distinguish the three refusals so the user knows whether to
+        // retype, to wait, or to go press "Change PIN" on the Mac
+        // (v1.15.2 audit X4).
+        let msg = t('bad_pin');
+        try {
+          const detail = (await r.json()).detail || '';
+          if (r.status === 429) {
+            const secs = detail.split(':')[1] || '60';
+            msg = 'Too many wrong PINs. Try again in ' + secs + 's.';
+          } else if (r.status === 409) {
+            msg = 'Pairing is closed. Open the phone-control window on the Mac, then try again.';
+          }
+        } catch (_) { /* keep the default message */ }
+        pinError.textContent = msg;
         pinSubmit.disabled = false;
         pinSubmit.textContent = t('connect');
         pinInput.value = '';
@@ -2217,10 +2231,25 @@
     if (connected) {
       nameEl.textContent = connected.name;
       const transport = (connected.transport || '').toUpperCase();
-      const modeBadge = connected.mode && connected.mode !== 'idle'
-        ? ` · <span class="pill">${connected.mode}</span>` : '';
-      metaEl.innerHTML = `iOS ${connected.ios_version} · ${transport}` +
-        '<span class="pill connected">connected</span>' + modeBadge;
+      // v1.15.2 audit (X15): built with textContent + createElement
+      // rather than innerHTML. `ios_version` comes from the device's
+      // own ProductVersion (or, worse, from a device-cache file the
+      // daemon writes world-writable), and every other place in this
+      // page already uses textContent — this line was the one
+      // exception, and it was enough to steal the session token from
+      // a phone paired to a modified device.
+      metaEl.textContent = `iOS ${connected.ios_version} \u00b7 ${transport}`;
+      const connBadge = document.createElement('span');
+      connBadge.className = 'pill connected';
+      connBadge.textContent = 'connected';
+      metaEl.appendChild(connBadge);
+      if (connected.mode && connected.mode !== 'idle') {
+        metaEl.appendChild(document.createTextNode(' \u00b7 '));
+        const modePill = document.createElement('span');
+        modePill.className = 'pill';
+        modePill.textContent = connected.mode;
+        metaEl.appendChild(modePill);
+      }
 
       // Show / hide the pause button based on whether an
       // active runner exists (nav / walk / joystick). The
