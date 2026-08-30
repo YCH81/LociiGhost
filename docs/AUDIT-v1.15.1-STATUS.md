@@ -15,6 +15,21 @@
 專案根目錄的 `ZZ-test-a.command` 雙擊即可跑完三項並把結果寫進 `build-check.log`；
 確認無誤後可連同 `build-check.log` 一起刪掉。
 
+### 沒有編譯器時做過的替代驗證
+
+Swift 工具鏈在 Mac 鎖屏期間無法使用（雲端容器也裝不了，`download.swift.org`
+被 egress 擋掉）。以下三項改用「把邏輯搬出來實際跑」的方式驗證，各自抓到
+真正的缺陷：
+
+| 對象 | 方法 | 結果 |
+|---|---|---|
+| `S2Grid` L15/L16 | 把投影數學原樣移植成 Python 再比對新舊行為 | level 12 的 40 個面邊界格，**舊版有 19 個把自己當鄰居**，新版 0 個；全部 40 個都能到達另一個 cube face；既有 5 項測試與新增 2 項在移植版上全過 |
+| 特權 bootstrap 腳本 | 從 Swift 字串literal 抽出、代入插值、`bash -n` + 逐分支實跑 | 抓到 3 個缺陷（見 commit `1e1d681`）；修好後 stat 讀不到→96、group-writable→92、symlink→91、缺檔→90，X3 的 symlink 攻擊目標檔案原封不動 |
+| `phone.html` X15 | `node --check` + 以會跳脫的 DOM stub 比對新舊 render | 舊版 `innerHTML` 注入出可執行的 `<img onerror=…>`，新版輸出 `&lt;img …&gt;` 純文字，且 mode pill 仍正常 |
+
+這三輪加上單純重讀，總共在**我自己寫的修正裡**找到 6 個缺陷。這也是為什麼
+Phase 7 的兩個大重構要等編譯器 —— 沒有它的時候，錯誤就是以這個速率產生的。
+
 ---
 
 ## 逐項處置
