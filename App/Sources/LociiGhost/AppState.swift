@@ -1014,8 +1014,12 @@ final class AppState {
     /// random walk). Set by `runRoute` on Start; cleared by
     /// `stopNavigation` and on natural completion. `position_update`
     /// snapping reads this to find which on-disk Route to update.
-    @ObservationIgnored private var _currentlyPlayingRoute: Route?
-    /// Decoded copy of `_currentlyPlayingRoute?.points`, refreshed
+    // Deliberately not named `_currentlyPlayingRoute`: that is exactly
+    // the storage name the @Observable macro synthesises for a property
+    // called `currentlyPlayingRoute`, and having both in the same type
+    // is asking for a confusing collision later.
+    @ObservationIgnored private var playingRouteStorage: Route?
+    /// Decoded copy of `playingRouteStorage?.points`, refreshed
     /// whenever the played route changes.
     ///
     /// v1.15.2 audit (P2): `Route.points` is a computed property that
@@ -1030,9 +1034,9 @@ final class AppState {
     @ObservationIgnored private var playingRoutePointsCache: [Coordinate] = []
 
     var currentlyPlayingRoute: Route? {
-        get { _currentlyPlayingRoute }
+        get { playingRouteStorage }
         set {
-            _currentlyPlayingRoute = newValue
+            playingRouteStorage = newValue
             playingRoutePointsCache = newValue?.points ?? []
         }
     }
@@ -2481,7 +2485,7 @@ final class AppState {
         route.points = points
         // Keep the playback cache honest if the user edited the very
         // route that's currently playing (v1.15.2 audit P2).
-        if route === _currentlyPlayingRoute {
+        if route === playingRouteStorage {
             playingRoutePointsCache = points
         }
         try? ctx.save()
@@ -3643,11 +3647,16 @@ final class AppState {
             // Older daemons don't send `applied`; treating a missing
             // field as success keeps this forward-compatible in the
             // only direction that matters.
-            if let dict = raw.value as? [String: Any],
-               let applied = dict["applied"] as? Bool {
-                return applied
+            //
+            // The decoder produces [String: AnyCodable], not
+            // [String: Any] — casting to the latter compiles (Any
+            // takes anything) but then every lookup hands back an
+            // AnyCodable and `as? Bool` silently fails, so the guard
+            // would always fall through to `true`. Unwrap properly.
+            guard let dict = raw.value as? [String: AnyCodable] else {
+                return true
             }
-            return true
+            return unwrapBool(dict["applied"]) ?? true
         } catch {
             lastError = String(describing: error)
             return false
