@@ -99,6 +99,16 @@ final class MirrorDock {
     /// the display. The dock still works, but the windows overlap.
     private(set) var fitsOnScreen: Bool = true
 
+    /// The last placement calculation, as text.
+    ///
+    /// This is not debug scaffolding to be removed later. The layout
+    /// spans two coordinate systems and however many displays the
+    /// user has plugged in, and when it goes wrong the only thing
+    /// visible is "the window is in the wrong place" -- which is
+    /// consistent with a dozen different causes. One line of numbers
+    /// in the popover turns a bug report into an answer.
+    private(set) var diagnostics: String = ""
+
     var isEnabled: Bool { status != .off && status != .unsupported }
 
     // MARK: - Private state
@@ -383,6 +393,12 @@ final class MirrorDock {
             edge: edge,
         )
         fitsOnScreen = placement.fits
+
+        func r(_ v: CGFloat) -> String { String(Int(v.rounded())) }
+        diagnostics = "app \(r(appAX.minX)),\(r(appAX.minY)) \(r(appAX.width))×\(r(appAX.height))"
+            + "  screen \(r(screenAX.minX)),\(r(screenAX.minY)) \(r(screenAX.width))×\(r(screenAX.height))"
+            + "  → mirror \(r(placement.mirrorOrigin.x)),\(r(placement.mirrorOrigin.y))"
+            + (placement.appOrigin.map { "  move app → \(r($0.x))" } ?? "  app stays")
 
         if let appOrigin = placement.appOrigin {
             let nsOrigin = AXBridge.toAppKit(

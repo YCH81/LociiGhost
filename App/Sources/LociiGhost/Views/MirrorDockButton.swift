@@ -167,6 +167,14 @@ private struct MirrorDockPopover: View {
             )
         }
 
+        if !dock.diagnostics.isEmpty {
+            Text(verbatim: dock.diagnostics)
+                .font(.system(size: 9).monospaced())
+                .foregroundStyle(.tertiary)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+
         if dock.status == .docked || dock.status == .waitingForWindow {
             Button(role: .destructive) {
                 dock.quitMirrorApp()
