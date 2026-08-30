@@ -7,13 +7,17 @@
 
 | 檢查 | 指令 | 最後結果 |
 |---|---|---|
-| Swift 編譯 | `cd App && xcrun swift build --product LociiGhost` | ✅ exit 0（截至 Phase 5a） |
-| Swift 測試 | `cd App && xcrun swift test` | ✅ 50 passed（截至 Phase 5a） |
+| Swift 編譯 | `cd App && xcrun swift build --product LociiGhost` | ✅ exit 0（全部階段） |
+| Swift 測試 | `cd App && xcrun swift test` | ✅ 52 + 2 passed |
 | Daemon 測試 | `cd Daemon && .venv/bin/python -m pytest tests -q` | ✅ 106 passed |
 
-**Phase 5 後半與 Phase 6 的 Swift 改動尚未編譯驗證**（改動當下 Mac 鎖屏）。
-專案根目錄的 `ZZ-test-a.command` 雙擊即可跑完三項並把結果寫進 `build-check.log`；
-確認無誤後可連同 `build-check.log` 一起刪掉。
+**全部階段都已在 Frankie 的 Mac 上以 Xcode 工具鏈編譯並測試通過。**
+唯一剩下的 warning 全是既有的（`MapContainerView` 的 `MKAnnotationView`
+conditional downcast、`StartRouteSheet` 的 deprecated `onChange`），沒有一個
+來自這批修正。
+
+專案根目錄的 `ZZ-test-a.command` 雙擊即可重跑這三項並把結果寫進
+`build-check.log`。兩個檔案都是這次全檢的臨時產物，可以刪掉。
 
 ### 沒有編譯器時做過的替代驗證
 
@@ -112,8 +116,8 @@ Phase 7 的兩個大重構要等編譯器 —— 沒有它的時候，錯誤就�
 - ✅ **L16** `keyToIJ` 驗證 face 與 position 字元
 - ✅ **L17** `didFailWithError` 喚醒等待者
 - ✅ **L18** GPX 匯出失敗會 throw
-- ⬜ **P12** 兩個地圖實作抽共用元件 — 待辦（見下）
-- ⬜ **AppState 拆四刀** — 待辦（見下）
+- ✅ **P12** 抽出 `MapShared.swift`（選單政策、`menuString`、S2 常數、相機存檔政策）
+- ✅ **AppState 拆分** 5449 → 4198 行，搬出五個 `AppState+*.swift`
 
 ---
 
@@ -141,25 +145,23 @@ UI 會跳「已重新連線，按繼續」。若你想要自動續跑，要在 M
 
 ## 待辦
 
-**Phase 7 的兩個重構刻意留到編譯驗證之後**
+**唯一刻意未做：SMAppService + LaunchDaemon 遷移（X1–X3 的根本解）**
 
-`P12`（`MapContextMenuBuilder` / `MapGeometryPolicy` / `CameraPersistencePolicy`）
-與 AppState 拆四刀（`RouteLibraryStore` / `BookmarkStore` / `BackupService` /
-`DeviceConnectionCoordinator`）都是零行為改變的純整理，但也是最需要編譯器
-一路盯著的部分。目前已經累積了一批還沒編譯過的 Swift 改動，再把 5000 行的
-檔案拆開會讓錯誤無從二分。順序應該是：先跑一次 `ZZ-test-a.command` 讓
-build + test 全綠，再開始拆。
+漏洞本身已經堵住：root 執行前會拒絕 symlink、拒絕 group/other 可寫、檢查
+owner、驗證簽章 Team ID 與 App 一致，並且固定 `PATH`。要做根本解需要把 plist
+放進 `.app/Contents/Library/LaunchDaemons/`、daemon 執行檔搬進
+`Contents/MacOS/`、改用 `SMAppService.daemon(plistName:).register()`、移除
+osascript 提權路徑。這會整段換掉特權啟動流程，而且沒有真的做一次 root 安裝
+就無法驗證——弄錯的話 App 會完全起不了 daemon。建議單獨開分支、在能實機測的
+時候做。
 
-拆分邊界（依現有 MARK 區塊，都不在 1 Hz 事件路徑上）：
+**一個設計決定**
 
-| 新檔案 | 搬過去的東西 |
-|---|---|
-| `RouteLibraryStore` | Routes CRUD、GPX 匯入匯出、routes JSON I/O |
-| `BookmarkStore` | Bookmarks CRUD、bookmarks JSON I/O |
-| `BackupService` | `exportAllBackup` / `importAllBackup`（順帶就是 P11 改過的地方）|
-| `DeviceConnectionCoordinator` | connect / disconnect / wifi pair / refreshDevices |
-
-留在 `AppState` 的是真正需要集中的：連線狀態、移動模式、事件迴圈。
+W6 的自動重連會把 session 接回來，但不會自動重新開始移動。路線狀態在 Mac 端，
+在使用者看不到畫面的情況下靜靜重啟模擬比讓他按一下「繼續」更糟；UI 會跳
+「已重新連線，按繼續」。若要自動續跑，需在 Mac 端記住最後的 index 並在收到
+`auto_reconnected` 事件時重發 navigate。
 
 **清理**
-- 刪除暫時檔：`ZZ-test-a.command`、`build-check.log`（都在專案根目錄）。
+
+- 刪除臨時檔：`ZZ-test-a.command`、`build-check.log`（都在專案根目錄）。
