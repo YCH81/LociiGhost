@@ -26,6 +26,17 @@ struct BookmarkManagerSheet: View {
 
     // Bookmarks-tab state
     @State private var search: String = ""
+    /// Debounced copy of `search`, and the value the filter actually
+    /// reads.
+    ///
+    /// v1.15.2 audit (P7): `filteredBookmarks` is a computed property
+    /// referenced six times in one body pass, over a list this codebase
+    /// sizes at 3000+ entries elsewhere. Keyed straight off `search`,
+    /// every keystroke ran six full scans, each allocating two
+    /// lowercased strings per bookmark — tens of thousands of string
+    /// allocations per character typed, on the main actor. Debouncing
+    /// collapses that to one round per pause in typing.
+    @State private var debouncedSearch: String = ""
     @State private var selection: Set<PersistentIdentifier> = []
     @State private var bulkSheet: BulkSheetKind?
     private enum BulkSheetKind: Identifiable {
@@ -72,6 +83,14 @@ struct BookmarkManagerSheet: View {
                 case .categories: categoriesTab
                 }
             }
+        }
+        .task(id: search) {
+            // 200 ms after the last keystroke. Cancelled and restarted
+            // by `task(id:)` on every change, so mid-word typing never
+            // reaches the filter (v1.15.2 audit P7).
+            try? await Task.sleep(for: .milliseconds(200))
+            guard !Task.isCancelled else { return }
+            debouncedSearch = search
         }
         .frame(minWidth: 720, idealWidth: 880, maxWidth: 1100,
                minHeight: 480, idealHeight: 600, maxHeight: 900)
@@ -128,11 +147,14 @@ struct BookmarkManagerSheet: View {
     // MARK: - Derived data
 
     private var filteredBookmarks: [Bookmark] {
-        let q = search.trimmingCharacters(in: .whitespaces).lowercased()
+        let q = debouncedSearch.trimmingCharacters(in: .whitespaces)
         if q.isEmpty { return bookmarks }
+        // localizedCaseInsensitiveContains compares in place; the old
+        // `lowercased().contains` built two throwaway Strings per
+        // bookmark per scan.
         return bookmarks.filter {
-            $0.name.lowercased().contains(q) ||
-            $0.category.lowercased().contains(q)
+            $0.name.localizedCaseInsensitiveContains(q) ||
+            $0.category.localizedCaseInsensitiveContains(q)
         }
     }
 

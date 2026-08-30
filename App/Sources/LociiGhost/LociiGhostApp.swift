@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import AppKit
 import LociiGhostCore
 
 /// User-selectable UI language. `system` means "follow whatever
@@ -98,11 +99,36 @@ struct LociiGhostApp: App {
             NSLog("LociiGhost: SwiftData container failed (%@); falling back to in-memory",
                   String(describing: error))
             let mem = ModelConfiguration(isStoredInMemoryOnly: true)
-            return try! ModelContainer(
-                for: AppPreferences.self, Bookmark.self, Route.self, RecentPlace.self,
-                     StopPreset.self,
-                configurations: mem,
-            )
+            do {
+                return try ModelContainer(
+                    for: AppPreferences.self, Bookmark.self, Route.self, RecentPlace.self,
+                         StopPreset.self,
+                    configurations: mem,
+                )
+            } catch {
+                // v1.15.2 audit (X18): this used to be `try!`. It only
+                // fires when the SCHEMA itself is bad — the same
+                // failure the on-disk attempt just hit — and the app
+                // then died at launch with nothing on screen. v1.10.0
+                // through v1.10.3 were each burned by a startup
+                // fatalError; the least we can do is say what happened
+                // and where the store is, so the user can move it
+                // aside and get their data back.
+                NSLog("LociiGhost: in-memory SwiftData container also failed: %@",
+                      String(describing: error))
+                let alert = NSAlert()
+                alert.alertStyle = .critical
+                alert.messageText = String(localized: "LociiGhost can't start")
+                alert.informativeText = String(
+                    localized: "The preferences database couldn't be opened. Move this file aside and reopen the app:"
+                ) + "\n\n" + url.path + "\n\n" + String(describing: error)
+                alert.addButton(withTitle: String(localized: "Show in Finder"))
+                alert.addButton(withTitle: String(localized: "Quit"))
+                if alert.runModal() == .alertFirstButtonReturn {
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                }
+                exit(1)
+            }
         }
     }()
 

@@ -486,6 +486,10 @@ private struct TimesChip: View {
         .hoverHighlight(cornerRadius: 6, changesCursor: false)
         .help(LocalizedStringKey("Mac time / Time at the simulated location"))
         .onReceive(clockTimer) { tick in
+            // Nothing to update while the window is occluded — the
+            // clock is re-read on the next visible tick anyway
+            // (v1.15.2 audit P9).
+            guard state.windowIsVisible else { return }
             // Throttle to minute boundaries — that's the smallest unit
             // the rendered string cares about. Saves ~59/60 of the
             // body re-evals and (more importantly) the AppKit layout

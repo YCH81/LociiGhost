@@ -35,8 +35,21 @@ struct MultiStopPanel: View {
         let coord: Coordinate
     }
 
-    private var stagedStops: [StagedStop] {
-        state.pendingStops.map { StagedStop(id: stableID(for: $0), coord: $0) }
+    /// Cached projection of `state.pendingStops`.
+    ///
+    /// v1.15.2 audit (P15): this was a computed property, so every body
+    /// pass rebuilt the array and ran a Hasher plus a UUID
+    /// construction per stop. In multi-stop mode `pendingStops` changes
+    /// on every map click, so body passes are frequent and the list can
+    /// be long.
+    @State private var stagedStopsCache: [StagedStop] = []
+
+    private var stagedStops: [StagedStop] { stagedStopsCache }
+
+    private func rebuildStagedStops() {
+        stagedStopsCache = state.pendingStops.map {
+            StagedStop(id: stableID(for: $0), coord: $0)
+        }
     }
 
     /// Stable per-coordinate UUID, derived from a hash of the
@@ -138,6 +151,10 @@ struct MultiStopPanel: View {
         .sheet(isPresented: $showingBulkPaste) {
             BulkPasteStopsSheet()
         }
+        // Keep the cached projection in step with the source of truth
+        // (v1.15.2 audit P15).
+        .onAppear { rebuildStagedStops() }
+        .onChange(of: state.pendingStops) { _, _ in rebuildStagedStops() }
     }
 
     /// Saved-presets list. Right-click on a row → Delete; left-click

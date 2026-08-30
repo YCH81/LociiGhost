@@ -121,6 +121,11 @@ struct NativeMapView: View {
                 annotations
             }
             .mapStyle(currentMapStyle)
+            .onAppear { rebuildMapContentCaches() }
+            .onChange(of: state.previewRoute) { _, _ in rebuildMapContentCaches() }
+            .onChange(of: state.activeRoute) { _, _ in rebuildMapContentCaches() }
+            .onChange(of: state.pendingStops) { _, _ in rebuildMapContentCaches() }
+            .onChange(of: state.activeWaypoints) { _, _ in rebuildMapContentCaches() }
             .onMapCameraChange(frequency: .onEnd) { context in
                 s2Holder.lastObservedRegion = context.region
                 if s2Holder.applyingProgrammaticFly {
@@ -195,8 +200,8 @@ struct NativeMapView: View {
         // Drawn while the user is staging multi-stop / nav before
         // hitting Navigate. Always layered first so the active route
         // and pins draw on top.
-        if !state.previewRoute.isEmpty {
-            MapPolyline(coordinates: state.previewRoute.map { $0.cl })
+        if !previewRouteCL.isEmpty {
+            MapPolyline(coordinates: previewRouteCL)
                 .stroke(
                     (state.previewIsStraightLine ? Color.teal : Color.orange).opacity(0.55),
                     style: StrokeStyle(
@@ -208,8 +213,8 @@ struct NativeMapView: View {
                 )
         }
         // ── Active route polyline ───────────────────────────────────
-        if let route = state.activeRoute, !route.isEmpty {
-            MapPolyline(coordinates: route.map { $0.cl })
+        if !activeRouteCL.isEmpty {
+            MapPolyline(coordinates: activeRouteCL)
                 .stroke(
                     (state.activeRouteIsStraightLine ? Color.teal : Color.orange).opacity(0.95),
                     style: StrokeStyle(
@@ -262,7 +267,7 @@ struct NativeMapView: View {
         // can still tell which leg they're looking at. The daemon
         // receives every stop unchanged.
         if !state.navigationActive {
-            ForEach(Self.decimatedStops(state.pendingStops), id: \.0) { (idx, stop) in
+            ForEach(pendingStopPins, id: \.0) { (idx, stop) in
                 Annotation(
                     "Stop \(idx + 1)",
                     coordinate: stop.cl,
@@ -272,7 +277,7 @@ struct NativeMapView: View {
             }
         }
         // ── Live waypoints (blue, numbered) ─────────────────────────
-        ForEach(Self.decimatedStops(state.activeWaypoints), id: \.0) { (idx, wp) in
+        ForEach(waypointPins, id: \.0) { (idx, wp) in
             Annotation(
                 "Waypoint \(idx + 1)",
                 coordinate: wp.cl,
@@ -508,6 +513,26 @@ struct NativeMapView: View {
     /// before .onMapCameraChange has fired at least once, so we keep
     /// the last known distance in a stored @State for the next fly.
     @State private var lastCameraDistance: CLLocationDistance = 4_000
+
+    // ── Cached MapContent inputs (v1.15.2 audit P6) ─────────────────
+    // `annotations` is rebuilt on every body pass, and body runs on
+    // every follow tick. Each pass re-allocated a fresh
+    // [CLLocationCoordinate2D] for each polyline (two 4000-element
+    // arrays, ~64 KB apiece, on a long GPX) and re-ran two O(n)
+    // decimation scans — all to produce byte-identical results,
+    // once a second. These caches are refreshed only when their
+    // sources actually change.
+    @State private var previewRouteCL: [CLLocationCoordinate2D] = []
+    @State private var activeRouteCL: [CLLocationCoordinate2D] = []
+    @State private var pendingStopPins: [(Int, Coordinate)] = []
+    @State private var waypointPins: [(Int, Coordinate)] = []
+
+    private func rebuildMapContentCaches() {
+        previewRouteCL = state.previewRoute.map { $0.cl }
+        activeRouteCL = (state.activeRoute ?? []).map { $0.cl }
+        pendingStopPins = Self.decimatedStops(state.pendingStops)
+        waypointPins = Self.decimatedStops(state.activeWaypoints)
+    }
     private func currentCameraDistance() -> CLLocationDistance { lastCameraDistance }
 
     // MARK: - Region-change save

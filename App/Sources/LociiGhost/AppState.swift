@@ -76,6 +76,12 @@ final class AppState {
     /// not-connected, so this transition has to ride on the event.
     var degradedUDIDs: Set<String> = []
 
+    /// False while the main window is fully occluded or hidden. Set by
+    /// MainView from NSWindow occlusion notifications; read by
+    /// `shouldFollowSimulatedLocation` and the status-bar clock so
+    /// invisible UI stops doing per-tick work. See P9 there.
+    var windowIsVisible: Bool = true
+
     // v1.15.2 audit (P13): see the note at `eventTask` -- an
     // un-ignored stored Task property gets a per-access observation
     // hook, which is what produced the _AccessList.addAccess crash.
@@ -96,7 +102,16 @@ final class AppState {
 
     // MARK: - Devices
     var devices: [DeviceVM] = []
-    var selectedUDID: String?
+    var selectedUDID: String? {
+        didSet {
+            // Re-point the observed mirror at the newly selected
+            // device (v1.15.2 audit P5).
+            guard selectedUDID != oldValue else { return }
+            currentSimulatedLocation = selectedUDID.flatMap { udid in
+                udid == Self.virtualMapUDID ? nil : simulatedLocationsByDevice[udid]
+            }
+        }
+    }
 
     // MARK: - Pending teleport / stops
     /// Ordered list of points the user has staged on the map but not yet
@@ -236,7 +251,25 @@ final class AppState {
     /// In-memory only. The daemon owns the durable per-device
     /// `last_lat_lng` on its `LocationService`; the Mac doesn't
     /// try to persist this dictionary across app launches.
-    private(set) var simulatedLocationsByDevice: [String: Coordinate] = [:]
+    @ObservationIgnored private(set) var simulatedLocationsByDevice: [String: Coordinate] = [:]
+
+    /// The selected device's simulated location, mirrored out of
+    /// `simulatedLocationsByDevice`.
+    ///
+    /// v1.15.2 audit (P5): `@Observable` registers observers against
+    /// the stored property they touched, not the value they computed
+    /// from it. Because `simulatedLocation` and `currentMapFocus` both
+    /// read the dictionary, EVERY write to it woke them — including a
+    /// position event for a device the user isn't looking at. With two
+    /// iPhones connected, the map's observation loop ran at the sum of
+    /// both devices' event rates and discarded half the work; with
+    /// three, two thirds. The dictionary is now unobserved and this
+    /// mirror is the only thing views track, so it changes exactly
+    /// when the visible device moves.
+    ///
+    /// Kept in step in three places: the `simulatedLocation` setter,
+    /// `setSimulatedLocation(_:for:)`, and `selectedUDID`'s didSet.
+    private(set) var currentSimulatedLocation: Coordinate?
 
     /// What's-currently-displayed simulated location. Reads /
     /// writes route through `simulatedLocationsByDevice` keyed on
@@ -251,10 +284,10 @@ final class AppState {
     ///     selected devices still update their own slot
     var simulatedLocation: Coordinate? {
         get {
-            guard let udid = selectedUDID,
-                  udid != Self.virtualMapUDID
+            guard let udid = selectedUDID, udid != Self.virtualMapUDID
             else { return nil }
-            return simulatedLocationsByDevice[udid]
+            // The mirror already tracks `udid`; see its doc comment.
+            return currentSimulatedLocation
         }
         set {
             guard let udid = selectedUDID,
@@ -272,6 +305,7 @@ final class AppState {
             } else {
                 simulatedLocationsByDevice.removeValue(forKey: udid)
             }
+            currentSimulatedLocation = newValue
             scheduleWeatherAndTzRefresh()
         }
     }
@@ -298,9 +332,12 @@ final class AppState {
         } else {
             simulatedLocationsByDevice.removeValue(forKey: udid)
         }
-        // Only fire the chip refresh if the event was for the
-        // visible device — chips show selected-device state.
+        // Only touch observed state — and fire the chip refresh — when
+        // the event was for the visible device. Before P5 the write
+        // above was itself observed, so a background device's 1 Hz
+        // event stream redrew the foreground device's map.
         if udid == selectedUDID {
+            currentSimulatedLocation = coord
             scheduleWeatherAndTzRefresh()
         }
     }
@@ -441,6 +478,15 @@ final class AppState {
     /// recenter button) still pan because those go through
     /// `pendingMapFly` directly, not this getter.
     var shouldFollowSimulatedLocation: Bool {
+        // v1.15.2 audit (P9): the window can be fully occluded or the
+        // app hidden while a route keeps running — the app deliberately
+        // outlives its last window
+        // (applicationShouldTerminateAfterLastWindowClosed == false).
+        // Panning a map nobody is looking at costs a camera animation,
+        // a SwiftData camera write and (with the S2 grid on) a BFS,
+        // once a second, on a laptop. The daemon keeps simulating; only
+        // the drawing pauses.
+        guard windowIsVisible else { return false }
         guard mapAutoRecenter else { return false }
         if navigation != nil { return true }
         switch activeMovementMode {
@@ -1211,7 +1257,16 @@ final class AppState {
         // redundant write-back-to-disk that would otherwise fire here.
         isHydratingPreferences = true
         alertSoundEnabled = prefs.alertSoundEnabled
-        googleGeocodeAPIKey = prefs.googleGeocodeAPIKey
+        // X8 migration: an older build stored the key in plaintext
+        // here. Move it into the Keychain on first launch and wipe the
+        // plaintext copy — leaving it behind would defeat the point.
+        if let legacy = prefs.googleGeocodeAPIKey, !legacy.isEmpty {
+            KeychainSecret.write(legacy, to: KeychainSecret.googleDirectionsKey)
+            prefs.googleGeocodeAPIKey = nil
+            prefs.hasGoogleGeocodeAPIKey = true
+            try? modelContext?.save()
+        }
+        googleGeocodeAPIKey = KeychainSecret.read(KeychainSecret.googleDirectionsKey)
         routingEngine = RoutingEngine(rawValue: prefs.routingEngineRaw) ?? .osrmDemo
         appearanceMode = AppearanceMode(rawValue: prefs.appearanceModeRaw) ?? .brand
         isHydratingPreferences = false
@@ -1298,6 +1353,10 @@ final class AppState {
     /// `nil` (or whitespace-only) means "no key configured" — the
     /// geocoder fallback is then bypassed. Stored property pattern
     /// matches alertSoundEnabled above (see its doc-comment for why).
+    /// v1.15.2 audit (X8): this now lives in the Keychain, not in
+    /// `preferences.store`. It is a key the user pays for per
+    /// request, and the store is an unencrypted SQLite file any
+    /// process running as them can read.
     var googleGeocodeAPIKey: String? = nil {
         didSet {
             guard !isHydratingPreferences else { return }
@@ -1307,8 +1366,15 @@ final class AppState {
             // input so the Settings field doesn't visually lurch
             // while they're editing.
             let trimmed = googleGeocodeAPIKey?.trimmingCharacters(in: .whitespacesAndNewlines)
-            preferences?.googleGeocodeAPIKey =
-                (trimmed?.isEmpty == false) ? trimmed : nil
+            let toStore = (trimmed?.isEmpty == false) ? trimmed : nil
+            if !KeychainSecret.write(toStore, to: KeychainSecret.googleDirectionsKey) {
+                lastError = String(localized: "Couldn't save the API key to the Keychain.")
+            }
+            // Never write the key itself to SwiftData again; keep only
+            // the "is one configured" bit so views that just need to
+            // show a checkmark don't have to touch the Keychain.
+            preferences?.googleGeocodeAPIKey = nil
+            preferences?.hasGoogleGeocodeAPIKey = (toStore != nil)
             try? modelContext?.save()
         }
     }
@@ -1601,7 +1667,7 @@ final class AppState {
             localized: "Import bookmarks from JSON",
             comment: "Title of the open-file dialog for bookmarks JSON import",
         )
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let url = await presentPanel(panel) else { return }
         do {
             let entries = try BookmarksJSONService.parse(url: url)
             guard !entries.isEmpty else {
@@ -1690,7 +1756,7 @@ final class AppState {
             localized: "Export bookmarks to JSON",
             comment: "Title of the save-file dialog for bookmarks JSON export",
         )
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let url = await presentPanel(panel) else { return }
 
         do {
             let data = try BookmarksJSONService.encodeExport(bookmarks: all)
@@ -1829,7 +1895,7 @@ final class AppState {
             localized: "Import routes from JSON",
             comment: "Title of the open-file dialog for routes JSON import",
         )
-        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+        guard let url = await presentPanel(panel) else { return nil }
         do {
             let entries = try RoutesJSONService.parse(url: url)
             guard !entries.isEmpty else {
@@ -1907,7 +1973,7 @@ final class AppState {
             localized: "Export routes to JSON",
             comment: "Title of the save-file dialog for routes JSON export",
         )
-        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+        guard let url = await presentPanel(panel) else { return nil }
 
         do {
             let data = try RoutesJSONService.encodeExport(routes: all)
@@ -2001,7 +2067,7 @@ final class AppState {
             localized: "Export all data (full backup)",
             comment: "Title of the save-file dialog for full backup export",
         )
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let url = await presentPanel(panel) else { return }
 
         do {
             let encoder = JSONEncoder()
@@ -2036,7 +2102,7 @@ final class AppState {
             localized: "Restore from backup JSON",
             comment: "Title of the open-file dialog for full backup import",
         )
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let url = await presentPanel(panel) else { return }
 
         let bundle: FullBackupBundle
         do {
@@ -2651,7 +2717,7 @@ final class AppState {
         panel.allowsMultipleSelection = false
         panel.title = String(localized: "Import GPX",
                              comment: "Title of the open-file dialog for GPX import")
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let url = await presentPanel(panel) else { return }
         do {
             let coords = try GPXService.loadCoordinates(from: url)
             // Prefill the name field with the filename stem. Most GPX
@@ -2684,7 +2750,7 @@ final class AppState {
         panel.nameFieldStringValue = "lociighost-route.gpx"
         panel.title = String(localized: "Export current route as GPX…",
                              comment: "Title of the save-file dialog for GPX export")
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let url = await presentPanel(panel) else { return }
         do {
             try GPXService.write(coordinates: pendingStops, to: url)
             lastError = nil
@@ -2857,15 +2923,60 @@ final class AppState {
         NSApp.terminate(nil)
     }
 
+    /// Show an open/save panel without stalling the main actor's queue.
+    ///
+    /// v1.15.2 audit (P11): every import/export path called
+    /// `panel.runModal()` from inside an `async` function.
+    /// `runModal()` spins its own modal run loop, which keeps AppKit
+    /// drawing but leaves the Swift Concurrency continuations already
+    /// queued on the main actor — the daemon event loop's included —
+    /// parked until the user dismisses the dialog. Position events
+    /// piled up behind an open file picker and arrived in a burst
+    /// afterwards. A sheet returns control to the actor instead.
+    ///
+    /// NSOpenPanel is an NSSavePanel, so this covers both; every caller
+    /// wants a single URL.
+    @MainActor
+    private func presentPanel(_ panel: NSSavePanel) async -> URL? {
+        guard let window = NSApp.keyWindow ?? NSApp.mainWindow else {
+            // No window to hang a sheet on (shouldn't happen while the
+            // UI is up, but a modal is better than silently doing
+            // nothing).
+            return panel.runModal() == .OK ? panel.url : nil
+        }
+        let response = await panel.beginSheetModal(for: window)
+        return response == .OK ? panel.url : nil
+    }
+
     // MARK: - Devices
 
     func refreshDevices() async {
         guard let client else { return }
         do {
-            let raw: AnyCodable = try await client.callRaw("device.list")
-            let data = try JSONEncoder().encode(raw)
-            let list = try JSONDecoder().decode([DeviceVM].self, from: data)
-            self.devices = list
+            // v1.15.2 audit (P10): this used to callRaw into an
+            // AnyCodable, re-encode that to JSON and decode it again —
+            // a full round trip to accomplish a type conversion the
+            // generic `call` does directly. And the unconditional
+            // assignment invalidated every view reading `devices` on
+            // each device_changed event, even when nothing about any
+            // device had actually changed; DeviceVM is Hashable, so we
+            // can just check.
+            let list: [DeviceVM] = try await client.call("device.list")
+            if list != self.devices {
+                self.devices = list
+            }
+
+            // v1.15.2 audit (P14): drop per-device state for devices
+            // that are gone. `savedStopsByDevice` can hold a whole
+            // 4000-point GPX (~64 KB) per device, and the app is
+            // deliberately long-lived — applicationShouldTerminate-
+            // AfterLastWindowClosed returns false — so nothing ever
+            // reclaimed it. `simulatedLocationsByDevice` is
+            // deliberately NOT pruned; see the v1.6 note below.
+            let live = Set(list.map(\.udid)).union([Self.virtualMapUDID])
+            savedStopsByDevice = savedStopsByDevice.filter { live.contains($0.key) }
+            savedModesByDevice = savedModesByDevice.filter { live.contains($0.key) }
+            savedRandomWalkByDevice = savedRandomWalkByDevice.filter { live.contains($0.key) }
 
             // NOTE (v1.6): we used to nuke the simulated-location
             // record when the owning iPhone went offline. That
@@ -3990,7 +4101,8 @@ final class AppState {
             than: appVersion,
         ) {
             latestVersion = manifest.version
-            latestVersionURL = manifest.url
+            // X12: only an https URL ever reaches NSWorkspace.open.
+            latestVersionURL = manifest.safeDownloadURL
         } else {
             // User caught up — clear any stale badge state.
             latestVersion = nil

@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import LociiGhostCore
 
 struct MainView: View {
@@ -129,6 +130,17 @@ struct MainView: View {
         // observation of `pendingStops` / `useStraightLine` does the work
         // — `didSet` on those properties wouldn't fire reliably under the
         // @Observable macro for in-place array mutations.
+        // v1.15.2 audit (P9): stop per-tick UI work while nobody can
+        // see the window. `didChangeOcclusionState` fires when the
+        // window is fully covered, minimised, or the app is hidden.
+        // The daemon keeps simulating throughout — this only pauses
+        // drawing.
+        .onReceive(NotificationCenter.default.publisher(
+            for: NSWindow.didChangeOcclusionStateNotification)) { note in
+            guard let window = note.object as? NSWindow,
+                  window.isMainWindow || window.isKeyWindow else { return }
+            state.windowIsVisible = window.occlusionState.contains(.visible)
+        }
         .onChange(of: state.pendingStops) { _, _ in
             state.schedulePreviewRefresh()
         }
