@@ -186,6 +186,17 @@ enum PrivilegedDaemonInstaller {
         let appBundlePath = Bundle.main.bundleURL.path
         let body = """
         #!/bin/bash
+        # v1.15.2 audit (X1, second pass): pin PATH before anything
+        # else. This script runs as root but inherits the invoking
+        # user's environment, and every command below — stat, pkill,
+        # pgrep, awk, date, rm, mkdir, sleep, codesign — was being
+        # resolved through it. A writable directory early in the user's
+        # PATH would have shadowed any one of them and run as root,
+        # which is precisely the escalation the ownership checks below
+        # exist to prevent. Found by extracting this script and
+        # exercising it, not by reading it.
+        PATH=/usr/bin:/bin:/usr/sbin:/sbin
+        export PATH
         LOG=\(q(layout.logFile.path))
         # v1.15.2 audit (X3): the log lives under the user's own
         # ~/Library/Logs, and this script appends to it as root. A
@@ -204,7 +215,13 @@ enum PrivilegedDaemonInstaller {
         log() { printf '[%s] %s\\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$LOG" 2>/dev/null || true; }
         log "===== privileged install start ====="
         log "uid=$(id -u) euid=$(id -un) home=$HOME"
-        log "daemon: \(layout.daemonExecutable.path)"
+        # Single-quoted: this is the one interpolation in the script
+        # that put a filesystem path inside a DOUBLE-quoted shell
+        # string, so a path containing $(…), a backtick or $VAR would
+        # have been expanded — by a root shell (v1.15.2 audit X1,
+        # second pass). Every other interpolation here is either a
+        # numeric uid/gid, a literal, or already q()-escaped.
+        log \(q("daemon: " + layout.daemonExecutable.path))
         mkdir -p \(q(layout.socketDir.path)) \(q(layout.logFile.deletingLastPathComponent().path)) || log "mkdir failed: $?"
         log "killing any prior lociighostd..."
         # Match on the basename `lociighostd` — covers both the
@@ -233,6 +250,12 @@ enum PrivilegedDaemonInstaller {
         rm -f \(q(layout.socketPath)) >>"$LOG" 2>&1 || true
 
         # ---- refuse to run anything a non-root user could have edited
+        #
+        # Exit codes, so the log identifies the failing check exactly:
+        #   90 missing / not executable   94 signature verify failed
+        #   91 path is a symlink          95 signing team != app's team
+        #   92 group/other writable       96 mode unreadable
+        #   93 unexpected owner           97 owner unreadable
         DAEMON=\(q(layout.daemonExecutable.path))
         if [ ! -x "$DAEMON" ]; then
           log "FATAL: daemon missing or not executable: $DAEMON"; exit 90
@@ -241,8 +264,22 @@ enum PrivilegedDaemonInstaller {
         if [ -h "$DAEMON" ]; then
           log "FATAL: daemon path is a symlink: $DAEMON"; exit 91
         fi
-        PERM=$(stat -f '%Lp' "$DAEMON" 2>/dev/null || echo 777)
-        OWNER=$(stat -f '%u' "$DAEMON" 2>/dev/null || echo -1)
+        PERM=$(stat -f '%Lp' "$DAEMON" 2>/dev/null)
+        OWNER=$(stat -f '%u' "$DAEMON" 2>/dev/null)
+        # Fail closed, but say WHY. Feeding an empty or malformed value
+        # to $(( 8#$PERM )) is a bash error that leaves the comparison
+        # undefined, and reporting "mode 777" or "uid -1" for what was
+        # really a stat failure sends whoever reads the log looking for
+        # a permissions problem that doesn't exist.
+        case "$PERM" in
+          [0-7][0-7][0-7]|[0-7][0-7][0-7][0-7]) ;;
+          *) log "FATAL: could not read the mode of $DAEMON (stat gave '$PERM')"
+             exit 96 ;;
+        esac
+        case "$OWNER" in
+          ''|*[!0-9]*) log "FATAL: could not read the owner of $DAEMON (stat gave '$OWNER')"
+                       exit 97 ;;
+        esac
         # group- or other-writable means someone who is not root can
         # change what root executes.
         if [ $(( 8#$PERM & 8#022 )) -ne 0 ]; then
