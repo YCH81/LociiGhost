@@ -9,15 +9,18 @@
 |---|---|---|
 | Swift 編譯 | `cd App && xcrun swift build --product LociiGhost` | ✅ exit 0（全部階段） |
 | Swift 測試 | `cd App && xcrun swift test` | ✅ 52 + 2 passed |
-| Daemon 測試 | `cd Daemon && .venv/bin/python -m pytest tests -q` | ✅ 106 passed |
+| Daemon 煙霧測試 | 真的啟動 lociighostd 再打它的 RPC 與 HTTP 介面 | ✅ 21/21 |
+| Daemon 測試 | `cd Daemon && .venv/bin/python -m pytest tests -q` | ✅ 107 passed |
 
 **全部階段都已在 Frankie 的 Mac 上以 Xcode 工具鏈編譯並測試通過。**
 唯一剩下的 warning 全是既有的（`MapContainerView` 的 `MKAnnotationView`
 conditional downcast、`StartRouteSheet` 的 deprecated `onChange`），沒有一個
 來自這批修正。
 
-專案根目錄的 `ZZ-test-a.command` 雙擊即可重跑這三項並把結果寫進
-`build-check.log`。兩個檔案都是這次全檢的臨時產物，可以刪掉。
+煙霧測試那一項特別值得留意：測試套件用的是 FastAPI TestClient 與 mock，
+所以在那之前 **daemon 從來沒有真的被啟動過**。實跑之後確認 X4 的配對視窗與
+每 IP 鎖定、X5 的 Host/Origin 阻擋、X6 的換 PIN、X10 的邊界（含 JSON
+`Infinity` 回 422 而非 500）在真的 uvicorn 與真的 unix socket 上都成立。
 
 ### 沒有編譯器時做過的替代驗證
 
@@ -31,8 +34,21 @@ Swift 工具鏈在 Mac 鎖屏期間無法使用（雲端容器也裝不了，`do
 | 特權 bootstrap 腳本 | 從 Swift 字串literal 抽出、代入插值、`bash -n` + 逐分支實跑 | 抓到 3 個缺陷（見 commit `1e1d681`）；修好後 stat 讀不到→96、group-writable→92、symlink→91、缺檔→90，X3 的 symlink 攻擊目標檔案原封不動 |
 | `phone.html` X15 | `node --check` + 以會跳脫的 DOM stub 比對新舊 render | 舊版 `innerHTML` 注入出可執行的 `<img onerror=…>`，新版輸出 `&lt;img …&gt;` 純文字，且 mode pill 仍正常 |
 
-這三輪加上單純重讀，總共在**我自己寫的修正裡**找到 6 個缺陷。這也是為什麼
-Phase 7 的兩個大重構要等編譯器 —— 沒有它的時候，錯誤就是以這個速率產生的。
+這幾輪加上重讀與實跑，總共在**我自己寫的修正裡**找到 9 個缺陷：
+
+| # | 在哪 | 怎麼找到的 |
+|---|---|---|
+| 1 | L8 `applyRunnerState` 的 `AnyCodable` cast 永遠取不到值 | 重讀 |
+| 2 | P2 後備變數撞上 `@Observable` 巨集的儲存名稱 | 重讀 |
+| 3 | X1 特權腳本沒有固定 `PATH` | 抽出腳本實跑 |
+| 4 | X1 `stat` 失敗時訊息說謊、空值讓算式語法錯誤 | 抽出腳本實跑 |
+| 5 | X1 一處路徑放在雙引號 shell 字串裡會被展開 | 抽出腳本實跑 |
+| 6 | X15 的 DOM stub 沒模擬跳脫（測試本身無效） | 實跑 |
+| 7 | P3 黏著的 bool 在 callback 沒觸發時會吞掉下一次真實 pan | diff 自審 |
+| 8 | P9 遮蔽偵測的條件正好排除它要處理的情境 | diff 自審 |
+| 9 | W6 的 task 沒保留強參考，可能被 GC 掉 | diff 自審 |
+
+九個裡有五個是編譯器與測試都看不見的。
 
 ---
 
