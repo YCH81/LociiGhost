@@ -63,9 +63,23 @@ final class AppPreferences {
     /// uses Google as a fallback when MapKit's local search returns
     /// no useful matches (e.g. Chinese-language store names that
     /// Apple's geocoder struggles with). Empty / nil → Google is
-    /// disabled, MapKit-only behaviour. Stored in plain text in
-    /// SwiftData; the user pastes their own key.
+    /// disabled, MapKit-only behaviour.
+    ///
+    /// v1.15.2 audit (X8): DEPRECATED as storage. The key now lives in
+    /// the Keychain (`KeychainSecret.googleDirectionsKey`); this
+    /// property is kept only so an existing store can be read once
+    /// and migrated, after which it is set to nil. Do not write to it.
     var googleGeocodeAPIKey: String?
+
+    /// Whether a Google key is configured, mirrored out of the
+    /// Keychain so UI that only needs a checkmark doesn't have to
+    /// unlock anything. Optional with a default so SwiftData can
+    /// migrate an existing store without a schema version bump.
+    /// Optional rather than a defaulted Bool because SwiftData's
+    /// lightweight migration is only guaranteed for optionals, and
+    /// failing it here would drop the user into the in-memory
+    /// fallback — losing every bookmark and route.
+    var hasGoogleGeocodeAPIKey: Bool?
 
     // ── v1.9.1: Routing engine picker (default changed to MapKit in v1.10) ─
     /// Which routing backend to use when planning navigation routes.

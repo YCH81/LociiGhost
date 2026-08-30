@@ -3,6 +3,7 @@ import MapKit
 import CoreLocation
 import Contacts
 import AppKit
+import LociiGhostCore
 
 /// Floating search field on top of the map.
 ///
@@ -325,6 +326,29 @@ struct MapSearchBar: View {
         )
     }
 
+    /// One autocomplete suggestion with a content-derived identity.
+    ///
+    /// v1.15.2 audit (P8): the list used `id: \.offset`, so when a new
+    /// set of completions arrived SwiftUI reused row 0's view for a
+    /// suggestion with entirely different text. Identity now follows
+    /// the content, with a counter only as a tiebreaker for genuinely
+    /// duplicated entries.
+    private struct SuggestionItem: Identifiable {
+        let completion: MKLocalSearchCompletion
+        let id: String
+    }
+
+    private var suggestionItems: [SuggestionItem] {
+        var seen: [String: Int] = [:]
+        return model.completions.prefix(8).map { c in
+            let base = "\(c.title)|\(c.subtitle)"
+            let n = seen[base, default: 0]
+            seen[base] = n + 1
+            return SuggestionItem(completion: c,
+                                  id: n == 0 ? base : "\(base)#\(n)")
+        }
+    }
+
     private var suggestionsList: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let coord = coordCandidate {
@@ -335,11 +359,11 @@ struct MapSearchBar: View {
                     Divider().padding(.leading, 12)
                 }
             }
-            ForEach(Array(model.completions.prefix(8).enumerated()), id: \.offset) { _, completion in
-                SuggestionRow(completion: completion)
+            ForEach(suggestionItems) { item in
+                SuggestionRow(completion: item.completion)
                     .contentShape(.rect)
                     .onTapGesture {
-                        Task { await pick(completion) }
+                        Task { await pick(item.completion) }
                     }
                 Divider().padding(.leading, 12)
             }

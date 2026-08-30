@@ -395,7 +395,6 @@ struct MapContainerView: NSViewRepresentable {
         /// Scanline budget — matches the SwiftUI Map side. MKMapKit
         /// itself handles many more overlays, but `addOverlays` cost
         /// scales linearly with count.
-        private static let s2ScanlineCap = 2_000
 
         func scheduleS2GridSync(on map: MKMapView) {
             // Toggling off → wipe immediately, no debounce wait.
@@ -438,7 +437,7 @@ struct MapContainerView: NSViewRepresentable {
             let result = S2GridEnumerator.gridLines(
                 viewport: viewport,
                 level: level,
-                scanlineCap: Self.s2ScanlineCap,
+                scanlineCap: MapGeometryPolicy.s2ScanlineCap,
             )
             state.s2EffectiveLevel = result.effectiveLevel
 
@@ -598,110 +597,25 @@ struct MapContainerView: NSViewRepresentable {
             menu.popUp(positioning: nil, at: point, in: map)
         }
 
-        /// Look up a localized string for use in an NSMenu, honouring
-        /// the user's `appLanguage` picker. Required because:
-        ///
-        ///   * NSMenu is AppKit — `\.locale` SwiftUI environment doesn't
-        ///     reach it
-        ///   * `String(localized: …)` uses `Bundle.main.preferredLocalizations`,
-        ///     which we've forced to `[zh-Hant, en]` at app init (for
-        ///     MapKit Chinese labels). Without this helper, every menu
-        ///     item would silently lock to zh-Hant.
-        ///
-        /// We read `appLanguage` straight from UserDefaults (that's where
-        /// `@AppStorage` lives). `.system` falls back to `Bundle.main`,
-        /// which honours the AppleLanguages override above.
-        private func menuString(_ key: String) -> String {
-            let lang = UserDefaults.standard.string(forKey: "appLanguage") ?? "system"
-            let target: String
-            switch lang {
-            case "en":      target = "en"
-            case "zh-Hant": target = "zh-Hant"
-            default:        return Bundle.main.localizedString(forKey: key, value: key, table: nil)
-            }
-            if let path = Bundle.main.path(forResource: target, ofType: "lproj"),
-               let lprojBundle = Bundle(path: path) {
-                return lprojBundle.localizedString(forKey: key, value: key, table: nil)
-            }
-            return Bundle.main.localizedString(forKey: key, value: key, table: nil)
-        }
+        // The NSMenu localisation workaround moved to
+        // MapContextMenuPolicy.localized (v1.15.2 audit P12).
 
+        /// Which rows exist and when each is enabled lives in
+        /// `MapContextMenuPolicy`, shared with NativeMapView — that
+        /// policy is what drifted between the two (v1.15.2 audit P12).
+        /// Only the wiring is local: this view dispatches straight to
+        /// its Coordinator, using `contextMenuCoordinate` captured at
+        /// right-click time.
         private func makeContextMenu(at coord: CLLocationCoordinate2D) -> NSMenu {
-            let menu = NSMenu()
-
-            // Coordinate header — disabled so it reads as info, not action.
-            let header = NSMenuItem()
-            header.title = String(format: "📍  %.5f, %.5f", coord.latitude, coord.longitude)
-            header.isEnabled = false
-            menu.addItem(header)
-            menu.addItem(.separator())
-
-            let isConnected = state.devices
-                .first(where: { $0.udid == state.selectedUDID })?
-                .connected ?? false
-
-            let teleport = NSMenuItem(
-                title: menuString("Teleport here"),
-                action: #selector(menuTeleport(_:)),
-                keyEquivalent: ""
-            )
-            teleport.target = self
-            teleport.image = NSImage(systemSymbolName: "wand.and.stars", accessibilityDescription: nil)
-            teleport.isEnabled = isConnected
-            if !isConnected {
-                teleport.toolTip = menuString("Connect a device first.")
+            MapContextMenuPolicy.buildMenu(for: coord, state: state) { spec, item in
+                item.target = self
+                switch spec.action {
+                case .teleport:       item.action = #selector(self.menuTeleport(_:))
+                case .addStop:        item.action = #selector(self.menuAddStop(_:))
+                case .copyCoordinate: item.action = #selector(self.menuCopyCoordinate(_:))
+                case .bookmark:       item.action = #selector(self.menuAddBookmark(_:))
+                }
             }
-            menu.addItem(teleport)
-
-            // v1.11.2 bug #3 follow-up: "Add as stop" only makes sense
-            // when the user has already opened Multi-stop mode (left-
-            // click on the map follows the same rule, see line ~262).
-            // Right-clicking on the map while a route / random walk /
-            // joystick is running, or while no mode is active at all,
-            // used to silently append to pendingStops anyway — confusing
-            // because the new pin never showed up in any visible
-            // staging list. Disable the item with a hint instead.
-            let canAddStop = state.activeMovementMode == .multiStop
-            let addStop = NSMenuItem(
-                title: menuString("Add as stop"),
-                action: #selector(menuAddStop(_:)),
-                keyEquivalent: ""
-            )
-            addStop.target = self
-            addStop.image = NSImage(systemSymbolName: "mappin.and.ellipse", accessibilityDescription: nil)
-            addStop.isEnabled = canAddStop
-            if !canAddStop {
-                addStop.toolTip = menuString("Switch to Multi-stop mode first")
-            }
-            menu.addItem(addStop)
-
-            // Copy-coordinates lands right after the action items
-            // (Teleport / Add stop) and before the bookmark
-            // section. Puts the user's mental model in the order
-            // "do something with this point" → "remember this
-            // point" without forcing them to scan the whole menu.
-            let copyCoord = NSMenuItem(
-                title: menuString("Copy coordinates"),
-                action: #selector(menuCopyCoordinate(_:)),
-                keyEquivalent: "",
-            )
-            copyCoord.target = self
-            copyCoord.image = NSImage(systemSymbolName: "doc.on.doc",
-                                      accessibilityDescription: nil)
-            menu.addItem(copyCoord)
-
-            menu.addItem(.separator())
-
-            let addBookmark = NSMenuItem(
-                title: menuString("Save as bookmark…"),
-                action: #selector(menuAddBookmark(_:)),
-                keyEquivalent: ""
-            )
-            addBookmark.target = self
-            addBookmark.image = NSImage(systemSymbolName: "bookmark", accessibilityDescription: nil)
-            menu.addItem(addBookmark)
-
-            return menu
         }
 
         @objc func menuTeleport(_ sender: NSMenuItem) {
@@ -1201,7 +1115,11 @@ struct MapContainerView: NSViewRepresentable {
 
             saveCameraTask?.cancel()
             saveCameraTask = Task { [weak self] in
-                try? await Task.sleep(for: .milliseconds(500))
+                // Shared with NativeMapView (v1.15.2 audit P12). This
+                // was 500 ms here and, until the P3 fix, 500 ms there
+                // too — shorter than the 1 Hz follow tick, so it could
+                // never coalesce one.
+                try? await Task.sleep(for: CameraPersistencePolicy.saveDebounce)
                 guard !Task.isCancelled, let self else { return }
                 self.state.saveMapCamera(
                     centerLat: self.pendingCenter.latitude,

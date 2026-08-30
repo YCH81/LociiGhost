@@ -11,8 +11,10 @@ and entries expire after 30 days.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import re
 import sqlite3
 import time
 from dataclasses import dataclass
@@ -124,7 +126,12 @@ class OsrmClient:
             raise RoutingError("route needs at least 2 waypoints")
 
         cache_key = self._cache_key(waypoints, profile)
-        cached = self._cache_get(cache_key)
+        # v1.15.2 audit (L14): sqlite3 here is synchronous, and a
+        # 274-point route's payload is tens of KB. Running it inline
+        # stalled the whole daemon event loop — every Navigator tick
+        # and every location keepalive — for the duration of the
+        # read/write. to_thread costs a hop and buys back the loop.
+        cached = await asyncio.to_thread(self._cache_get, cache_key)
         if cached is not None:
             return cached
 
@@ -181,18 +188,20 @@ class OsrmClient:
             duration_s=float(first.get("duration", 0.0)),
             profile=profile,
         )
-        self._cache_put(cache_key, route)
+        await asyncio.to_thread(self._cache_put, cache_key, route)
         return route
 
     # ------------------------------------------------------------------
     # Cache helpers
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _cache_key(waypoints: list[tuple[float, float]], profile: str) -> str:
+    def _cache_key(self, waypoints: list[tuple[float, float]], profile: str) -> str:
         # 5 decimal places ≈ 1.1 m. More than enough for cache identity.
         joined = "|".join(f"{lat:.5f},{lng:.5f}" for lat, lng in waypoints)
-        return f"{profile}|{joined}"
+        # v1.15.2 audit (L14): the endpoint is part of the identity.
+        # Without it, pointing the app at a different OSRM server kept
+        # serving geometry computed by the old one.
+        return f"{self.base_url}|{profile}|{joined}"
 
     def _cache_get(self, key: str) -> Route | None:
         try:
@@ -229,6 +238,19 @@ class OsrmClient:
             self._db.commit()
         except sqlite3.DatabaseError:
             log.warning("route cache write failed", exc_info=True)
+
+
+_SECRET_QUERY_RE = re.compile(r"([?&](?:key|api_key|token)=)[^&\s'\")]+",
+                              re.IGNORECASE)
+
+
+def _redact(value: object) -> str:
+    """Strip API keys out of anything destined for a log or the GUI.
+
+    v1.15.2 audit (X7). httpx puts the whole request URL in its
+    exception text, and the URL carries the caller's paid Google key.
+    """
+    return _SECRET_QUERY_RE.sub(r"\1***", str(value))
 
 
 class GoogleDirectionsClient:
@@ -297,7 +319,17 @@ class GoogleDirectionsClient:
                 resp = await http.get(self.BASE_URL, params=params)
                 resp.raise_for_status()
             except httpx.HTTPError as exc:
-                raise RoutingError(f"Google Directions request failed: {exc}") from exc
+                # v1.15.2 audit (X7): `str(exc)` on an httpx error
+                # includes the full request URL — query string and all,
+                # which means `key=AIzaSy...`. That string was handed
+                # straight to the JSON-RPC error message, shown in a
+                # toast on the Mac and written to the log. The most
+                # likely trigger is a 4xx from quota exhaustion, i.e.
+                # exactly when the user is most likely to screenshot
+                # the error and send it to someone.
+                raise RoutingError(
+                    f"Google Directions request failed: {_redact(exc)}"
+                ) from exc
 
         try:
             data = resp.json()

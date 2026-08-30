@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import LociiGhostCore
 
 // MARK: - Sort mode
 

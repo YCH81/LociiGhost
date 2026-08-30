@@ -145,6 +145,23 @@ class _Session:
     # which IP to probe).
     peer_ip: Optional[str] = None
     peer_port: Optional[int] = None
+    # v1.15.2 audit (W5): set once we've told the GUI this session is
+    # degraded, so the health loop reports the transition rather than
+    # re-announcing it every 5 s.
+    degraded: bool = False
+    # v1.15.2 audit (W6): enough to replay whichever connect path built
+    # this session, so a phone that roamed between APs or slept its
+    # radio can be picked back up instead of being dropped for good.
+    reconnect_hint: Optional[dict] = None
+    # v1.15.2 audit (L4): serialises "stop every mover, attach the new
+    # one, start it". Without it two RPCs arriving together could each
+    # observe an empty session, each stop nothing, and each attach --
+    # leaving two movers ticking into the same location service.
+    runner_lock: Any = field(default_factory=asyncio.Lock)
+    # v1.15.2 audit (L7): serialises the lazy construction in
+    # location_for(), which performs several multi-second awaits
+    # (tunnel + RSD + DVT) between "is it None?" and the assignment.
+    location_lock: Any = field(default_factory=asyncio.Lock)
 
 
 class DeviceManager:
@@ -168,6 +185,9 @@ class DeviceManager:
         self._device_names: dict[str, str] = {}
         self._device_ios: dict[str, str] = {}
         self._device_dev_mode: dict[str, bool] = {}
+        # Strong references to in-flight auto-reconnect tasks; see
+        # _health_check_once.
+        self._reconnect_tasks: set[asyncio.Task] = set()
         self._load_device_cache()
 
     @property
@@ -214,9 +234,15 @@ class DeviceManager:
     def _save_device_cache(self) -> None:
         """Atomic write of the union of name/ios/dev_mode caches.
         Fire-and-forget — caller doesn't await; failure logs but does
-        not bubble. We chmod 0o666 so a future user-mode daemon launch
-        (before the user re-Authenticates) can still update the cache
-        with anything new it learns from a fresh USB connect."""
+        not bubble.
+
+        v1.15.2 audit (X11): this used to chmod 0o666 so a later
+        user-mode daemon launch could update the cache. That left a
+        world-writable file which a ROOT process parses on its next
+        start, and whose contents (ios_version) flow into the phone
+        UI's device header. Ownership is handed to the invoking user
+        instead — the user-mode daemon runs as that user, so it can
+        still write, and nobody else can."""
         import json
         import os
         import tempfile
@@ -246,9 +272,15 @@ class DeviceManager:
             tmp.close()
             os.replace(tmp.name, path)
             try:
-                os.chmod(path, 0o666)
+                os.chmod(path, 0o600)
+                sudo_uid = os.environ.get("SUDO_UID")
+                sudo_gid = os.environ.get("SUDO_GID")
+                if sudo_uid is not None and os.geteuid() == 0:
+                    os.chown(path, int(sudo_uid),
+                             int(sudo_gid) if sudo_gid is not None else -1)
             except OSError:
-                pass
+                log.debug("could not tighten permissions on %s", path,
+                          exc_info=True)
         except Exception:
             log.warning("device cache save failed", exc_info=True)
             try:
@@ -294,6 +326,8 @@ class DeviceManager:
         on_session_lost,
         interval: float = 30.0,
         probe_timeout: float = 2.5,
+        on_degraded=None,
+        on_reconnect=None,
     ) -> None:
         """Periodically TCP-probe every WiFi session's peer endpoint
         and disconnect (+ notify) the ones that don't respond. The
@@ -317,39 +351,146 @@ class DeviceManager:
             except asyncio.CancelledError:
                 return
             try:
-                await self._health_check_once(on_session_lost, probe_timeout)
+                await self._health_check_once(
+                    on_session_lost, probe_timeout,
+                    on_degraded=on_degraded, on_reconnect=on_reconnect,
+                )
             except asyncio.CancelledError:
                 return
             except Exception:
                 log.exception("health-check tick failed (will retry)")
 
-    async def _health_check_once(self, on_session_lost, probe_timeout: float) -> None:
+    @staticmethod
+    async def _fire(cb, *args) -> None:
+        if cb is None:
+            return
+        try:
+            result = cb(*args)
+            if asyncio.iscoroutine(result):
+                await result
+        except Exception:
+            log.exception("health-check callback raised")
+
+    async def _health_check_once(
+        self, on_session_lost, probe_timeout: float,
+        on_degraded=None, on_reconnect=None,
+    ) -> None:
+        """One liveness sweep over every session.
+
+        v1.15.2 audit (W5). This used to check exactly one thing — a
+        TCP connect to `peer_ip:peer_port` — and skip any session that
+        didn't have those set. Only `connect_wifi_ip` ever set them, so
+        every device connected the normal way (Bonjour, or a USB
+        CoreDeviceTunnelProxy) fell out at the `continue` and got no
+        monitoring whatsoever. The 5 s loop was running and finding
+        nothing to do.
+
+        Worse, the probe answers the wrong question. On iOS 26 a WiFi
+        session commonly runs its location traffic over a USB DVT
+        fallback (see `location_for`), so the phone can answer on its
+        RemotePairing port — probe green — while the channel we
+        actually push coordinates down is dead. The keepalive is the
+        only thing exercising that channel while idle, so its success
+        rate is the honest signal. The socket probe stays as a
+        secondary check for the sessions that can offer one.
+        """
         # Snapshot to avoid dict-mutated-during-iteration: disconnect
         # below pops from `_sessions`.
         snapshot = list(self._sessions.items())
         for udid, sess in snapshot:
-            if sess.transport != "network":
+            reason: Optional[str] = None
+
+            # (1) Application-level liveness — works for every transport.
+            loc = sess.location
+            if loc is not None:
+                fails = getattr(loc, "consecutive_keepalive_failures", 0)
+                if fails >= loc.KEEPALIVE_DEAD_AFTER:
+                    reason = (
+                        f"location keepalive failed {fails} times in a row "
+                        f"(~{fails * loc.KEEPALIVE_INTERVAL_S:.0f}s)"
+                    )
+                elif fails >= loc.KEEPALIVE_DEGRADED_AFTER and not sess.degraded:
+                    sess.degraded = True
+                    log.warning("health-check: %s degraded (%d keepalive "
+                                "failures)", udid, fails)
+                    await self._fire(on_degraded, udid, True, reason or
+                                     f"{fails} consecutive keepalive failures")
+                elif fails == 0 and sess.degraded:
+                    sess.degraded = False
+                    log.info("health-check: %s recovered", udid)
+                    await self._fire(on_degraded, udid, False, "")
+
+            # (2) Socket probe, for sessions that told us a peer.
+            if (reason is None and sess.transport == "network"
+                    and sess.peer_ip and sess.peer_port):
+                alive = await self._probe_peer(sess.peer_ip, sess.peer_port,
+                                               timeout=probe_timeout)
+                if not alive:
+                    reason = f"{sess.peer_ip}:{sess.peer_port} unreachable"
+
+            if reason is None:
                 continue
-            if not sess.peer_ip or not sess.peer_port:
-                continue
-            alive = await self._probe_peer(sess.peer_ip, sess.peer_port,
-                                           timeout=probe_timeout)
-            if alive:
-                continue
-            log.warning(
-                "health-check: %s at %s:%d is unreachable; disconnecting",
-                udid, sess.peer_ip, sess.peer_port,
-            )
+
+            log.warning("health-check: %s is unhealthy (%s); disconnecting",
+                        udid, reason)
+            hint = sess.reconnect_hint
             try:
                 await self.disconnect(udid, clear_simulation=False)
             except Exception:
                 log.exception("health-check disconnect failed for %s", udid)
+            await self._fire(on_session_lost, udid, reason)
+
+            # (3) v1.15.2 audit (W6): one bounded attempt to get the
+            # session back. A phone roaming between access points, or
+            # sleeping its radio behind a locked screen, used to be
+            # torn down permanently and take the running route with it.
+            # We deliberately do NOT auto-resume movement here — the
+            # route state lives on the Mac, and silently restarting a
+            # simulation the user can't see would be worse than making
+            # them press Resume.
+            if hint is not None:
+                # Hold the reference. asyncio keeps only a WEAK one to
+                # a running task, so a fire-and-forget create_task can
+                # be garbage-collected mid-execution — and this one
+                # spends most of its life asleep in a 2/5/10 s backoff,
+                # which is exactly when a collection would catch it.
+                task = asyncio.create_task(
+                    self._attempt_reconnect(udid, hint, on_reconnect),
+                    name=f"reconnect-{udid[:8]}",
+                )
+                self._reconnect_tasks.add(task)
+                task.add_done_callback(self._reconnect_tasks.discard)
+
+    RECONNECT_BACKOFFS_S = (2.0, 5.0, 10.0)
+
+    async def _attempt_reconnect(self, udid: str, hint: dict,
+                                 on_reconnect=None) -> None:
+        """Replay whichever connect path built this session, a few times."""
+        for attempt, delay in enumerate(self.RECONNECT_BACKOFFS_S, start=1):
+            await asyncio.sleep(delay)
+            if udid in self._sessions:
+                return          # user (or another path) already got there
             try:
-                result = on_session_lost(udid)
-                if asyncio.iscoroutine(result):
-                    await result
-            except Exception:
-                log.exception("on_session_lost callback raised for %s", udid)
+                if hint.get("kind") == "wifi_ip":
+                    await self.connect_wifi_ip(
+                        hint["ip"], hint["port"], udid=udid,
+                    )
+                else:
+                    await self.connect(
+                        udid, prefer_wifi=bool(hint.get("prefer_wifi")),
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                log.info("auto-reconnect %s attempt %d/%d failed: %s",
+                         udid, attempt, len(self.RECONNECT_BACKOFFS_S), exc)
+                continue
+            log.info("auto-reconnect %s succeeded on attempt %d", udid, attempt)
+            await self._fire(on_reconnect, udid, True)
+            return
+        log.warning("auto-reconnect gave up on %s after %d attempts",
+                    udid, len(self.RECONNECT_BACKOFFS_S))
+        await self._fire(on_reconnect, udid, False)
 
     @staticmethod
     async def _probe_peer(ip: str, port: int, *, timeout: float) -> bool:
@@ -706,6 +847,7 @@ class DeviceManager:
                     usbmux_lockdown=lockdown,
                 )
 
+        session.reconnect_hint = {"kind": "connect", "prefer_wifi": prefer_wifi}
         async with self._lock:
             self._sessions[udid] = session
 
@@ -1238,6 +1380,7 @@ class DeviceManager:
                 peer_port=port,
             )
 
+            session.reconnect_hint = {"kind": "wifi_ip", "ip": ip, "port": port}
             async with self._lock:
                 # Replace any stale session for this UDID first.
                 old = self._sessions.pop(real_udid, None)
@@ -1350,6 +1493,12 @@ class DeviceManager:
         stop navigators, leave simulations in place. Pass
         ``clear_simulations=True`` for an explicit "log out everywhere"
         flow."""
+        # An auto-reconnect sleeping in its backoff would otherwise
+        # wake during shutdown and rebuild a session we are in the
+        # middle of tearing down.
+        for task in list(self._reconnect_tasks):
+            task.cancel()
+        self._reconnect_tasks.clear()
         async with self._lock:
             sessions = list(self._sessions.values())
             self._sessions.clear()
@@ -1399,6 +1548,16 @@ class DeviceManager:
             runner = getattr(sess, runner_attr, None)
             if runner is not None:
                 await _bounded(runner.stop, f"{runner_attr}.stop")
+
+        if sess.location is not None:
+            # v1.15.2 Phase 1: kill the keepalive ticker BEFORE
+            # touching the underlying DVT provider so an in-flight
+            # heartbeat tick doesn't race against the channel
+            # teardown a few lines below.
+            await _bounded(
+                sess.location.stop_keepalive, "location.stop_keepalive",
+                timeout=1.5,
+            )
 
         if clear_simulation and sess.location is not None:
             # location.clear talks over the (possibly-dead) tunnel; cap
@@ -1574,6 +1733,80 @@ class DeviceManager:
     # Location service accessor
     # ------------------------------------------------------------------
 
+    # Every attribute on `_Session` that holds something driving the
+    # iPhone's position. Order matters only for logging.
+    MOVER_ATTRS = ("navigator", "walker", "joystick")
+    MOVER_STOP_TIMEOUT_S = 2.0
+
+    async def _stop_movers(self, sess: "_Session") -> bool:
+        """Stop every mover on `sess`. Returns True if any was running.
+
+        Caller must hold `sess.runner_lock`.
+
+        Two deliberate details. The attribute is cleared BEFORE the
+        await, not after: the old code awaited `runner.stop()` and only
+        then assigned None, so a runner attached during that await got
+        silently wiped and became an orphan that kept pushing positions
+        with nothing holding a reference to stop it. And the stop is
+        bounded -- `Navigator.stop()` awaits its own loop, which can be
+        parked inside a location `set()`, so an unbounded wait here is
+        what turned a WiFi blip into a ten-second "Stop" spinner.
+        """
+        stopped = False
+        for attr in self.MOVER_ATTRS:
+            runner = getattr(sess, attr, None)
+            if runner is None:
+                continue
+            stopped = True
+            setattr(sess, attr, None)
+            try:
+                await asyncio.wait_for(runner.stop(),
+                                       timeout=self.MOVER_STOP_TIMEOUT_S)
+            except asyncio.TimeoutError:
+                log.warning("%s.stop() exceeded %.1fs for %s; cancelling",
+                            attr, self.MOVER_STOP_TIMEOUT_S, sess.udid)
+                task = getattr(runner, "_task", None)
+                if task is not None:
+                    task.cancel()
+            except Exception:
+                log.exception("%s.stop() raised for %s", attr, sess.udid)
+        return stopped
+
+    async def stop_all_movement(self, udid: str) -> bool:
+        """Stop every mover on `udid`. Returns True if any was running.
+
+        Safe to call for an unknown / disconnected device (returns
+        False) -- callers use this on teardown paths where the session
+        may already be gone.
+        """
+        try:
+            sess = await self.session_for(udid)
+        except errors.RpcError:
+            return False
+        async with sess.runner_lock:
+            return await self._stop_movers(sess)
+
+    async def attach_runner(self, udid: str, kind: str, runner: Any) -> bool:
+        """Atomically replace whatever is moving `udid` with `runner`.
+
+        Stop-everything, attach and start happen under one lock, which
+        is the whole point: they used to be separate awaits in every
+        caller, so `location.navigate` racing `location.joystick.start`
+        (Mac and phone at once, or a double-click) could end with both
+        attached and both ticking. Returns whether anything was
+        actually stopped, so the caller can decide about broadcasting.
+        """
+        if kind not in self.MOVER_ATTRS:
+            raise ValueError(f"unknown runner kind {kind!r}")
+        sess = await self.session_for(udid)
+        async with sess.runner_lock:
+            stopped = await self._stop_movers(sess)
+            setattr(sess, kind, runner)
+            start = getattr(runner, "start", None)
+            if callable(start):
+                start()
+            return stopped
+
     async def session_for(self, udid: str) -> "_Session":
         """Return the live session for `udid` or raise device_not_connected."""
         async with self._lock:
@@ -1618,6 +1851,27 @@ class DeviceManager:
         if sess.location is not None:
             return sess.location
 
+        # v1.15.2 audit (L7): everything below performs several
+        # multi-second awaits (CoreDeviceTunnelProxy, RSD connect, DVT
+        # __aenter__) before assigning sess.location. Two callers
+        # arriving together -- e.g. a quick double tap-to-teleport right
+        # after connecting -- both saw None and both built a full
+        # tunnel + provider. The loser's resources were never recorded
+        # on the session, so _teardown_session never closed them, and
+        # the iPhone held that tunnel slot until it timed out by
+        # itself. start_keepalive() also ran twice, one of them bound
+        # to the orphan. Per-session (not global) so building a tunnel
+        # for one device doesn't block operations on another.
+        async with sess.location_lock:
+            if sess.location is not None:
+                return sess.location
+            return await self._build_location_service(sess)
+
+    async def _build_location_service(self, sess: "_Session") -> LocationService:
+        """Construct the right LocationService for `sess`.
+
+        Caller must hold `sess.location_lock`.
+        """
         # When the session was opened over Bonjour/RemotePairing the
         # `usbmux_lockdown` is None and the version string can be a
         # placeholder ("0.0"). DVT only cares about the RSD, and any
@@ -1636,7 +1890,16 @@ class DeviceManager:
                 dvt = DvtProvider(sess.rsd)
                 await dvt.__aenter__()
                 sess.dvt_provider = dvt
-                sess.location = DvtLocationService(dvt, sess.rsd)
+                sess.location = DvtLocationService(
+                    dvt, sess.rsd,
+                    # W2: _reconnect() builds a replacement provider;
+                    # without this the session would keep closing the
+                    # dead original and leak the live one, pinning the
+                    # iPhone's tunnel slot for 30-90 s.
+                    on_provider_replaced=(
+                        lambda p, _s=sess: setattr(_s, "dvt_provider", p)
+                    ),
+                )
                 log.info("location_for[v0.2.3]: DVT path OK on primary RSD")
             except Exception as exc:
                 # iOS 26 over RemotePairing (Bonjour/WiFi) exposes an
@@ -1713,7 +1976,12 @@ class DeviceManager:
                     sess.fallback_tunnel_ctx = tunnel_ctx
                     sess.fallback_rsd = usb_rsd
                     sess.dvt_provider = dvt
-                    sess.location = DvtLocationService(dvt, usb_rsd)
+                    sess.location = DvtLocationService(
+                        dvt, usb_rsd,
+                        on_provider_replaced=(
+                            lambda p, _s=sess: setattr(_s, "dvt_provider", p)
+                        ),
+                    )
                     log.info(
                         "location_for[v0.2.3]: USB-DVT fallback OK for %s",
                         sess.udid,
@@ -1738,4 +2006,11 @@ class DeviceManager:
         else:
             sess.location = LegacyLocationService(sess.usbmux_lockdown)
 
+        # v1.15.2 Phase 1: spin up the keepalive ticker the moment the
+        # location service is wired in. Re-pushes the last successful
+        # coord every ~3 s when there's been no real set in a while,
+        # keeping the DVT runloop from being suspended by iOS power
+        # management during idle / pause / dwell windows. See
+        # location_service.LocationService for the loop body.
+        sess.location.start_keepalive()
         return sess.location

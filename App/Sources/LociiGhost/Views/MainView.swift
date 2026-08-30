@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import LociiGhostCore
 
 struct MainView: View {
     @Environment(AppState.self) private var state
@@ -128,6 +130,28 @@ struct MainView: View {
         // observation of `pendingStops` / `useStraightLine` does the work
         // — `didSet` on those properties wouldn't fire reliably under the
         // @Observable macro for in-place array mutations.
+        // v1.15.2 audit (P9): stop per-tick UI work while nobody can
+        // see the window. `didChangeOcclusionState` fires when the
+        // window is fully covered, minimised, or the app is hidden.
+        // The daemon keeps simulating throughout — this only pauses
+        // drawing.
+        .onReceive(NotificationCenter.default.publisher(
+            for: NSWindow.didChangeOcclusionStateNotification)) { _ in
+            // Ask every window, not the one the notification names.
+            //
+            // The first version of this guarded on
+            // `window.isMainWindow || window.isKeyWindow`, which rules
+            // out the exact case it exists for: a window fully covered
+            // by ANOTHER app's window isn't key or main any more, and
+            // Cmd-H'ing the app doesn't leave it key either. So the
+            // one notification that mattered was the one being
+            // discarded. Recomputing from NSApp.windows also copes
+            // with the app outliving its last window, which it does —
+            // applicationShouldTerminateAfterLastWindowClosed is false.
+            state.windowIsVisible = NSApp.windows.contains {
+                $0.isVisible && $0.occlusionState.contains(.visible)
+            }
+        }
         .onChange(of: state.pendingStops) { _, _ in
             state.schedulePreviewRefresh()
         }

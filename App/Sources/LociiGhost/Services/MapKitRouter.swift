@@ -1,6 +1,7 @@
 import Foundation
 import MapKit
 import CoreLocation
+import LociiGhostCore
 
 /// Mac-side route resolver that uses Apple's MKDirections to plan
 /// routes between consecutive waypoints, then concatenates the

@@ -167,13 +167,61 @@ enum PrivilegedDaemonInstaller {
         // sudo daemon log file (`logFile`) before doing the work, so
         // when something goes wrong the log itself tells us which step
         // failed instead of leaving an empty file behind.
+        // v1.15.2 audit (X1/X14): the daemon executable is either
+        // inside /Applications/LociiGhost.app (writable by any admin
+        // user WITHOUT re-authenticating, since /Applications is
+        // drwxrwxr-x root:admin) or, in dev mode, under
+        // ~/Library/Application Support, which is writable by the
+        // user outright. Either way, whatever sits at that path gets
+        // executed as root the next time the user authenticates —
+        // turning one legitimate admin prompt into arbitrary root
+        // code execution. The script below now refuses to exec
+        // anything that a non-root user could have modified, and
+        // verifies the code signature when the binary carries one.
+        // Rather than hardcode a Team ID (this project takes its
+        // signing identity from the environment at build time), we
+        // require the daemon to be signed by whoever signed the app
+        // that is asking to launch it. An unsigned app is a dev build
+        // and gets a warning instead of a refusal.
+        let appBundlePath = Bundle.main.bundleURL.path
         let body = """
         #!/bin/bash
+        # v1.15.2 audit (X1, second pass): pin PATH before anything
+        # else. This script runs as root but inherits the invoking
+        # user's environment, and every command below — stat, pkill,
+        # pgrep, awk, date, rm, mkdir, sleep, codesign — was being
+        # resolved through it. A writable directory early in the user's
+        # PATH would have shadowed any one of them and run as root,
+        # which is precisely the escalation the ownership checks below
+        # exist to prevent. Found by extracting this script and
+        # exercising it, not by reading it.
+        PATH=/usr/bin:/bin:/usr/sbin:/sbin
+        export PATH
         LOG=\(q(layout.logFile.path))
+        # v1.15.2 audit (X3): the log lives under the user's own
+        # ~/Library/Logs, and this script appends to it as root. A
+        # symlink planted there — at /etc/sudoers.d/x, say, or a
+        # LaunchDaemon plist — would have been followed, and the log
+        # format leaves attacker-influenceable text on each line.
+        # Refuse to write through a symlink, and make sure the file is
+        # ours before appending to it.
+        if [ -h "$LOG" ]; then rm -f "$LOG"; fi
+        if [ -e "$LOG" ]; then
+          LOGOWNER=$(stat -f '%u' "$LOG" 2>/dev/null || echo -1)
+          if [ "$LOGOWNER" != "0" ] && [ "$LOGOWNER" != "\(layout.uid)" ]; then
+            LOG=/dev/null
+          fi
+        fi
         log() { printf '[%s] %s\\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$LOG" 2>/dev/null || true; }
         log "===== privileged install start ====="
         log "uid=$(id -u) euid=$(id -un) home=$HOME"
-        log "daemon: \(layout.daemonExecutable.path)"
+        # Single-quoted: this is the one interpolation in the script
+        # that put a filesystem path inside a DOUBLE-quoted shell
+        # string, so a path containing $(…), a backtick or $VAR would
+        # have been expanded — by a root shell (v1.15.2 audit X1,
+        # second pass). Every other interpolation here is either a
+        # numeric uid/gid, a literal, or already q()-escaped.
+        log \(q("daemon: " + layout.daemonExecutable.path))
         mkdir -p \(q(layout.socketDir.path)) \(q(layout.logFile.deletingLastPathComponent().path)) || log "mkdir failed: $?"
         log "killing any prior lociighostd..."
         # Match on the basename `lociighostd` — covers both the
@@ -182,12 +230,17 @@ enum PrivilegedDaemonInstaller {
         # shows up as `Python -m lociighostd` in ps -f, matching via
         # the `-m` substring).
         # First TERM (graceful), short pause, then KILL.
-        pkill -TERM -f '\(pkillPattern)' >>"$LOG" 2>&1 \\
+        # v1.15.2 audit (X13): the unscoped `pkill -f` ran as root and
+        # matched command lines across EVERY user on the machine — a
+        # `tail -f .../lociighostd.log` in another account was fair
+        # game. Our daemon only ever runs as root or as the invoking
+        # user, so those are the only two scopes we need.
+        pkill -TERM -u 0 -f '\(pkillPattern)' >>"$LOG" 2>&1 \\
           || log "no daemons matched TERM (root)"
         pkill -TERM -u \(layout.uid) -f '\(pkillPattern)' >>"$LOG" 2>&1 \\
           || log "no daemons matched TERM (uid=\(layout.uid))"
         sleep 0.5
-        pkill -KILL -f '\(pkillPattern)' >>"$LOG" 2>&1 \\
+        pkill -KILL -u 0 -f '\(pkillPattern)' >>"$LOG" 2>&1 \\
           || log "no daemons matched KILL (root)"
         pkill -KILL -u \(layout.uid) -f '\(pkillPattern)' >>"$LOG" 2>&1 \\
           || log "no daemons matched KILL (uid=\(layout.uid))"
@@ -195,6 +248,72 @@ enum PrivilegedDaemonInstaller {
         log "post-kill survivors: $(pgrep -fl '\(pkillPattern)' || echo none)"
         log "removing stale socket..."
         rm -f \(q(layout.socketPath)) >>"$LOG" 2>&1 || true
+
+        # ---- refuse to run anything a non-root user could have edited
+        #
+        # Exit codes, so the log identifies the failing check exactly:
+        #   90 missing / not executable   94 signature verify failed
+        #   91 path is a symlink          95 signing team != app's team
+        #   92 group/other writable       96 mode unreadable
+        #   93 unexpected owner           97 owner unreadable
+        DAEMON=\(q(layout.daemonExecutable.path))
+        if [ ! -x "$DAEMON" ]; then
+          log "FATAL: daemon missing or not executable: $DAEMON"; exit 90
+        fi
+        # -h catches a symlink swapped in for the real binary.
+        if [ -h "$DAEMON" ]; then
+          log "FATAL: daemon path is a symlink: $DAEMON"; exit 91
+        fi
+        PERM=$(stat -f '%Lp' "$DAEMON" 2>/dev/null)
+        OWNER=$(stat -f '%u' "$DAEMON" 2>/dev/null)
+        # Fail closed, but say WHY. Feeding an empty or malformed value
+        # to $(( 8#$PERM )) is a bash error that leaves the comparison
+        # undefined, and reporting "mode 777" or "uid -1" for what was
+        # really a stat failure sends whoever reads the log looking for
+        # a permissions problem that doesn't exist.
+        case "$PERM" in
+          [0-7][0-7][0-7]|[0-7][0-7][0-7][0-7]) ;;
+          *) log "FATAL: could not read the mode of $DAEMON (stat gave '$PERM')"
+             exit 96 ;;
+        esac
+        case "$OWNER" in
+          ''|*[!0-9]*) log "FATAL: could not read the owner of $DAEMON (stat gave '$OWNER')"
+                       exit 97 ;;
+        esac
+        # group- or other-writable means someone who is not root can
+        # change what root executes.
+        if [ $(( 8#$PERM & 8#022 )) -ne 0 ]; then
+          log "FATAL: daemon is group/other writable (mode $PERM): $DAEMON"
+          exit 92
+        fi
+        if [ "$OWNER" != "0" ] && [ "$OWNER" != "\(layout.uid)" ]; then
+          log "FATAL: daemon owned by uid $OWNER, expected 0 or \(layout.uid)"
+          exit 93
+        fi
+        # Signature check. The daemon must be signed by whoever signed
+        # the app requesting this launch. A dev-mode Python venv isn't
+        # signed at all, so unsigned-on-both-sides is a warning rather
+        # than a refusal; a mismatch is a hard stop.
+        team_of() {
+          /usr/bin/codesign -dv --verbose=4 "$1" 2>&1 \\
+            | /usr/bin/awk -F= '/^TeamIdentifier=/{print $2}'
+        }
+        APP_TEAM=$(team_of \(q(appBundlePath)))
+        DAEMON_TEAM=$(team_of "$DAEMON")
+        if [ -n "$APP_TEAM" ] && [ "$APP_TEAM" != "not set" ]; then
+          if ! /usr/bin/codesign --verify --strict "$DAEMON" >>"$LOG" 2>&1; then
+            log "FATAL: $DAEMON fails signature verification"
+            exit 94
+          fi
+          if [ "$DAEMON_TEAM" != "$APP_TEAM" ]; then
+            log "FATAL: daemon team '$DAEMON_TEAM' != app team '$APP_TEAM'"
+            exit 95
+          fi
+          log "codesign: OK (team $APP_TEAM)"
+        else
+          log "codesign: app unsigned (dev build) - skipping team check"
+        fi
+
         log "spawning daemon..."
         # Daemonize via a child shell that exec()s the daemon with
         # stdin redirected to /dev/null. Backgrounding from a *fresh*
@@ -214,11 +333,30 @@ enum PrivilegedDaemonInstaller {
         log "===== privileged install done ====="
         """
 
-        let tmp = FileManager.default.temporaryDirectory
-            .appending(path: "lociighost-elevate-\(UUID().uuidString).sh")
+        // v1.15.2 audit (X2): this used to drop a 0755 script straight
+        // into $TMPDIR and hand osascript its path. Between the write
+        // and the moment root actually read it — a window that spans
+        // the user typing a password or reaching for Touch ID — any
+        // process running as this user could overwrite the file, and
+        // `ls $TMPDIR/lociighost-elevate-*.sh` made it trivial to
+        // find. The replacement then ran as root.
+        //
+        // The script now lives in a 0700 directory created with
+        // withIntermediateDirectories:false (so it fails rather than
+        // reusing an attacker-planted directory) and is itself 0600 —
+        // only root, which is who reads it, needs access at all.
+        let dir = FileManager.default.temporaryDirectory
+            .appending(path: "lociighost-elevate-\(UUID().uuidString)",
+                       directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(
+            at: dir,
+            withIntermediateDirectories: false,
+            attributes: [.posixPermissions: NSNumber(value: Int16(0o700))]
+        )
+        let tmp = dir.appending(path: "bootstrap.sh")
         try body.write(to: tmp, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes(
-            [.posixPermissions: NSNumber(value: Int16(0o755))],
+            [.posixPermissions: NSNumber(value: Int16(0o600))],
             ofItemAtPath: tmp.path
         )
         return tmp

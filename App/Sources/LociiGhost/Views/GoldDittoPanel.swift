@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import LociiGhostCore
 
 /// Pikmin Bloom 拉金盆 (Gold-Ditto exploit) — ported from
 /// LocWarp 0.2.143.
@@ -45,6 +46,11 @@ struct GoldDittoPanel: View {
     /// silently failed.
     @State private var showSwipeNowBanner: Bool = false
     @State private var countdownTask: Task<Void, Never>?
+    /// Auto-dismiss timer for the green "swipe NOW" banner.
+    /// v1.15.2 audit (P16): both fire paths used to spawn a bare Task
+    /// for this, so onDisappear had nothing to cancel and the closure
+    /// outlived the view.
+    @State private var bannerTask: Task<Void, Never>?
     /// Picker between the two firing modes. Persisted so the
     /// user's preferred style sticks across launches — most
     /// users settle into one or the other.
@@ -182,6 +188,8 @@ struct GoldDittoPanel: View {
             // seconds after they navigated away.
             countdownTask?.cancel()
             countdownTask = nil
+            bannerTask?.cancel()
+            bannerTask = nil
             running = false
         }
     }
@@ -361,8 +369,12 @@ struct GoldDittoPanel: View {
             // Auto-dismiss the banner after a comfortable read
             // window. If the user fires another pull before then,
             // `startCountdown` will hide it via animation below.
-            Task { @MainActor in
+            // v1.15.2 audit (P16): tracked so onDisappear can cancel
+            // it — a bare Task here outlived the view.
+            bannerTask?.cancel()
+            bannerTask = Task { @MainActor in
                 try? await Task.sleep(for: .seconds(5))
+                guard !Task.isCancelled else { return }
                 withAnimation(.easeIn(duration: 0.3)) {
                     showSwipeNowBanner = false
                 }
@@ -380,7 +392,8 @@ struct GoldDittoPanel: View {
         guard let coord = parsedA, canFire,
               let udid = state.selectedUDID else { return }
         showSwipeNowBanner = false  // hide a stale banner if any
-        Task { @MainActor in
+        bannerTask?.cancel()
+        bannerTask = Task { @MainActor in
             NSSound(named: "Glass")?.play()
             await state.pullGoldDitto(udid: udid, lat: coord.lat, lng: coord.lng)
             withAnimation(.easeOut(duration: 0.2)) {
@@ -391,6 +404,7 @@ struct GoldDittoPanel: View {
             // window. Identical to the countdown path's tail
             // behaviour so the two modes feel consistent post-fire.
             try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
             withAnimation(.easeIn(duration: 0.3)) {
                 showSwipeNowBanner = false
             }

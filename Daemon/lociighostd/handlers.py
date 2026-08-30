@@ -144,9 +144,19 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
                     message="stops must have at least 2 waypoints",
                 )
             waypoints = []
-            for s in stops:
-                lat = float(s["lat"])
-                lng = float(s["lng"])
+            for i, s in enumerate(stops):
+                # v1.15.2 audit (X17): a missing or non-numeric key
+                # used to raise KeyError/TypeError, which rpc.py's
+                # catch-all turned into "Internal error: 'lat'" —
+                # technically safe, completely unactionable.
+                try:
+                    lat = float(s["lat"])
+                    lng = float(s["lng"])
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise errors.RpcError(
+                        code=errors.PYMD3_ERROR,
+                        message=f"stop #{i} needs numeric lat and lng",
+                    ) from exc
                 _validate_coord(lat, lng)
                 waypoints.append((lat, lng))
         else:
@@ -295,9 +305,19 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
                     message="stops must have at least origin + 1 destination",
                 )
             waypoints = []
-            for s in stops:
-                lat = float(s["lat"])
-                lng = float(s["lng"])
+            for i, s in enumerate(stops):
+                # v1.15.2 audit (X17): a missing or non-numeric key
+                # used to raise KeyError/TypeError, which rpc.py's
+                # catch-all turned into "Internal error: 'lat'" —
+                # technically safe, completely unactionable.
+                try:
+                    lat = float(s["lat"])
+                    lng = float(s["lng"])
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise errors.RpcError(
+                        code=errors.PYMD3_ERROR,
+                        message=f"stop #{i} needs numeric lat and lng",
+                    ) from exc
                 _validate_coord(lat, lng)
                 waypoints.append((lat, lng))
         else:
@@ -328,9 +348,16 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
         # daemon-resolved routes.
         if polyline is not None:
             mac_coords: list[tuple[float, float]] = []
-            for p in polyline:
-                lat = float(p["lat"])
-                lng = float(p["lng"])
+            for i, p in enumerate(polyline):
+                try:
+                    lat = float(p["lat"])
+                    lng = float(p["lng"])
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise errors.RpcError(
+                        code=errors.PYMD3_ERROR,
+                        message=f"polyline point #{i} needs numeric "
+                                f"lat and lng",
+                    ) from exc
                 _validate_coord(lat, lng)
                 mac_coords.append((lat, lng))
             if len(mac_coords) < 2:
@@ -345,6 +372,23 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
                 profile=profile,
             )
             laps = max(1, int(laps))
+            # v1.15.2 audit (L13): the loop-closing step above operates
+            # on `waypoints`, which this branch skips entirely, so a
+            # multi-lap Mac-resolved route was concatenated open-ended:
+            # every seam became a straight line from the last point
+            # back to the first, WALKED at the configured speed rather
+            # than jumped. The App currently forces laps=1 on this
+            # path so it isn't reachable today — which is exactly why
+            # it needs closing now rather than after the next
+            # refactor re-enables it.
+            if laps > 1 and mac_coords[0] != mac_coords[-1]:
+                mac_coords = mac_coords + [mac_coords[0]]
+                base_route = Route(
+                    coordinates=mac_coords,
+                    distance_m=route_length_m(mac_coords),
+                    duration_s=0.0,
+                    profile=profile,
+                )
             # Skip the engine dispatch fork below.
             goto_after_routing = True
         else:
@@ -425,7 +469,6 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
             profile=profile,
         )
 
-        await _stop_all_movement(manager, udid, server)
         loc = await manager.location_for(udid)
 
         async def emit(method: str, status) -> None:
@@ -438,8 +481,12 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
             profile=profile,
             on_event=emit,
         )
-        await manager.set_navigator(udid, nav)
-        nav.start()
+        # Stop-and-attach is one critical section now; see
+        # DeviceManager.attach_runner (v1.15.2 audit L4). We don't
+        # broadcast the stop -- the state_changed for the new run
+        # follows immediately and a "stopped" in between made the
+        # Mac's ETA panel flicker.
+        await manager.attach_runner(udid, "navigator", nav)
         await server.broadcast_event("event.state_changed", {
             "udid": udid,
             **nav.status().to_json(),
@@ -452,16 +499,19 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
         }
 
     @server.method("location.pause")
-    async def location_pause(udid: str) -> dict[str, str]:
+    async def location_pause(udid: str) -> dict[str, Any]:
         nav = await _navigator_for(manager, udid)
-        await nav.pause()
-        return {"state": nav.state}
+        applied = await nav.pause()
+        # `applied` lets the Mac tell "paused" from "there was nothing
+        # left to pause" instead of optimistically rendering the former
+        # (v1.15.2 audit L8).
+        return {"state": nav.state, "applied": applied}
 
     @server.method("location.resume")
-    async def location_resume(udid: str) -> dict[str, str]:
+    async def location_resume(udid: str) -> dict[str, Any]:
         nav = await _navigator_for(manager, udid)
-        await nav.resume()
-        return {"state": nav.state}
+        applied = await nav.resume()
+        return {"state": nav.state, "applied": applied}
 
     @server.method("location.stop")
     async def location_stop(udid: str) -> dict[str, bool]:
@@ -519,7 +569,6 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
                 message=f"dwell_seconds must be > 0 when set (got {dwell_seconds})",
             )
 
-        await _stop_all_movement(manager, udid, server)
         loc = await manager.location_for(udid)
 
         async def emit(method: str, status) -> None:
@@ -537,8 +586,7 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
             profile=profile,
             dwell_seconds_override=dwell_seconds,
         )
-        await manager.set_walker(udid, walker)
-        walker.start()
+        await manager.attach_runner(udid, "walker", walker)
         await server.broadcast_event("event.state_changed", {
             "udid": udid,
             "mode": "random_walk",
@@ -557,7 +605,6 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
         lng: float,
     ) -> dict[str, Any]:
         _validate_coord(lat, lng)
-        await _stop_all_movement(manager, udid, server)
         loc = await manager.location_for(udid)
 
         async def emit(method: str, status) -> None:
@@ -568,8 +615,7 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
             origin=(lat, lng),
             on_event=emit,
         )
-        await manager.set_joystick(udid, ctrl)
-        ctrl.start()
+        await manager.attach_runner(udid, "joystick", ctrl)
         await server.broadcast_event("event.state_changed", {
             "udid": udid,
             "mode": "joystick",
@@ -712,27 +758,6 @@ def _straight_line_route(
     )
 
 
-async def _stop_navigation_if_any(
-    manager: DeviceManager, udid: str, server: RpcServer
-) -> None:
-    """Stop the navigator on `udid` if one is running. Best-effort: a missing
-    session or a navigator that already finished is fine."""
-    try:
-        sess = await manager.session_for(udid)
-    except errors.RpcError:
-        return
-    if sess.navigator is None:
-        return
-    try:
-        await sess.navigator.stop()
-    finally:
-        sess.navigator = None
-        await server.broadcast_event("event.state_changed", {
-            "udid": udid,
-            "state": "idle",
-        })
-
-
 async def _stop_all_movement(
     manager: DeviceManager, udid: str, server: RpcServer
 ) -> None:
@@ -752,23 +777,16 @@ async def _stop_all_movement(
     the route — even though the daemon kept playing. Now the idle
     event only fires when there really was a runner to stop.
     """
-    try:
-        sess = await manager.session_for(udid)
-    except errors.RpcError:
-        return
-    stopped_any = False
-    for attr in ("navigator", "walker", "joystick"):
-        runner = getattr(sess, attr, None)
-        if runner is None:
-            continue
-        stopped_any = True
-        try:
-            await runner.stop()
-        except Exception:
-            pass
-        setattr(sess, attr, None)
+    stopped_any = await manager.stop_all_movement(udid)
     if stopped_any:
+        # v1.15.2 audit (L5): "stopped", not "idle". The Mac treats
+        # "idle" as natural route completion and uses it to drive lap
+        # continuation, so a stop issued as part of the next lap's own
+        # teleport looked like a second completion and decremented the
+        # lap counter twice -- three laps ran as two. A stop we
+        # initiated is by definition user-driven; natural completion is
+        # emitted by the Navigator's own loop.
         await server.broadcast_event("event.state_changed", {
             "udid": udid,
-            "state": "idle",
+            "state": "stopped",
         })

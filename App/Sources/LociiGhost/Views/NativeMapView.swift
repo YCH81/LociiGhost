@@ -75,42 +75,18 @@ struct NativeMapView: View {
     /// rendering paths see the same sparse pin pattern for a long
     /// recorded GPX route. Below the threshold all stops render; above
     /// it only #1, every Nth, and the last point are kept.
-    private static let stopPinDecimationThreshold: Int = 100
-    private static let stopPinDecimationStep: Int = 101
 
     /// Returns `[(index, coordinate)]` pairs for SwiftUI ForEach, with
     /// the same decimation rule MapContainerView uses. Tuple shape lets
     /// the call sites preserve the original `idx + 1` stop number on
     /// each rendered badge while ForEach uses `idx` as its stable id.
-    static func decimatedStops(_ all: [Coordinate]) -> [(Int, Coordinate)] {
-        let n = all.count
-        if n <= stopPinDecimationThreshold {
-            return all.enumerated().map { ($0.offset, $0.element) }
-        }
-        var out: [(Int, Coordinate)] = []
-        out.reserveCapacity(n / stopPinDecimationStep + 2)
-        // First.
-        out.append((0, all[0]))
-        // Every step-th in between.
-        var i = stopPinDecimationStep
-        while i < n - 1 {
-            out.append((i, all[i]))
-            i += stopPinDecimationStep
-        }
-        // Last — only append when it isn't already the most recent
-        // entry (true whenever n - 1 isn't a multiple of step).
-        if out.last?.0 != n - 1 {
-            out.append((n - 1, all[n - 1]))
-        }
-        return out
-    }
+    // Pin decimation moved to MapGeometryPolicy (v1.15.2 audit P12).
 
     private static let s2SuppressionRatio: Double = 0.0005
     /// Max horizontal + vertical scanlines we'll hand to MapKit.
     /// At 2 000 polylines the `MapPolyline` ForEach still rebuilds
     /// in well under a frame; beyond that the grid would be denser
     /// than the screen has pixels to draw it anyway.
-    private static let s2ScanlineCap = 2_000
 
     var body: some View {
         MapReader { proxy in
@@ -121,7 +97,24 @@ struct NativeMapView: View {
                 annotations
             }
             .mapStyle(currentMapStyle)
+            .onAppear { rebuildMapContentCaches() }
+            .onChange(of: state.previewRoute) { _, _ in rebuildMapContentCaches() }
+            .onChange(of: state.activeRoute) { _, _ in rebuildMapContentCaches() }
+            .onChange(of: state.pendingStops) { _, _ in rebuildMapContentCaches() }
+            .onChange(of: state.activeWaypoints) { _, _ in rebuildMapContentCaches() }
             .onMapCameraChange(frequency: .onEnd) { context in
+                s2Holder.lastObservedRegion = context.region
+                if s2Holder.isWithinProgrammaticFly {
+                    // Our own follow tick, not the user. Keep the zoom
+                    // reading current (scheduleSave would have done
+                    // that) but skip the SwiftData write and the S2
+                    // recompute. See the flag's doc comment.
+                    s2Holder.programmaticFlyAt = nil
+                    lastCameraDistance = max(
+                        CameraPersistencePolicy.minSpanMeters,
+                        context.region.span.latitudeDelta * 111_000)
+                    return
+                }
                 scheduleSave(region: context.region)
                 // The S2 grid piggybacks on the camera-end notification
                 // rather than `.continuous` — `.onEnd` fires once when
@@ -129,7 +122,6 @@ struct NativeMapView: View {
                 // when we want to recompute. `.continuous` fired at
                 // 60 Hz and the resulting @State writes invalidated
                 // body each tick.
-                s2Holder.lastObservedRegion = context.region
                 recomputeS2(region: context.region)
             }
             .onChange(of: state.showS2GridOnMap) { _, _ in
@@ -185,8 +177,8 @@ struct NativeMapView: View {
         // Drawn while the user is staging multi-stop / nav before
         // hitting Navigate. Always layered first so the active route
         // and pins draw on top.
-        if !state.previewRoute.isEmpty {
-            MapPolyline(coordinates: state.previewRoute.map { $0.cl })
+        if !previewRouteCL.isEmpty {
+            MapPolyline(coordinates: previewRouteCL)
                 .stroke(
                     (state.previewIsStraightLine ? Color.teal : Color.orange).opacity(0.55),
                     style: StrokeStyle(
@@ -198,8 +190,8 @@ struct NativeMapView: View {
                 )
         }
         // ── Active route polyline ───────────────────────────────────
-        if let route = state.activeRoute, !route.isEmpty {
-            MapPolyline(coordinates: route.map { $0.cl })
+        if !activeRouteCL.isEmpty {
+            MapPolyline(coordinates: activeRouteCL)
                 .stroke(
                     (state.activeRouteIsStraightLine ? Color.teal : Color.orange).opacity(0.95),
                     style: StrokeStyle(
@@ -244,15 +236,15 @@ struct NativeMapView: View {
         // into its own subview tree; rendering 1000+ at once freezes
         // the layout pipeline (SwiftUI sizeThatFits dominates the
         // main-thread profile). Once the underlying list crosses
-        // `stopPinDecimationThreshold`, we render only:
+        // `MapGeometryPolicy.stopPinDecimationThreshold`, we render only:
         //   * stop #1 (start)
         //   * stop #N (end)
-        //   * every `stopPinDecimationStep`-th stop in between
+        //   * every `MapGeometryPolicy.stopPinDecimationStep`-th stop in between
         // The displayed number is the ORIGINAL stop index so the user
         // can still tell which leg they're looking at. The daemon
         // receives every stop unchanged.
         if !state.navigationActive {
-            ForEach(Self.decimatedStops(state.pendingStops), id: \.0) { (idx, stop) in
+            ForEach(pendingStopPins, id: \.0) { (idx, stop) in
                 Annotation(
                     "Stop \(idx + 1)",
                     coordinate: stop.cl,
@@ -262,7 +254,7 @@ struct NativeMapView: View {
             }
         }
         // ── Live waypoints (blue, numbered) ─────────────────────────
-        ForEach(Self.decimatedStops(state.activeWaypoints), id: \.0) { (idx, wp) in
+        ForEach(waypointPins, id: \.0) { (idx, wp) in
             Annotation(
                 "Waypoint \(idx + 1)",
                 coordinate: wp.cl,
@@ -462,6 +454,10 @@ struct NativeMapView: View {
     // MARK: - pendingMapFly handling
 
     private func applyFly(_ req: MapFlyRequest) {
+        // See S2GridHolder.programmaticFlyAt. Stamped before the camera
+        // moves so the change callback this triggers can tell itself
+        // apart from a real user pan.
+        s2Holder.programmaticFlyAt = Date()
         let center = CLLocationCoordinate2D(latitude: req.coordinate.lat,
                                             longitude: req.coordinate.lng)
         // preserveZoom = follow-puck path; mirror MapContainerView's
@@ -494,6 +490,26 @@ struct NativeMapView: View {
     /// before .onMapCameraChange has fired at least once, so we keep
     /// the last known distance in a stored @State for the next fly.
     @State private var lastCameraDistance: CLLocationDistance = 4_000
+
+    // ── Cached MapContent inputs (v1.15.2 audit P6) ─────────────────
+    // `annotations` is rebuilt on every body pass, and body runs on
+    // every follow tick. Each pass re-allocated a fresh
+    // [CLLocationCoordinate2D] for each polyline (two 4000-element
+    // arrays, ~64 KB apiece, on a long GPX) and re-ran two O(n)
+    // decimation scans — all to produce byte-identical results,
+    // once a second. These caches are refreshed only when their
+    // sources actually change.
+    @State private var previewRouteCL: [CLLocationCoordinate2D] = []
+    @State private var activeRouteCL: [CLLocationCoordinate2D] = []
+    @State private var pendingStopPins: [(Int, Coordinate)] = []
+    @State private var waypointPins: [(Int, Coordinate)] = []
+
+    private func rebuildMapContentCaches() {
+        previewRouteCL = state.previewRoute.map { $0.cl }
+        activeRouteCL = (state.activeRoute ?? []).map { $0.cl }
+        pendingStopPins = MapGeometryPolicy.decimatedStops(state.pendingStops)
+        waypointPins = MapGeometryPolicy.decimatedStops(state.activeWaypoints)
+    }
     private func currentCameraDistance() -> CLLocationDistance { lastCameraDistance }
 
     // MARK: - Region-change save
@@ -502,13 +518,16 @@ struct NativeMapView: View {
         // Remember the distance / span so a follow-puck fly that
         // immediately follows can preserve the user's zoom.
         let spanMeters = region.span.latitudeDelta * 111_000
-        lastCameraDistance = max(500, spanMeters)
+        lastCameraDistance = max(CameraPersistencePolicy.minSpanMeters, spanMeters)
 
         saveCameraTask?.cancel()
         let snapshotCenter = region.center
         let snapshotSpan = spanMeters
         saveCameraTask = Task { @MainActor [state] in
-            try? await Task.sleep(for: .milliseconds(500))
+            // 1.5 s, not 500 ms: the follow tick is 1 Hz, so a 500 ms
+            // debounce could never coalesce anything and every tick
+            // reached the store (v1.15.2 audit P3).
+            try? await Task.sleep(for: CameraPersistencePolicy.saveDebounce)
             guard !Task.isCancelled else { return }
             state.saveMapCamera(
                 centerLat: snapshotCenter.latitude,
@@ -555,7 +574,7 @@ struct NativeMapView: View {
         let result = S2GridEnumerator.gridLines(
             viewport: viewport,
             level: level,
-            scanlineCap: Self.s2ScanlineCap,
+            scanlineCap: MapGeometryPolicy.s2ScanlineCap,
         )
         s2Lines = result.lines
         // Surface auto-coarsen state on AppState so the popover can
@@ -589,97 +608,34 @@ struct NativeMapView: View {
     /// Build (but don't pop) the context menu for the given coord.
     /// RightClickCatcher pops the returned menu at its own local
     /// click point, which keeps the menu anchored to the cursor.
+    /// Build (but don't pop) the context menu for the given coord.
+    /// RightClickCatcher pops the returned menu at its own local
+    /// click point, which keeps the menu anchored to the cursor.
+    ///
+    /// Which rows exist and when each is enabled lives in
+    /// `MapContextMenuPolicy` — shared with MapContainerView, because
+    /// that is the part that drifted (v1.15.2 audit P12). Only the
+    /// target/action wiring is local, since this view dispatches
+    /// through a shared NSObject with `representedObject` while
+    /// MapContainerView uses its Coordinator directly.
     private func buildContextMenu(coord: CLLocationCoordinate2D) -> NSMenu {
-        let menu = NSMenu()
-
-        // Coord header — disabled, reads as info not action.
-        let header = NSMenuItem()
-        header.title = String(format: "📍  %.5f, %.5f", coord.latitude, coord.longitude)
-        header.isEnabled = false
-        menu.addItem(header)
-        menu.addItem(.separator())
-
-        let isConnected = state.devices
-            .first(where: { $0.udid == state.selectedUDID })?
-            .connected ?? false
-
-        // Teleport
-        let teleport = NSMenuItem(
-            title: menuString("Teleport here"),
-            action: nil,
-            keyEquivalent: "",
-        )
-        teleport.image = NSImage(systemSymbolName: "wand.and.stars", accessibilityDescription: nil)
-        teleport.isEnabled = isConnected
-        if !isConnected {
-            teleport.toolTip = menuString("Connect a device first.")
-        } else {
-            teleport.target = NativeMapMenuTarget.shared
-            teleport.action = #selector(NativeMapMenuTarget.menuTeleport(_:))
-            teleport.representedObject = NativeMapMenuAction.teleport(coord: coord, state: state)
+        MapContextMenuPolicy.buildMenu(for: coord, state: state) { spec, item in
+            item.target = NativeMapMenuTarget.shared
+            switch spec.action {
+            case .teleport:
+                item.action = #selector(NativeMapMenuTarget.menuTeleport(_:))
+                item.representedObject = NativeMapMenuAction.teleport(coord: coord, state: state)
+            case .addStop:
+                item.action = #selector(NativeMapMenuTarget.menuAddStop(_:))
+                item.representedObject = NativeMapMenuAction.addStop(coord: coord, state: state)
+            case .copyCoordinate:
+                item.action = #selector(NativeMapMenuTarget.menuCopyCoord(_:))
+                item.representedObject = NativeMapMenuAction.copyCoord(coord: coord)
+            case .bookmark:
+                item.action = #selector(NativeMapMenuTarget.menuAddBookmark(_:))
+                item.representedObject = NativeMapMenuAction.bookmark(coord: coord, state: state)
+            }
         }
-        menu.addItem(teleport)
-
-        // Add as stop (only in Multi-stop mode)
-        let canAddStop = state.activeMovementMode == .multiStop
-        let addStop = NSMenuItem(
-            title: menuString("Add as stop"),
-            action: nil,
-            keyEquivalent: "",
-        )
-        addStop.image = NSImage(systemSymbolName: "mappin.and.ellipse", accessibilityDescription: nil)
-        addStop.isEnabled = canAddStop
-        if !canAddStop {
-            addStop.toolTip = menuString("Switch to Multi-stop mode first")
-        } else {
-            addStop.target = NativeMapMenuTarget.shared
-            addStop.action = #selector(NativeMapMenuTarget.menuAddStop(_:))
-            addStop.representedObject = NativeMapMenuAction.addStop(coord: coord, state: state)
-        }
-        menu.addItem(addStop)
-
-        // Copy coordinates
-        let copy = NSMenuItem(
-            title: menuString("Copy coordinates"),
-            action: #selector(NativeMapMenuTarget.menuCopyCoord(_:)),
-            keyEquivalent: "",
-        )
-        copy.image = NSImage(systemSymbolName: "doc.on.doc", accessibilityDescription: nil)
-        copy.target = NativeMapMenuTarget.shared
-        copy.representedObject = NativeMapMenuAction.copyCoord(coord: coord)
-        menu.addItem(copy)
-
-        menu.addItem(.separator())
-
-        // Save as bookmark
-        let bookmark = NSMenuItem(
-            title: menuString("Save as bookmark…"),
-            action: #selector(NativeMapMenuTarget.menuAddBookmark(_:)),
-            keyEquivalent: "",
-        )
-        bookmark.image = NSImage(systemSymbolName: "bookmark", accessibilityDescription: nil)
-        bookmark.target = NativeMapMenuTarget.shared
-        bookmark.representedObject = NativeMapMenuAction.bookmark(coord: coord, state: state)
-        menu.addItem(bookmark)
-
-        return menu
-    }
-
-    /// Localized lookup that honours the AppleLanguages override
-    /// (same logic as MapContainerView's `menuString` helper).
-    private func menuString(_ key: String) -> String {
-        let lang = UserDefaults.standard.string(forKey: "appLanguage") ?? "system"
-        let target: String
-        switch lang {
-        case "en":      target = "en"
-        case "zh-Hant": target = "zh-Hant"
-        default:        return Bundle.main.localizedString(forKey: key, value: key, table: nil)
-        }
-        if let path = Bundle.main.path(forResource: target, ofType: "lproj"),
-           let lprojBundle = Bundle(path: path) {
-            return lprojBundle.localizedString(forKey: key, value: key, table: nil)
-        }
-        return Bundle.main.localizedString(forKey: key, value: key, table: nil)
     }
 }
 
@@ -796,6 +752,46 @@ private extension Coordinate {
 @MainActor
 fileprivate final class S2GridHolder {
     var lastObservedRegion: MKCoordinateRegion?
+
+    /// When `applyFly` last moved the camera itself, or nil.
+    ///
+    /// A timestamp rather than a flag on purpose. The first version of
+    /// this fix set a Bool in `applyFly` and cleared it in the
+    /// camera-change callback — but with SwiftUI's Map that callback
+    /// is asynchronous and is not guaranteed to arrive at all: fly to
+    /// the coordinate the camera is already at, or have one fly
+    /// superseded by the next, and it never fires. The flag then stays
+    /// set and swallows the NEXT genuine user pan, whose camera
+    /// position is silently not saved. A timestamp can only ever
+    /// suppress for `programmaticFlyWindow`, so a missed callback
+    /// heals itself.
+    ///
+    /// v1.15.2 audit (P3): MapContainerView has had this guard for a
+    /// while, with a comment spelling out what happens without it —
+    /// "programmatic follow ticks fire at 1 Hz during navigation;
+    /// saving the camera on every tick floods the SwiftData WAL and
+    /// causes app-wide lag within a few minutes". NativeMapView, which
+    /// is the path most users are actually on, never got the same
+    /// guard. Its 500 ms save debounce didn't help either: follow ticks
+    /// arrive every 1000 ms, so every single one cleared the debounce
+    /// and reached `modelContext.save()`. With the S2 grid on, the same
+    /// callback also re-ran a scanline BFS once a second.
+    ///
+    /// It lives on the holder rather than in @State because writes here
+    /// don't invalidate `body` — which is the entire point of the
+    /// holder.
+    var programmaticFlyAt: Date?
+
+    /// How long after a programmatic fly a camera change is still
+    /// assumed to be ours. Follow ticks arrive every 1000 ms and each
+    /// one refreshes the stamp, so continuous following stays
+    /// suppressed for as long as it continues.
+    static let programmaticFlyWindow: TimeInterval = 1.5
+
+    var isWithinProgrammaticFly: Bool {
+        guard let at = programmaticFlyAt else { return false }
+        return Date().timeIntervalSince(at) < Self.programmaticFlyWindow
+    }
 
     init() {}
 }

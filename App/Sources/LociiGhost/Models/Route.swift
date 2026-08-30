@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import LociiGhostCore
 
 /// User-saved multi-point route — typically the result of a GPX import
 /// of a recorded track (hundreds of points). Like `Bookmark` but stores
@@ -94,8 +95,23 @@ final class Route {
             return (try? JSONDecoder().decode([Coordinate].self, from: data)) ?? []
         }
         set {
-            let encoded = (try? JSONEncoder().encode(newValue)) ?? Data()
-            pointsJSON = String(data: encoded, encoding: .utf8) ?? "[]"
+            // v1.15.2 audit (L11): `try?` swallowed the failure and
+            // `pointCount` was set from the input regardless. Encoding
+            // genuinely fails — JSONEncoder rejects non-finite Doubles
+            // by default, and a GPX with lat="nan" parses to one — so a
+            // route could end up with an empty blob while the sidebar
+            // confidently displayed "274 pts". Running it then failed
+            // with "no waypoints", contradicting what was on screen.
+            guard let encoded = try? JSONEncoder().encode(newValue),
+                  let json = String(data: encoded, encoding: .utf8)
+            else {
+                assertionFailure("Route.points could not be encoded — "
+                                 + "non-finite coordinate?")
+                pointsJSON = "[]"
+                pointCount = 0
+                return
+            }
+            pointsJSON = json
             pointCount = newValue.count
         }
     }

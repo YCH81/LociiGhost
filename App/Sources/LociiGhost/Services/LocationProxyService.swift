@@ -140,5 +140,19 @@ final class LocationProxyService: NSObject, CLLocationManagerDelegate {
         // Most errors here are transient (radio not warmed up, indoor with no
         // WiFi). We don't surface them — the UI just keeps the previous fix
         // and the user can hit Refresh to retry.
+        //
+        // v1.15.2 audit (L17): but we do have to wake anyone waiting.
+        // This used to be empty, so `fetchFreshFix(timeout:)` sat out
+        // its entire timeout before returning nil even though
+        // CoreLocation had already said "not going to happen" —
+        // indoors or on a Mac with WiFi off, that was the normal case.
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let waiters = self.fixWaiters
+            self.fixWaiters.removeAll()
+            for (_, cont) in waiters {
+                cont.resume(returning: nil)
+            }
+        }
     }
 }

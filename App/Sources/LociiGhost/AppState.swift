@@ -8,9 +8,20 @@ import UniformTypeIdentifiers
 import LociiGhostCore
 
 // MARK: - Debug file logger (DwellMonitor diagnostic only)
+//
+// v1.15.2 audit (P1): this ran on EVERY position event (1 Hz while
+// navigating, 2 Hz on the joystick) with no #if DEBUG guard, doing
+// fileExists + open + lseek + write + close on the main actor and
+// growing /tmp/dwell_debug.txt without bound -- in shipping builds,
+// with the user's coordinates in world-readable plaintext. The
+// @autoclosure means release builds don't even evaluate the
+// interpolated message.
+#if DEBUG
 private let _dwellLogURL = URL(fileURLWithPath: "/tmp/dwell_debug.txt")
-private func dwellLog(_ msg: String) {
-    let line = "[\(Date())] \(msg)\n"
+#endif
+private func dwellLog(_ msg: @autoclosure () -> String) {
+    #if DEBUG
+    let line = "[\(Date())] \(msg())\n"
     if let data = line.data(using: .utf8) {
         if FileManager.default.fileExists(atPath: _dwellLogURL.path) {
             if let fh = try? FileHandle(forWritingTo: _dwellLogURL) {
@@ -20,6 +31,7 @@ private func dwellLog(_ msg: String) {
             try? data.write(to: _dwellLogURL)
         }
     }
+    #endif
 }
 
 /// Top-level @Observable state for the SwiftUI app.
@@ -57,7 +69,29 @@ final class AppState {
     /// actual failures so the colour coding in the overlay stays
     /// meaningful.
     var lastInfo: String?
-    private var infoDismissTask: Task<Void, Never>?
+
+    /// UDIDs the daemon has flagged as degraded — reachable, but the
+    /// location channel has stopped acknowledging pushes.
+    /// v1.15.2 audit (W5): `device.list` only knows connected /
+    /// not-connected, so this transition has to ride on the event.
+    var degradedUDIDs: Set<String> = []
+
+    /// False while the main window is fully occluded or hidden. Set by
+    /// MainView from NSWindow occlusion notifications; read by
+    /// `shouldFollowSimulatedLocation` and the status-bar clock so
+    /// invisible UI stops doing per-tick work. See P9 there.
+    var windowIsVisible: Bool = true
+
+    /// Docked iPhone-Mirroring panel (v1.16). Owns its own AppKit /
+    /// Accessibility machinery; AppState just holds it so every view
+    /// can reach it through `@Environment(AppState.self)` the same
+    /// way it reaches everything else.
+    let mirrorDock = MirrorDock()
+
+    // v1.15.2 audit (P13): see the note at `eventTask` -- an
+    // un-ignored stored Task property gets a per-access observation
+    // hook, which is what produced the _AccessList.addAccess crash.
+    @ObservationIgnored private var infoDismissTask: Task<Void, Never>?
 
     /// Show an info toast for ~10 seconds, then auto-dismiss. Cancels
     /// any previous pending dismiss so a second call doesn't blink the
@@ -74,7 +108,16 @@ final class AppState {
 
     // MARK: - Devices
     var devices: [DeviceVM] = []
-    var selectedUDID: String?
+    var selectedUDID: String? {
+        didSet {
+            // Re-point the observed mirror at the newly selected
+            // device (v1.15.2 audit P5).
+            guard selectedUDID != oldValue else { return }
+            currentSimulatedLocation = selectedUDID.flatMap { udid in
+                udid == Self.virtualMapUDID ? nil : simulatedLocationsByDevice[udid]
+            }
+        }
+    }
 
     // MARK: - Pending teleport / stops
     /// Ordered list of points the user has staged on the map but not yet
@@ -214,7 +257,25 @@ final class AppState {
     /// In-memory only. The daemon owns the durable per-device
     /// `last_lat_lng` on its `LocationService`; the Mac doesn't
     /// try to persist this dictionary across app launches.
-    private(set) var simulatedLocationsByDevice: [String: Coordinate] = [:]
+    @ObservationIgnored private(set) var simulatedLocationsByDevice: [String: Coordinate] = [:]
+
+    /// The selected device's simulated location, mirrored out of
+    /// `simulatedLocationsByDevice`.
+    ///
+    /// v1.15.2 audit (P5): `@Observable` registers observers against
+    /// the stored property they touched, not the value they computed
+    /// from it. Because `simulatedLocation` and `currentMapFocus` both
+    /// read the dictionary, EVERY write to it woke them — including a
+    /// position event for a device the user isn't looking at. With two
+    /// iPhones connected, the map's observation loop ran at the sum of
+    /// both devices' event rates and discarded half the work; with
+    /// three, two thirds. The dictionary is now unobserved and this
+    /// mirror is the only thing views track, so it changes exactly
+    /// when the visible device moves.
+    ///
+    /// Kept in step in three places: the `simulatedLocation` setter,
+    /// `setSimulatedLocation(_:for:)`, and `selectedUDID`'s didSet.
+    private(set) var currentSimulatedLocation: Coordinate?
 
     /// What's-currently-displayed simulated location. Reads /
     /// writes route through `simulatedLocationsByDevice` keyed on
@@ -229,10 +290,10 @@ final class AppState {
     ///     selected devices still update their own slot
     var simulatedLocation: Coordinate? {
         get {
-            guard let udid = selectedUDID,
-                  udid != Self.virtualMapUDID
+            guard let udid = selectedUDID, udid != Self.virtualMapUDID
             else { return nil }
-            return simulatedLocationsByDevice[udid]
+            // The mirror already tracks `udid`; see its doc comment.
+            return currentSimulatedLocation
         }
         set {
             guard let udid = selectedUDID,
@@ -250,6 +311,7 @@ final class AppState {
             } else {
                 simulatedLocationsByDevice.removeValue(forKey: udid)
             }
+            currentSimulatedLocation = newValue
             scheduleWeatherAndTzRefresh()
         }
     }
@@ -276,9 +338,12 @@ final class AppState {
         } else {
             simulatedLocationsByDevice.removeValue(forKey: udid)
         }
-        // Only fire the chip refresh if the event was for the
-        // visible device — chips show selected-device state.
+        // Only touch observed state — and fire the chip refresh — when
+        // the event was for the visible device. Before P5 the write
+        // above was itself observed, so a background device's 1 Hz
+        // event stream redrew the foreground device's map.
         if udid == selectedUDID {
+            currentSimulatedLocation = coord
             scheduleWeatherAndTzRefresh()
         }
     }
@@ -419,6 +484,15 @@ final class AppState {
     /// recenter button) still pan because those go through
     /// `pendingMapFly` directly, not this getter.
     var shouldFollowSimulatedLocation: Bool {
+        // v1.15.2 audit (P9): the window can be fully occluded or the
+        // app hidden while a route keeps running — the app deliberately
+        // outlives its last window
+        // (applicationShouldTerminateAfterLastWindowClosed == false).
+        // Panning a map nobody is looking at costs a camera animation,
+        // a SwiftData camera write and (with the S2 grid on) a BFS,
+        // once a second, on a laptop. The daemon keeps simulating; only
+        // the drawing pauses.
+        guard windowIsVisible else { return false }
         guard mapAutoRecenter else { return false }
         if navigation != nil { return true }
         switch activeMovementMode {
@@ -594,7 +668,7 @@ final class AppState {
     /// Held outside the didSet so back-to-back writes from a single
     /// user action (e.g. picking a preset clears customSpeedMps too)
     /// only schedule one restart.
-    private var randomWalkSpeedRestartTask: Task<Void, Never>?
+    @ObservationIgnored private var randomWalkSpeedRestartTask: Task<Void, Never>?
     /// When true, the next Navigate skips OSRM and walks the iPhone
     /// straight-line between consecutive stops. Cannot be toggled mid-
     /// navigation — the route was already computed; if you want to
@@ -946,7 +1020,32 @@ final class AppState {
     /// random walk). Set by `runRoute` on Start; cleared by
     /// `stopNavigation` and on natural completion. `position_update`
     /// snapping reads this to find which on-disk Route to update.
-    @ObservationIgnored var currentlyPlayingRoute: Route?
+    // Deliberately not named `_currentlyPlayingRoute`: that is exactly
+    // the storage name the @Observable macro synthesises for a property
+    // called `currentlyPlayingRoute`, and having both in the same type
+    // is asking for a confusing collision later.
+    @ObservationIgnored private var playingRouteStorage: Route?
+    /// Decoded copy of `playingRouteStorage?.points`, refreshed
+    /// whenever the played route changes.
+    ///
+    /// v1.15.2 audit (P2): `Route.points` is a computed property that
+    /// runs a full `JSONDecoder` over the persisted blob on every read,
+    /// and `updateRouteSnap` read it on every position event — 1 Hz
+    /// while navigating, 2 Hz on the joystick. On a 4000-point GPX
+    /// that meant turning ~150 KB of String into Data, decoding 4000
+    /// Coordinates and throwing them all away, once a second, on the
+    /// main actor. The `lookAhead = 64` bound below was written to keep
+    /// that path cheap; the decode on the line above it undid the
+    /// entire optimisation.
+    @ObservationIgnored private var playingRoutePointsCache: [Coordinate] = []
+
+    var currentlyPlayingRoute: Route? {
+        get { playingRouteStorage }
+        set {
+            playingRouteStorage = newValue
+            playingRoutePointsCache = newValue?.points ?? []
+        }
+    }
     /// 0-based snap progress into `currentlyPlayingRoute!.points`.
     /// Mirrors what'll get written into Route.lastPlayedStopIndex on
     /// the next periodic flush. Held in-memory so the per-tick
@@ -1128,7 +1227,10 @@ final class AppState {
     // the app with EXC_BAD_ACCESS inside `addAccess`. See v1.9.3
     // crash diagnosis.
     @ObservationIgnored private var lifecycle: DaemonLifecycle?
-    @ObservationIgnored private var client: DaemonClient?
+    // Read by the AppState+*.swift extensions. Swift's `private` is
+    // file-scoped, so these two had to widen to internal when the
+    // class was split across files (v1.15.2 audit, Phase 7).
+    @ObservationIgnored var client: DaemonClient?
     @ObservationIgnored private var eventTask: Task<Void, Never>?
     @ObservationIgnored private var previewTask: Task<Void, Never>?
 
@@ -1137,7 +1239,7 @@ final class AppState {
     /// SwiftData context, attached at app launch by LociiGhostApp.
     /// nil before attach (early bootstrap calls just no-op the
     /// persistence read/writes; the in-memory defaults still work).
-    @ObservationIgnored private var modelContext: ModelContext?
+    @ObservationIgnored var modelContext: ModelContext?
     @ObservationIgnored private var preferences: AppPreferences?
 
     /// Read-only handle on the persistent context for callers that
@@ -1168,7 +1270,16 @@ final class AppState {
         // redundant write-back-to-disk that would otherwise fire here.
         isHydratingPreferences = true
         alertSoundEnabled = prefs.alertSoundEnabled
-        googleGeocodeAPIKey = prefs.googleGeocodeAPIKey
+        // X8 migration: an older build stored the key in plaintext
+        // here. Move it into the Keychain on first launch and wipe the
+        // plaintext copy — leaving it behind would defeat the point.
+        if let legacy = prefs.googleGeocodeAPIKey, !legacy.isEmpty {
+            KeychainSecret.write(legacy, to: KeychainSecret.googleDirectionsKey)
+            prefs.googleGeocodeAPIKey = nil
+            prefs.hasGoogleGeocodeAPIKey = true
+            try? modelContext?.save()
+        }
+        googleGeocodeAPIKey = KeychainSecret.read(KeychainSecret.googleDirectionsKey)
         routingEngine = RoutingEngine(rawValue: prefs.routingEngineRaw) ?? .osrmDemo
         appearanceMode = AppearanceMode(rawValue: prefs.appearanceModeRaw) ?? .brand
         isHydratingPreferences = false
@@ -1255,6 +1366,10 @@ final class AppState {
     /// `nil` (or whitespace-only) means "no key configured" — the
     /// geocoder fallback is then bypassed. Stored property pattern
     /// matches alertSoundEnabled above (see its doc-comment for why).
+    /// v1.15.2 audit (X8): this now lives in the Keychain, not in
+    /// `preferences.store`. It is a key the user pays for per
+    /// request, and the store is an unencrypted SQLite file any
+    /// process running as them can read.
     var googleGeocodeAPIKey: String? = nil {
         didSet {
             guard !isHydratingPreferences else { return }
@@ -1264,8 +1379,15 @@ final class AppState {
             // input so the Settings field doesn't visually lurch
             // while they're editing.
             let trimmed = googleGeocodeAPIKey?.trimmingCharacters(in: .whitespacesAndNewlines)
-            preferences?.googleGeocodeAPIKey =
-                (trimmed?.isEmpty == false) ? trimmed : nil
+            let toStore = (trimmed?.isEmpty == false) ? trimmed : nil
+            if !KeychainSecret.write(toStore, to: KeychainSecret.googleDirectionsKey) {
+                lastError = String(localized: "Couldn't save the API key to the Keychain.")
+            }
+            // Never write the key itself to SwiftData again; keep only
+            // the "is one configured" bit so views that just need to
+            // show a checkmark don't have to touch the Keychain.
+            preferences?.googleGeocodeAPIKey = nil
+            preferences?.hasGoogleGeocodeAPIKey = (toStore != nil)
             try? modelContext?.save()
         }
     }
@@ -1293,952 +1415,6 @@ final class AppState {
             guard !isHydratingPreferences else { return }
             preferences?.appearanceModeRaw = appearanceMode.rawValue
             try? modelContext?.save()
-        }
-    }
-
-    // MARK: - Bookmarks (Phase 5.3)
-
-    /// Add a new bookmark. The sidebar's `@Query<Bookmark>` re-runs
-    /// automatically on insert, so the new entry appears without
-    /// further plumbing.
-    func addBookmark(name: String, lat: Double, lng: Double,
-                     category: String = "",
-                     iconSymbol: String = "mappin.circle.fill",
-                     imageURL: String? = nil) {
-        guard let ctx = modelContext else { return }
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let nameToSave = trimmed.isEmpty
-            ? String(format: "(%.5f, %.5f)", lat, lng)
-            : trimmed
-        let imgTrimmed = imageURL?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let imgToSave = (imgTrimmed?.isEmpty ?? true) ? nil : imgTrimmed
-        let bm = Bookmark(name: nameToSave, lat: lat, lng: lng,
-                          category: category.trimmingCharacters(in: .whitespaces),
-                          iconSymbol: iconSymbol,
-                          imageURL: imgToSave)
-        ctx.insert(bm)
-        try? ctx.save()
-        bookmarksRevision &+= 1
-    }
-
-    /// Delete a bookmark. Save explicitly so the on-disk store
-    /// reflects the deletion immediately — relying on SwiftData's
-    /// debounced auto-save means a quick app quit could lose it.
-    func deleteBookmark(_ bm: Bookmark) {
-        guard let ctx = modelContext else { return }
-        ctx.delete(bm)
-        try? ctx.save()
-        bookmarksRevision &+= 1
-    }
-
-    /// Rename / re-categorise / re-icon. Phase 5.3 keeps the edit
-    /// affordance simple — one method, all fields optional.
-    func updateBookmark(_ bm: Bookmark,
-                        name: String? = nil,
-                        category: String? = nil,
-                        iconSymbol: String? = nil) {
-        guard let ctx = modelContext else { return }
-        if let name {
-            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty { bm.name = trimmed }
-        }
-        if let category {
-            bm.category = category.trimmingCharacters(in: .whitespaces)
-        }
-        if let iconSymbol, !iconSymbol.isEmpty {
-            bm.iconSymbol = iconSymbol
-        }
-        try? ctx.save()
-        bookmarksRevision &+= 1
-    }
-
-    // MARK: - Bookmarks bulk + category operations
-
-    /// Delete every bookmark in `bookmarks` in one save. Safe to call
-    /// with an empty array (no-op). Used by the manager sheet's
-    /// multi-select delete action.
-    func bulkDeleteBookmarks(_ bookmarks: [Bookmark]) {
-        guard let ctx = modelContext, !bookmarks.isEmpty else { return }
-        for bm in bookmarks { ctx.delete(bm) }
-        try? ctx.save()
-        bookmarksRevision &+= 1
-    }
-
-    /// Reassign every bookmark in `bookmarks` to `category`. Empty
-    /// string moves them to the Uncategorized bin. One save at the end
-    /// — SwiftData batches the diff internally.
-    func bulkMoveBookmarks(_ bookmarks: [Bookmark], to category: String) {
-        guard let ctx = modelContext, !bookmarks.isEmpty else { return }
-        let trimmed = category.trimmingCharacters(in: .whitespaces)
-        for bm in bookmarks { bm.category = trimmed }
-        try? ctx.save()
-        bookmarksRevision &+= 1
-    }
-
-    /// Apply `prefix` and / or `suffix` to every bookmark's name.
-    /// Either argument may be empty. Names that would become empty
-    /// after trimming are left as-is so we don't accidentally erase
-    /// a row's identity.
-    func bulkRenameBookmarks(_ bookmarks: [Bookmark],
-                             prefix: String = "",
-                             suffix: String = "") {
-        guard let ctx = modelContext, !bookmarks.isEmpty,
-              !(prefix.isEmpty && suffix.isEmpty)
-        else { return }
-        for bm in bookmarks {
-            let newName = "\(prefix)\(bm.name)\(suffix)"
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            if !newName.isEmpty { bm.name = newName }
-        }
-        try? ctx.save()
-        bookmarksRevision &+= 1
-    }
-
-    /// Rename a category across every bookmark that currently uses it.
-    /// `from` is the exact existing category string (case-sensitive).
-    /// `to` is trimmed; renaming to "" effectively moves all those
-    /// bookmarks to Uncategorized. Returns the count of rows updated.
-    @discardableResult
-    func renameCategory(from oldName: String, to newName: String) -> Int {
-        guard let ctx = modelContext else { return 0 }
-        let target = newName.trimmingCharacters(in: .whitespaces)
-        if target == oldName { return 0 }
-        let predicate = #Predicate<Bookmark> { $0.category == oldName }
-        let descriptor = FetchDescriptor<Bookmark>(predicate: predicate)
-        guard let matches = try? ctx.fetch(descriptor), !matches.isEmpty else { return 0 }
-        for bm in matches { bm.category = target }
-        try? ctx.save()
-        bookmarksRevision &+= 1
-        return matches.count
-    }
-
-    /// Delete every bookmark that currently belongs to `category`.
-    /// Use this when the user picks "delete category and its bookmarks"
-    /// from the manager sheet. Returns the count of rows removed.
-    @discardableResult
-    func deleteCategoryWithBookmarks(_ category: String) -> Int {
-        guard let ctx = modelContext else { return 0 }
-        let predicate = #Predicate<Bookmark> { $0.category == category }
-        let descriptor = FetchDescriptor<Bookmark>(predicate: predicate)
-        guard let matches = try? ctx.fetch(descriptor), !matches.isEmpty else { return 0 }
-        for bm in matches { ctx.delete(bm) }
-        try? ctx.save()
-        bookmarksRevision &+= 1
-        return matches.count
-    }
-
-    /// Clear `category` from every matching bookmark, leaving the
-    /// records intact (they land in the Uncategorized bin). Returns
-    /// the count of rows updated.
-    @discardableResult
-    func deleteCategoryKeepingBookmarks(_ category: String) -> Int {
-        return renameCategory(from: category, to: "")
-    }
-
-    /// Merge `source` into `destination`: every bookmark that was in
-    /// `source` becomes a bookmark in `destination`. A degenerate merge
-    /// (same name) is a no-op. Returns the count of rows updated.
-    @discardableResult
-    func mergeCategory(_ source: String, into destination: String) -> Int {
-        return renameCategory(from: source, to: destination)
-    }
-
-    // MARK: - Recent Places (v1.9 — history capsule on map)
-
-    /// Hard cap on persisted RecentPlace rows. The popover renders a
-    /// scroll-less list, so the cap also bounds the visual height —
-    /// 50 fits "stuff I jumped to in the last week" without ever
-    /// needing the user to wade through hundreds of entries. We prune
-    /// the oldest beyond this on every insert.
-    private static let recentPlacesCap = 50
-
-    /// Fetch the latest N recent-place rows, newest first. Returns []
-    /// before the model context is attached (early bootstrap path).
-    /// Use this from views that need a live list — they should NOT
-    /// use `@Query` directly, because we want explicit sort order +
-    /// prune behaviour driven through AppState.
-    func fetchRecentPlaces(limit: Int = 30) -> [RecentPlace] {
-        guard let ctx = modelContext else { return [] }
-        var descriptor = FetchDescriptor<RecentPlace>(
-            sortBy: [SortDescriptor(\RecentPlace.createdAt, order: .reverse)]
-        )
-        descriptor.fetchLimit = limit
-        return (try? ctx.fetch(descriptor)) ?? []
-    }
-
-    /// Insert a new entry into the recent-places log. De-dupes against
-    /// the most recent entry: rapid double-teleport to the same coord
-    /// (e.g. search → teleport then map-click teleport) doesn't create
-    /// two adjacent rows. Prunes older rows past the cap.
-    ///
-    /// Called from teleport / navigate / search action paths. Cheap —
-    /// one insert + at most one delete every 50 calls.
-    func recordRecentPlace(label: String, lat: Double, lng: Double, kind: RecentPlace.Kind) {
-        guard let ctx = modelContext else { return }
-        let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
-        let displayLabel = trimmed.isEmpty
-            ? String(format: "%.5f, %.5f", lat, lng)
-            : trimmed
-
-        // De-dupe with the most-recent row when label + coord match
-        // (rounded to ~11m so floating-point noise from the daemon's
-        // re-projected coord doesn't make duplicates). Kind also
-        // has to match — teleport then navigate to the same place is
-        // two intentional actions and shouldn't collapse.
-        var descriptor = FetchDescriptor<RecentPlace>(
-            sortBy: [SortDescriptor(\RecentPlace.createdAt, order: .reverse)]
-        )
-        descriptor.fetchLimit = 1
-        if let last = (try? ctx.fetch(descriptor))?.first,
-           last.kindRaw == kind.rawValue,
-           last.label == displayLabel,
-           abs(last.lat - lat) < 1e-4,
-           abs(last.lng - lng) < 1e-4 {
-            // Bump the timestamp so the row floats back to the top
-            // instead of getting buried by a no-op duplicate.
-            last.createdAt = .now
-            try? ctx.save()
-            return
-        }
-
-        let entry = RecentPlace(label: displayLabel, lat: lat, lng: lng, kind: kind)
-        ctx.insert(entry)
-
-        // Prune anything past the cap. We pull all rows (cheap at
-        // 50 max), drop the head, delete the rest. FetchDescriptor
-        // doesn't expose an offset for `delete` so a manual cleanup
-        // is the simplest path.
-        var allDesc = FetchDescriptor<RecentPlace>(
-            sortBy: [SortDescriptor(\RecentPlace.createdAt, order: .reverse)]
-        )
-        allDesc.fetchLimit = Self.recentPlacesCap + 16
-        if let all = try? ctx.fetch(allDesc), all.count > Self.recentPlacesCap {
-            for old in all.dropFirst(Self.recentPlacesCap) {
-                ctx.delete(old)
-            }
-        }
-        try? ctx.save()
-    }
-
-    /// Clear the entire recent-places log. Called from the popover's
-    /// "Clear history" button.
-    func clearRecentPlaces() {
-        guard let ctx = modelContext else { return }
-        if let all = try? ctx.fetch(FetchDescriptor<RecentPlace>()) {
-            for entry in all { ctx.delete(entry) }
-            try? ctx.save()
-        }
-    }
-
-    /// Delete one row from the popover's swipe / X button.
-    func deleteRecentPlace(_ entry: RecentPlace) {
-        guard let ctx = modelContext else { return }
-        ctx.delete(entry)
-        try? ctx.save()
-    }
-
-    // MARK: - Bookmarks JSON import (Phase 5.5)
-
-    /// Open an NSOpenPanel for a `.json` file, parse it as a
-    /// LocWarp-style bookmarks export, and bulk-insert each entry
-    /// as a Bookmark record. Categories from the JSON become
-    /// per-bookmark category strings — sidebar grouping happens
-    /// for free via the existing `BookmarksSection` query path.
-    ///
-    /// Surface any error / "nothing imported" via `lastError` so the
-    /// red toast in the map overlay tells the user what happened.
-    @MainActor
-    func importBookmarksJSON() async {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.init(filenameExtension: "json")!]
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = false
-        panel.title = String(
-            localized: "Import bookmarks from JSON",
-            comment: "Title of the open-file dialog for bookmarks JSON import",
-        )
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            let entries = try BookmarksJSONService.parse(url: url)
-            guard !entries.isEmpty else {
-                lastError = String(
-                    localized: "JSON parsed, but no bookmarks were found.",
-                    comment: "Toast when bookmark JSON import finds zero records",
-                )
-                return
-            }
-            guard let ctx = modelContext else { return }
-            // Batched insert. The previous loop called `addBookmark`
-            // per-entry, which fired `ctx.save()` AND bumped
-            // `bookmarksRevision` for every row. Each save flushed a
-            // SwiftData transaction and notified every active @Query —
-            // re-fetching the entire table 3000+ times on a large
-            // import froze the UI for tens of seconds. Insert in a
-            // tight loop, save once, bump once.
-            for e in entries {
-                let trimmed = e.name.trimmingCharacters(in: .whitespacesAndNewlines)
-                let nameToSave = trimmed.isEmpty
-                    ? String(format: "(%.5f, %.5f)", e.lat, e.lng)
-                    : trimmed
-                let imgTrimmed = e.imageURL?.trimmingCharacters(in: .whitespacesAndNewlines)
-                let imgToSave = (imgTrimmed?.isEmpty ?? true) ? nil : imgTrimmed
-                let bm = Bookmark(
-                    name: nameToSave,
-                    lat: e.lat,
-                    lng: e.lng,
-                    category: e.category.trimmingCharacters(in: .whitespaces),
-                    iconSymbol: "mappin.circle.fill",
-                    imageURL: imgToSave,
-                )
-                ctx.insert(bm)
-            }
-            try? ctx.save()
-            bookmarksRevision &+= 1
-            lastError = String(
-                format: String(
-                    localized: "Imported %lld bookmarks.",
-                    comment: "Toast after a successful bookmark JSON import",
-                ),
-                entries.count,
-            )
-        } catch {
-            lastError = error.localizedDescription
-        }
-    }
-
-    // MARK: - Bookmarks JSON export + bulk paste (v1.9)
-
-    /// Open an NSSavePanel and write all bookmarks out as LocWarp-style
-    /// JSON. Filename defaults to `lociighost-bookmarks-YYYY-MM-DD.json`
-    /// so successive exports don't overwrite each other unless the user
-    /// picks the same name.
-    @MainActor
-    func exportBookmarksJSON() async {
-        guard let ctx = modelContext else {
-            lastError = String(localized: "Database not ready yet — try again in a second.")
-            return
-        }
-        let all: [Bookmark]
-        do {
-            all = try ctx.fetch(FetchDescriptor<Bookmark>(
-                sortBy: [SortDescriptor(\Bookmark.name)]
-            ))
-        } catch {
-            lastError = "Couldn't read bookmarks: \(error.localizedDescription)"
-            return
-        }
-        guard !all.isEmpty else {
-            lastError = String(
-                localized: "No bookmarks to export.",
-                comment: "Toast when bookmark export is invoked on an empty list",
-            )
-            return
-        }
-
-        let date = DateFormatter()
-        date.dateFormat = "yyyy-MM-dd"
-        let defaultName = "lociighost-bookmarks-\(date.string(from: .now)).json"
-
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.init(filenameExtension: "json")!]
-        panel.nameFieldStringValue = defaultName
-        panel.title = String(
-            localized: "Export bookmarks to JSON",
-            comment: "Title of the save-file dialog for bookmarks JSON export",
-        )
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-
-        do {
-            let data = try BookmarksJSONService.encodeExport(bookmarks: all)
-            try data.write(to: url, options: .atomic)
-            lastError = String(
-                format: String(
-                    localized: "Exported %lld bookmarks.",
-                    comment: "Toast after a successful bookmark JSON export",
-                ),
-                all.count,
-            )
-        } catch {
-            lastError = "Export failed: \(error.localizedDescription)"
-        }
-    }
-
-    /// Parse a multi-line paste blob and insert one bookmark per line.
-    /// Returns the count actually inserted. Errors are surfaced via
-    /// the returned count being zero + lastError; the caller should
-    /// dismiss its paste sheet either way.
-    /// Parse one coord per line (`lat, lng` — comma / tab / semicolon
-    /// separators) and seed the multi-stop list with them so the user
-    /// can build a long route by paste instead of clicking the map
-    /// dozens of times. Reuses `BookmarksJSONService.parseBulkPaste`
-    /// for the actual line parser since the format overlaps; we just
-    /// discard the bookmark-only name / category fields.
-    ///
-    /// **Side-effect: teleports the iPhone to the first parsed coord
-    /// BEFORE seeding the stops.** Without that, path-planning would
-    /// route from wherever the iPhone currently is (often a different
-    /// country entirely when the user is planning a trip abroad), and
-    /// OSRM / MapKit either fail to plan an inter-continental polyline
-    /// or render a useless straight line across the ocean. Teleporting
-    /// to the first stop first makes path-planning a local problem.
-    /// `teleport()` clears `pendingStops` as part of its single-action
-    /// semantics, so we refill from `coords` after the teleport
-    /// returns. The full parsed list (including the first coord) is
-    /// staged so the user sees what they pasted; the first leg of
-    /// the eventual Navigate is a zero-distance no-op.
-    @MainActor
-    @discardableResult
-    func bulkAppendStops(from rawText: String) async -> Int {
-        let entries = BookmarksJSONService.parseBulkPaste(rawText)
-        guard !entries.isEmpty else {
-            lastError = String(
-                localized: "No valid coordinates found in the pasted text.",
-                comment: "Toast when multi-stop bulk paste finds zero usable coords",
-            )
-            return 0
-        }
-        let coords = entries.map { Coordinate(lat: $0.lat, lng: $0.lng) }
-
-        if let first = coords.first,
-           let udid = selectedUDID,
-           devices.first(where: { $0.udid == udid })?.connected == true {
-            await teleport(udid: udid, lat: first.lat, lng: first.lng)
-        }
-
-        // Replace, not append: teleport just wiped pendingStops, and
-        // the user's intent on a bulk paste is "this is my new route",
-        // not "tack these onto whatever was staged before".
-        pendingStops = coords
-
-        lastError = String(
-            format: String(
-                localized: "Added %lld stops from paste.",
-                comment: "Toast after a successful multi-stop bulk-paste insert",
-            ),
-            coords.count,
-        )
-        return coords.count
-    }
-
-    @MainActor
-    @discardableResult
-    func bulkAddBookmarks(from rawText: String, defaultCategory: String = "") -> Int {
-        let entries = BookmarksJSONService.parseBulkPaste(rawText)
-        guard !entries.isEmpty else {
-            lastError = String(
-                localized: "No valid bookmark lines found in the pasted text.",
-                comment: "Toast when bookmark bulk paste finds zero usable lines",
-            )
-            return 0
-        }
-        guard let ctx = modelContext else { return 0 }
-        // Same batching contract as importBookmarksJSON — single save +
-        // single revision bump so a 3000-line paste doesn't trigger
-        // 3000 @Query re-fetches.
-        for e in entries {
-            let category = e.category.isEmpty
-                ? defaultCategory.trimmingCharacters(in: .whitespacesAndNewlines)
-                : e.category
-            let trimmed = e.name.trimmingCharacters(in: .whitespacesAndNewlines)
-            let nameToSave = trimmed.isEmpty
-                ? String(format: "(%.5f, %.5f)", e.lat, e.lng)
-                : trimmed
-            let bm = Bookmark(
-                name: nameToSave,
-                lat: e.lat,
-                lng: e.lng,
-                category: category.trimmingCharacters(in: .whitespaces),
-            )
-            ctx.insert(bm)
-        }
-        try? ctx.save()
-        bookmarksRevision &+= 1
-        lastError = String(
-            format: String(
-                localized: "Added %lld bookmarks from paste.",
-                comment: "Toast after a successful bookmark bulk-paste insert",
-            ),
-            entries.count,
-        )
-        return entries.count
-    }
-
-    // MARK: - Routes JSON import / export + force-restart (v1.9.1)
-
-    /// Open an NSOpenPanel for a `.json` routes export, parse it, and
-    /// bulk-insert each entry as a Route record. Mirrors
-    /// `importBookmarksJSON()` for the routes table. Surfaces errors
-    /// / "nothing imported" via `lastError`.
-    /// Open NSOpenPanel for a JSON routes file, parse + bulk-insert. Returns
-    /// a user-facing result string (success or failure) so callers presented
-    /// in a sheet (Settings → Routes) can surface it inline — the
-    /// MainView-mounted `lastError` toast is hidden behind the sheet.
-    /// Returns `nil` only when the user cancels the open dialog.
-    @MainActor
-    func importRoutesJSON() async -> String? {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.init(filenameExtension: "json")!]
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = false
-        panel.title = String(
-            localized: "Import routes from JSON",
-            comment: "Title of the open-file dialog for routes JSON import",
-        )
-        guard panel.runModal() == .OK, let url = panel.url else { return nil }
-        do {
-            let entries = try RoutesJSONService.parse(url: url)
-            guard !entries.isEmpty else {
-                let msg = String(
-                    localized: "JSON parsed, but no routes were found.",
-                    comment: "Toast when route JSON import finds zero records",
-                )
-                lastError = msg
-                return msg
-            }
-            for e in entries {
-                saveImportedRoute(
-                    name: e.name,
-                    coordinates: e.points,
-                    category: e.category,
-                    iconSymbol: e.iconSymbol
-                        ?? "point.bottomleft.forward.to.point.topright.scurvepath.fill",
-                )
-            }
-            let msg = String(
-                format: String(
-                    localized: "Imported %lld routes.",
-                    comment: "Toast after a successful route JSON import",
-                ),
-                entries.count,
-            )
-            lastError = msg
-            return msg
-        } catch {
-            let msg = error.localizedDescription
-            lastError = msg
-            return msg
-        }
-    }
-
-    /// NSSavePanel → JSON for every saved Route. Default filename
-    /// includes today's date so successive exports don't clobber.
-    /// Returns a user-facing result string for sheet-local rendering
-    /// (Settings → Routes); `nil` only when the user cancels the save
-    /// dialog.
-    @MainActor
-    func exportRoutesJSON() async -> String? {
-        guard let ctx = modelContext else {
-            let msg = String(localized: "Database not ready yet — try again in a second.")
-            lastError = msg
-            return msg
-        }
-        let all: [Route]
-        do {
-            all = try ctx.fetch(FetchDescriptor<Route>(
-                sortBy: [SortDescriptor(\Route.name)]
-            ))
-        } catch {
-            let msg = "Couldn't read routes: \(error.localizedDescription)"
-            lastError = msg
-            return msg
-        }
-        guard !all.isEmpty else {
-            let msg = String(
-                localized: "No routes to export.",
-                comment: "Toast when route export is invoked on an empty list",
-            )
-            lastError = msg
-            return msg
-        }
-
-        let date = DateFormatter()
-        date.dateFormat = "yyyy-MM-dd"
-        let defaultName = "lociighost-routes-\(date.string(from: .now)).json"
-
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.init(filenameExtension: "json")!]
-        panel.nameFieldStringValue = defaultName
-        panel.title = String(
-            localized: "Export routes to JSON",
-            comment: "Title of the save-file dialog for routes JSON export",
-        )
-        guard panel.runModal() == .OK, let url = panel.url else { return nil }
-
-        do {
-            let data = try RoutesJSONService.encodeExport(routes: all)
-            try data.write(to: url, options: .atomic)
-            let msg = String(
-                format: String(
-                    localized: "Exported %lld routes.",
-                    comment: "Toast after a successful route JSON export",
-                ),
-                all.count,
-            )
-            lastError = msg
-            return msg
-        } catch {
-            let msg = "Export failed: \(error.localizedDescription)"
-            lastError = msg
-            return msg
-        }
-    }
-
-    // MARK: - Full backup (v1.11.2)
-
-    /// Dump every user-generated entity (bookmarks + routes + stop
-    /// presets) to a single versioned JSON file via NSSavePanel.
-    /// Designed for "I'm about to wipe / migrate / reinstall" — one
-    /// file, one round-trip back through `importAllBackup()`.
-    @MainActor
-    func exportAllBackup() async {
-        guard let ctx = modelContext else {
-            lastError = String(localized: "Database not ready yet — try again in a second.")
-            return
-        }
-        let bookmarks = (try? ctx.fetch(FetchDescriptor<Bookmark>(
-            sortBy: [SortDescriptor(\Bookmark.createdAt)],
-        ))) ?? []
-        let routes = (try? ctx.fetch(FetchDescriptor<Route>(
-            sortBy: [SortDescriptor(\Route.createdAt)],
-        ))) ?? []
-        let presets = (try? ctx.fetch(FetchDescriptor<StopPreset>(
-            sortBy: [SortDescriptor(\StopPreset.createdAt)],
-        ))) ?? []
-
-        guard !bookmarks.isEmpty || !routes.isEmpty || !presets.isEmpty else {
-            lastError = String(
-                localized: "Nothing to back up — no bookmarks, routes, or stop presets yet.",
-                comment: "Toast when full-backup export finds an empty database",
-            )
-            return
-        }
-
-        let bundle = FullBackupBundle(
-            version: 1,
-            exportedAt: .now,
-            bookmarks: bookmarks.map {
-                FullBackupBundle.BookmarkEntry(
-                    name: $0.name,
-                    lat: $0.lat,
-                    lng: $0.lng,
-                    category: $0.category,
-                    iconSymbol: $0.iconSymbol,
-                    createdAt: $0.createdAt,
-                    imageURL: $0.imageURL,
-                )
-            },
-            routes: routes.map {
-                FullBackupBundle.RouteEntry(
-                    name: $0.name,
-                    category: $0.category,
-                    iconSymbol: $0.iconSymbol,
-                    points: $0.points.map { [$0.lat, $0.lng] },
-                    createdAt: $0.createdAt,
-                )
-            },
-            stopPresets: presets.map {
-                FullBackupBundle.StopPresetEntry(
-                    name: $0.name,
-                    points: $0.coordinates.map { [$0.lat, $0.lng] },
-                    createdAt: $0.createdAt,
-                )
-            },
-        )
-
-        let date = DateFormatter()
-        date.dateFormat = "yyyy-MM-dd"
-        let defaultName = "lociighost-backup-\(date.string(from: .now)).json"
-
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.init(filenameExtension: "json")!]
-        panel.nameFieldStringValue = defaultName
-        panel.title = String(
-            localized: "Export all data (full backup)",
-            comment: "Title of the save-file dialog for full backup export",
-        )
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-
-        do {
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(bundle)
-            try data.write(to: url, options: .atomic)
-            lastError = String(
-                format: String(
-                    localized: "Backed up %lld bookmarks · %lld routes · %lld presets.",
-                    comment: "Toast after a successful full-backup export",
-                ),
-                bookmarks.count, routes.count, presets.count,
-            )
-        } catch {
-            lastError = "Backup failed: \(error.localizedDescription)"
-        }
-    }
-
-    /// Open a previously-exported backup JSON, prompt the user to pick
-    /// a merge / overwrite strategy via NSAlert, then apply. Refuses to
-    /// proceed if the version is newer than this build understands —
-    /// downgrade-on-restore is a footgun we don't ship.
-    @MainActor
-    func importAllBackup() async {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.init(filenameExtension: "json")!]
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = false
-        panel.title = String(
-            localized: "Restore from backup JSON",
-            comment: "Title of the open-file dialog for full backup import",
-        )
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-
-        let bundle: FullBackupBundle
-        do {
-            let data = try Data(contentsOf: url)
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            bundle = try decoder.decode(FullBackupBundle.self, from: data)
-        } catch {
-            lastError = "Restore failed: couldn't parse backup file — \(error.localizedDescription)"
-            return
-        }
-
-        guard bundle.version <= 1 else {
-            lastError = String(
-                localized: "This backup is from a newer LociiGhost version. Please update before restoring.",
-                comment: "Toast when full-backup import sees a higher schema version than this build supports",
-            )
-            return
-        }
-
-        // Strategy dialog — three buttons, NSAlert returns first /
-        // second / third button for Merge / Overwrite / Cancel.
-        let alert = NSAlert()
-        alert.messageText = String(
-            localized: "Restore from backup?",
-            comment: "Full-backup import — strategy dialog title",
-        )
-        alert.informativeText = String(
-            format: String(
-                localized: "This backup contains %lld bookmarks · %lld routes · %lld presets.\n\nMerge keeps your existing data and adds new entries (skipping name+coords duplicates).\nOverwrite wipes everything currently in LociiGhost and replaces it with the backup.",
-                comment: "Full-backup import — strategy dialog body explaining merge vs overwrite",
-            ),
-            bundle.bookmarks.count, bundle.routes.count, bundle.stopPresets.count,
-        )
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: String(
-            localized: "Merge",
-            comment: "Full-backup import — merge button",
-        ))
-        alert.addButton(withTitle: String(
-            localized: "Overwrite",
-            comment: "Full-backup import — overwrite button (destructive)",
-        ))
-        alert.addButton(withTitle: String(
-            localized: "Cancel",
-            comment: "Full-backup import — cancel button",
-        ))
-
-        let response = alert.runModal()
-        let strategy: BackupImportStrategy
-        switch response {
-        case .alertFirstButtonReturn:  strategy = .merge
-        case .alertSecondButtonReturn: strategy = .overwrite
-        default: return  // user cancelled
-        }
-
-        applyBackup(bundle, strategy: strategy)
-    }
-
-    /// Insert (and optionally wipe-first) bundle records into the
-    /// SwiftData store. Dedupe key is `(name, coords)` for all three
-    /// entity types — same name+different coords becomes a separate
-    /// entry, same coords+different name becomes a separate entry.
-    @MainActor
-    private func applyBackup(_ bundle: FullBackupBundle, strategy: BackupImportStrategy) {
-        guard let ctx = modelContext else {
-            lastError = String(localized: "Database not ready yet — try again in a second.")
-            return
-        }
-
-        if strategy == .overwrite {
-            if let bms = try? ctx.fetch(FetchDescriptor<Bookmark>()) {
-                for b in bms { ctx.delete(b) }
-            }
-            if let rs = try? ctx.fetch(FetchDescriptor<Route>()) {
-                for r in rs { ctx.delete(r) }
-            }
-            if let ps = try? ctx.fetch(FetchDescriptor<StopPreset>()) {
-                for p in ps { ctx.delete(p) }
-            }
-        }
-
-        // Build dedupe sets up front so the per-entry merge check is
-        // O(1); rebuilding the set per-entry would be O(N²) for a
-        // big backup against a big database.
-        var bookmarkKeys: Set<String> = []
-        var routeKeys: Set<String> = []
-        var presetKeys: Set<String> = []
-        if strategy == .merge {
-            if let bms = try? ctx.fetch(FetchDescriptor<Bookmark>()) {
-                for b in bms {
-                    bookmarkKeys.insert(Self.bookmarkKey(name: b.name, lat: b.lat, lng: b.lng))
-                }
-            }
-            if let rs = try? ctx.fetch(FetchDescriptor<Route>()) {
-                for r in rs {
-                    routeKeys.insert(Self.coordsKey(name: r.name, points: r.points))
-                }
-            }
-            if let ps = try? ctx.fetch(FetchDescriptor<StopPreset>()) {
-                for p in ps {
-                    presetKeys.insert(Self.coordsKey(name: p.name, points: p.coordinates))
-                }
-            }
-        }
-
-        var addedBookmarks = 0, addedRoutes = 0, addedPresets = 0
-
-        for entry in bundle.bookmarks {
-            if strategy == .merge,
-               bookmarkKeys.contains(Self.bookmarkKey(name: entry.name, lat: entry.lat, lng: entry.lng)) {
-                continue
-            }
-            let bm = Bookmark(
-                name: entry.name,
-                lat: entry.lat,
-                lng: entry.lng,
-                category: entry.category,
-                iconSymbol: entry.iconSymbol,
-                imageURL: entry.imageURL,
-                createdAt: entry.createdAt ?? .now,
-            )
-            ctx.insert(bm)
-            addedBookmarks += 1
-        }
-
-        for entry in bundle.routes {
-            let coords: [Coordinate] = entry.points.compactMap { pt in
-                guard pt.count == 2 else { return nil }
-                return Coordinate(lat: pt[0], lng: pt[1])
-            }
-            if strategy == .merge,
-               routeKeys.contains(Self.coordsKey(name: entry.name, points: coords)) {
-                continue
-            }
-            let r = Route(
-                name: entry.name,
-                points: coords,
-                category: entry.category,
-                iconSymbol: entry.iconSymbol,
-                createdAt: entry.createdAt ?? .now,
-            )
-            ctx.insert(r)
-            addedRoutes += 1
-        }
-
-        for entry in bundle.stopPresets {
-            let coords: [Coordinate] = entry.points.compactMap { pt in
-                guard pt.count == 2 else { return nil }
-                return Coordinate(lat: pt[0], lng: pt[1])
-            }
-            if strategy == .merge,
-               presetKeys.contains(Self.coordsKey(name: entry.name, points: coords)) {
-                continue
-            }
-            let p = StopPreset(
-                name: entry.name,
-                coordinates: coords,
-                createdAt: entry.createdAt ?? .now,
-            )
-            ctx.insert(p)
-            addedPresets += 1
-        }
-
-        do {
-            try ctx.save()
-            if addedBookmarks > 0 { bookmarksRevision &+= 1 }
-            lastError = String(
-                format: String(
-                    localized: "Restored: %lld bookmarks · %lld routes · %lld presets added.",
-                    comment: "Toast after a successful full-backup restore",
-                ),
-                addedBookmarks, addedRoutes, addedPresets,
-            )
-        } catch {
-            lastError = "Restore failed: \(error.localizedDescription)"
-        }
-    }
-
-    /// Dedupe key for Bookmark: name + 6-decimal coords. Six decimals
-    /// is the same precision the UI prints, so two records that look
-    /// identical to the user collapse to the same key.
-    private static func bookmarkKey(name: String, lat: Double, lng: Double) -> String {
-        "\(name)|\(String(format: "%.6f,%.6f", lat, lng))"
-    }
-
-    /// Dedupe key for Route / StopPreset: name + concatenated coords.
-    /// Two routes with the same name but different points become
-    /// distinct entries (the user clearly authored them separately).
-    private static func coordsKey(name: String, points: [Coordinate]) -> String {
-        let hash = points.map { String(format: "%.6f,%.6f", $0.lat, $0.lng) }
-            .joined(separator: ";")
-        return "\(name)|\(hash)"
-    }
-
-    /// Force-kill the running daemon and start a fresh one, requesting
-    /// admin privileges through the standard macOS auth dialog. Used
-    /// by the Settings sheet's "Force restart" button as a one-click
-    /// recovery path so non-terminal users can recover from a stuck
-    /// daemon without `kill` / `pkill` / `sudo` on the command line.
-    ///
-    /// Reuses `PrivilegedDaemonInstaller.install()` which already
-    /// pkills any existing `-m lociighostd` process under both root
-    /// and the user's uid before relaunching a clean daemon — exactly
-    /// the same flow used during the very first launch, just with the
-    /// app already up.
-    @MainActor
-    func forceRestartDaemon() async {
-        // Disconnect locally before we ask the OS to kill the daemon
-        // — the existing client's socket fd is about to become a
-        // stale dangling reference. Setting `client = nil` flips the
-        // UI to "Daemon disconnected" briefly, which is honest.
-        if let existing = client {
-            _ = try? await existing.callRaw("daemon.shutdown")
-            await existing.disconnect()
-        }
-        client = nil
-        // Use .starting — the existing DaemonStatus enum doesn't
-        // carry a dedicated "restarting" case and the UI already
-        // shows a sensible "Starting…" label for this state. No
-        // need to widen the enum for a transient transition.
-        daemonStatus = .starting
-
-        do {
-            try await PrivilegedDaemonInstaller.install()
-            // PrivilegedDaemonInstaller.install() returns once the
-            // socket exists; bootstrap() reconnects + re-hydrates
-            // everything (device list, prefs, simulated location).
-            // We re-set status to .stopped so bootstrap()'s guard
-            // (`guard daemonStatus == .stopped`) lets it proceed.
-            daemonStatus = .stopped
-            await bootstrap()
-            lastError = String(
-                localized: "Daemon restarted successfully.",
-                comment: "Toast after Force Restart finishes",
-            )
-        } catch PrivilegedDaemonInstaller.InstallError.userCancelled {
-            // The user dismissed the auth dialog — reset status so
-            // they can try again, and re-bootstrap to pick up any
-            // pre-existing daemon that's still alive.
-            daemonStatus = .stopped
-            await bootstrap()
-        } catch {
-            daemonStatus = .stopped
-            lastError = "Force restart failed: \(error.localizedDescription)"
         }
     }
 
@@ -2278,8 +1454,8 @@ final class AppState {
     /// every tick.
     @MainActor
     func updateRouteSnap(toCoord coord: Coordinate) {
-        guard let route = currentlyPlayingRoute else { return }
-        let pts = route.points
+        guard currentlyPlayingRoute != nil else { return }
+        let pts = playingRoutePointsCache
         let n = pts.count
         guard n > 1, currentRouteSnapIndex < n - 1 else { return }
         let lookAhead = 64       // points
@@ -2370,6 +1546,11 @@ final class AppState {
     func updateRouteWaypoints(_ route: Route, points: [Coordinate]) {
         guard let ctx = modelContext else { return }
         route.points = points
+        // Keep the playback cache honest if the user edited the very
+        // route that's currently playing (v1.15.2 audit P2).
+        if route === playingRouteStorage {
+            playingRoutePointsCache = points
+        }
         try? ctx.save()
     }
 
@@ -2451,11 +1632,6 @@ final class AppState {
         // pin there and the navigate guard bails cleanly).
         let clampedStart = max(0, min(startFromIndex, allCoords.count - 1))
         let coords = Array(allCoords[clampedStart...])
-        // Resume state: remember which Route we're playing AND seed
-        // the snap-progress index with the start offset so the next
-        // periodic flush doesn't reset the user back to 0 mid-walk.
-        currentlyPlayingRoute = route
-        currentRouteSnapIndex = clampedStart
         let connected = devices.first(where: { $0.udid == udid })?.connected == true
         guard connected else {
             lastError = String(localized: "Connect a device first.")
@@ -2494,6 +1670,24 @@ final class AppState {
         activeMovementMode = nil
         pendingStops = []
         schedulePreviewRefresh()
+
+        // Resume state: remember which Route we're playing AND seed the
+        // snap-progress index with the start offset so the next
+        // periodic flush doesn't reset the user back to 0 mid-walk.
+        //
+        // v1.15.2 audit (L10): this used to run *before* the connected
+        // guard and before the stopNavigation above. Two consequences.
+        // Switching routes mid-playback pointed
+        // `currentlyPlayingRoute` at the NEW route before
+        // stopNavigation's flushRouteProgressNow() ran, so the flush
+        // wrote the new route's index 0 and the old route's real
+        // progress — 150 points in, say — was never persisted; "Resume
+        // from last" then sent the user back to the start. And bailing
+        // out on a disconnected device left the route claimed, so every
+        // subsequent position event kept rewriting the progress of a
+        // route that had never played.
+        currentlyPlayingRoute = route
+        currentRouteSnapIndex = clampedStart
 
         let speed = customSpeedMps ?? travelProfile.defaultSpeedMps
 
@@ -2570,68 +1764,6 @@ final class AppState {
                        suppressDwellContext: true)
     }
 
-    // MARK: - GPX import / export (Phase 5.4)
-
-    /// Open an NSOpenPanel for a `.gpx` file, parse it, and surface
-    /// the result through `pendingRouteImport` so the RouteEditSheet
-    /// can ask the user for a name + category before persisting.
-    ///
-    /// We deliberately do NOT downsample or otherwise mutate the
-    /// imported coordinates — a 274-point Tokyo walk should land in
-    /// the saved route exactly as recorded. Click-to-execute on the
-    /// resulting Route uses straight-line mode so OSRM's URL-length
-    /// limit doesn't bite (see `runRoute`).
-    @MainActor
-    func importGPX() async {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.init(filenameExtension: "gpx")!]
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = false
-        panel.title = String(localized: "Import GPX",
-                             comment: "Title of the open-file dialog for GPX import")
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            let coords = try GPXService.loadCoordinates(from: url)
-            // Prefill the name field with the filename stem. Most GPX
-            // exports name the file after the trip ("morning-walk.gpx"
-            // → "morning-walk"), and reusing that lets the user just
-            // hit Save without retyping.
-            let suggested = url.deletingPathExtension().lastPathComponent
-            pendingRouteImport = PendingRouteImport(
-                suggestedName: suggested,
-                coordinates: coords,
-            )
-            lastError = nil
-        } catch {
-            lastError = error.localizedDescription
-        }
-    }
-
-    /// Save current `pendingStops` (the user's staged route) to a
-    /// `.gpx` file via NSSavePanel. Refuses to save when the list
-    /// is empty — File > Export menu item is disabled for that case
-    /// already, this is a belt-and-suspenders guard.
-    @MainActor
-    func exportGPX() async {
-        guard !pendingStops.isEmpty else {
-            lastError = String(localized: "No stops staged yet.")
-            return
-        }
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.init(filenameExtension: "gpx")!]
-        panel.nameFieldStringValue = "lociighost-route.gpx"
-        panel.title = String(localized: "Export current route as GPX…",
-                             comment: "Title of the save-file dialog for GPX export")
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            try GPXService.write(coordinates: pendingStops, to: url)
-            lastError = nil
-        } catch {
-            lastError = error.localizedDescription
-        }
-    }
-
     // MARK: - Bootstrap
 
     func bootstrap() async {
@@ -2647,6 +1779,12 @@ final class AppState {
         if selectedUDID == nil {
             selectedUDID = Self.virtualMapUDID
         }
+
+        // Bring the mirror dock back if it was on last time. This
+        // never prompts for Accessibility -- if the grant is gone the
+        // dock parks in `.needsPermission` and the header pill
+        // explains it when clicked.
+        mirrorDock.restoreIfPreviouslyEnabled()
 
         // Fire-and-forget update check. Runs in parallel with
         // daemon bring-up so it never blocks app launch. Failures
@@ -2764,6 +1902,12 @@ final class AppState {
     }
 
     func teardown() async {
+        // Put the mirrored phone window away before we start tearing
+        // the daemon down -- otherwise the last thing the user sees
+        // on quit is an orphaned iPhone window sitting where our
+        // window used to be.
+        mirrorDock.detachForAppExit()
+
         eventTask?.cancel()
         eventTask = nil
 
@@ -2796,15 +1940,60 @@ final class AppState {
         NSApp.terminate(nil)
     }
 
+    /// Show an open/save panel without stalling the main actor's queue.
+    ///
+    /// v1.15.2 audit (P11): every import/export path called
+    /// `panel.runModal()` from inside an `async` function.
+    /// `runModal()` spins its own modal run loop, which keeps AppKit
+    /// drawing but leaves the Swift Concurrency continuations already
+    /// queued on the main actor — the daemon event loop's included —
+    /// parked until the user dismisses the dialog. Position events
+    /// piled up behind an open file picker and arrived in a burst
+    /// afterwards. A sheet returns control to the actor instead.
+    ///
+    /// NSOpenPanel is an NSSavePanel, so this covers both; every caller
+    /// wants a single URL.
+    @MainActor
+    func presentPanel(_ panel: NSSavePanel) async -> URL? {
+        guard let window = NSApp.keyWindow ?? NSApp.mainWindow else {
+            // No window to hang a sheet on (shouldn't happen while the
+            // UI is up, but a modal is better than silently doing
+            // nothing).
+            return panel.runModal() == .OK ? panel.url : nil
+        }
+        let response = await panel.beginSheetModal(for: window)
+        return response == .OK ? panel.url : nil
+    }
+
     // MARK: - Devices
 
     func refreshDevices() async {
         guard let client else { return }
         do {
-            let raw: AnyCodable = try await client.callRaw("device.list")
-            let data = try JSONEncoder().encode(raw)
-            let list = try JSONDecoder().decode([DeviceVM].self, from: data)
-            self.devices = list
+            // v1.15.2 audit (P10): this used to callRaw into an
+            // AnyCodable, re-encode that to JSON and decode it again —
+            // a full round trip to accomplish a type conversion the
+            // generic `call` does directly. And the unconditional
+            // assignment invalidated every view reading `devices` on
+            // each device_changed event, even when nothing about any
+            // device had actually changed; DeviceVM is Hashable, so we
+            // can just check.
+            let list: [DeviceVM] = try await client.call("device.list")
+            if list != self.devices {
+                self.devices = list
+            }
+
+            // v1.15.2 audit (P14): drop per-device state for devices
+            // that are gone. `savedStopsByDevice` can hold a whole
+            // 4000-point GPX (~64 KB) per device, and the app is
+            // deliberately long-lived — applicationShouldTerminate-
+            // AfterLastWindowClosed returns false — so nothing ever
+            // reclaimed it. `simulatedLocationsByDevice` is
+            // deliberately NOT pruned; see the v1.6 note below.
+            let live = Set(list.map(\.udid)).union([Self.virtualMapUDID])
+            savedStopsByDevice = savedStopsByDevice.filter { live.contains($0.key) }
+            savedModesByDevice = savedModesByDevice.filter { live.contains($0.key) }
+            savedRandomWalkByDevice = savedRandomWalkByDevice.filter { live.contains($0.key) }
 
             // NOTE (v1.6): we used to nuke the simulated-location
             // record when the owning iPhone went offline. That
@@ -2880,239 +2069,6 @@ final class AppState {
                 joystick = nil
             }
             await refreshDevices()
-        } catch {
-            lastError = String(describing: error)
-        }
-    }
-
-    // MARK: - WiFi pairing + IP-direct connect
-
-    /// Run the daemon's one-time `wifi.repair` ritual: USB autopair →
-    /// CoreDeviceTunnelProxy → RSD → `create_core_device_tunnel_service_using_rsd(autopair=True)`
-    /// which writes a fresh `~/.pymobiledevice3/remote_<UDID>.plist`.
-    /// Two iOS Trust prompts appear during this; user must tap Trust on
-    /// each. After this completes once, `connectWiFiByIP` works without
-    /// the cable indefinitely.
-    func pairForWiFi(udid: String? = nil) async {
-        guard let client else { return }
-        guard !isPairingForWiFi else { return }
-        isPairingForWiFi = true
-        defer { isPairingForWiFi = false }
-        do {
-            var params: [String: AnyCodable] = [:]
-            if let udid { params["udid"] = AnyCodable(udid) }
-            _ = try await client.callRaw("wifi.repair", params: params)
-            lastError = nil
-            // Pairing record is fresh — kick off discovery so the
-            // newly-pairable iPhone appears in the WiFi list.
-            await discoverWiFi()
-        } catch {
-            lastError = String(describing: error)
-        }
-    }
-
-    /// Browse the LAN for paired iPhones (mDNS first, /24 TCP scan
-    /// fallback). Stores results in `wifiCandidates` for the UI.
-    func discoverWiFi() async {
-        guard let client else { return }
-        guard !isDiscoveringWiFi else { return }
-        isDiscoveringWiFi = true
-        defer { isDiscoveringWiFi = false }
-        do {
-            let raw: [WiFiCandidate] = try await client.call(
-                "wifi.discover",
-                params: ["scan_subnet": AnyCodable(true)]
-            )
-            wifiCandidates = raw
-        } catch {
-            wifiCandidates = []
-            lastError = String(describing: error)
-        }
-    }
-
-    /// Open the WiFi-connect selection sheet for `udid`. This is what
-    /// the device row's "Connect via WiFi" button calls — instead of
-    /// firing the legacy Bonjour-only connect path that returns a
-    /// service-map-stripped RSD on iOS 26, the sheet auto-discovers
-    /// LAN-reachable iPhones, lists them, and routes the user's pick
-    /// through `connectWiFiByIP` (which opens the FULL RSD). If
-    /// discovery returns nothing the sheet falls back to a manual
-    /// IP entry field.
-    func openWiFiConnectFlow(udid: String) {
-        wifiConnectSheet = WiFiConnectSheetTarget(udid: udid)
-        // Kick off a fresh discover so the sheet's list is current.
-        // Fire-and-forget — the sheet's body re-renders as soon as
-        // `wifiCandidates` updates.
-        Task { await self.discoverWiFi() }
-    }
-
-    /// Connect to an iPhone discovered by `discoverWiFi()` (or any
-    /// IP+port the user typed in manually). Uses the daemon's
-    /// `wifi.connect_ip` which goes through
-    /// `create_core_device_tunnel_service_using_remotepairing` directly,
-    /// bypassing Bonjour at connect time and yielding the FULL RSD
-    /// (with `dtservicehub`) — i.e. WiFi-only DVT location simulation
-    /// works without a USB cable.
-    ///
-    /// On `-32004 TUNNEL_FAILED` (which on this path almost always
-    /// means "iPhone moved to a different IP since the last
-    /// discover"), kicks off a fresh `discoverWiFi()` automatically.
-    /// The user sees the candidate list refresh and can click again
-    /// without thinking about IP rotation.
-    func connectWiFiByIP(ip: String, port: Int = 49152, udid: String? = nil) async {
-        guard let client else { return }
-        guard !isConnectingWiFiByIP else { return }
-        isConnectingWiFiByIP = true
-        defer { isConnectingWiFiByIP = false }
-        do {
-            var params: [String: AnyCodable] = [
-                "ip": AnyCodable(ip),
-                "port": AnyCodable(port),
-            ]
-            if let udid { params["udid"] = AnyCodable(udid) }
-            _ = try await client.callRaw("wifi.connect_ip", params: params)
-            lastError = nil
-            await refreshDevices()
-            // Same rationale as `connect()` — refresh the Mac
-            // CoreLocation proxy now so Restore has a fresh fix.
-            macLocation.requestPermissionAndFetch()
-            // Successful Connect → full developer tunnel up → daemon is
-            // exercising root utun, so admin signals are stale-clear.
-            needsAdminElevation = false
-            daemonIsRoot = true
-        } catch {
-            lastError = String(describing: error)
-            if let rpc = error as? RPCError, rpc.code == -32004 {
-                needsAdminElevation = true
-            }
-            // Tunnel failures on this path strongly correlate with the
-            // iPhone having taken a new DHCP lease since we last
-            // discovered. Fire-and-forget a refresh so the candidate
-            // list is current next time the user clicks.
-            Task { await self.discoverWiFi() }
-        }
-    }
-
-    // MARK: - Phone control
-
-    /// Candidate ports we walk when looking for the daemon's phone-
-    /// control HTTP server. Must match `PORT_CANDIDATES` in
-    /// `Daemon/lociighostd/http_server.py` — the daemon picks the
-    /// first free one at startup, and this list is how we find
-    /// where it actually landed without a separate RPC roundtrip.
-    private static let phoneControlPorts: [Int] = [8779, 8780, 8781, 8788, 8789, 8800]
-
-    /// Fetch the LAN URL + 6-digit PIN from the daemon's phone-control
-    /// HTTP server. Walks the candidate-port list (the daemon may
-    /// have fallen back from 8779 to 8780 etc. if a port was busy)
-    /// and returns the first one that answers. The endpoint is
-    /// localhost-only on the daemon, so we hit `127.0.0.1` directly
-    /// over HTTP instead of going through our JSON-RPC socket.
-    func fetchPhoneControlInfo() async {
-        guard !isLoadingPhoneInfo else { return }
-        isLoadingPhoneInfo = true
-        defer { isLoadingPhoneInfo = false }
-        for port in Self.phoneControlPorts {
-            guard let url = URL(string: "http://127.0.0.1:\(port)/api/phone/info")
-            else { continue }
-            var req = URLRequest(url: url)
-            req.timeoutInterval = 1.5
-            do {
-                let (data, response) = try await URLSession.shared.data(for: req)
-                guard let http = response as? HTTPURLResponse, http.statusCode == 200
-                else { continue }
-                phoneControlInfo = try JSONDecoder().decode(PhoneControlInfo.self, from: data)
-                return
-            } catch {
-                continue
-            }
-        }
-        phoneControlInfo = nil
-        lastError = "Phone control HTTP server isn't reachable on any candidate port (\(Self.phoneControlPorts.map(String.init).joined(separator: ", ")))."
-    }
-
-    /// Generate a fresh PIN + token. Invalidates any phone tab that
-    /// was previously authed against the old token.
-    func rotatePhoneControlPIN() async {
-        // Use whichever port we already discovered — falls back to
-        // re-walking the candidate list if we don't have one cached.
-        let port: Int
-        if let info = phoneControlInfo { port = info.port }
-        else {
-            await fetchPhoneControlInfo()
-            guard let info = phoneControlInfo else { return }
-            port = info.port
-        }
-        guard let url = URL(string: "http://127.0.0.1:\(port)/api/phone/rotate") else { return }
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        do {
-            _ = try await URLSession.shared.data(for: req)
-            await fetchPhoneControlInfo()
-        } catch {
-            lastError = String(describing: error)
-        }
-    }
-
-    /// Open the phone-control sheet from anywhere in the UI. Auto-
-    /// fetches info on appear so the sheet always shows current state.
-    func openPhoneControlSheet() {
-        showPhoneControlSheet = true
-        Task { await fetchPhoneControlInfo() }
-    }
-
-    /// Ask the daemon to surface the Developer Mode toggle in iPhone Settings.
-    /// Returns the next-step strings the daemon sent so the UI can show them.
-    func revealDeveloperMode(udid: String) async -> [String] {
-        guard let client else { return [] }
-        struct Reply: Decodable { let ok: Bool; let next_steps: [String] }
-        do {
-            let reply: Reply = try await client.call("device.reveal_developer_mode",
-                                                     params: ["udid": AnyCodable(udid)])
-            return reply.next_steps
-        } catch {
-            lastError = String(describing: error)
-            return []
-        }
-    }
-
-    // MARK: - Gold Ditto (Pikmin Bloom 拉金盆 exploit, v1.4)
-
-    /// Two-step burst: push iPhone GPS to A, then immediately
-    /// clear so the iPhone reverts to real GPS. Used during a
-    /// Pikmin Bloom gold-pot bud animation to fool the game into
-    /// crediting the reward at the user's REAL location instead
-    /// of the gold-pot's location — same gold pot can be milked
-    /// repeatedly because the game records the "claim event" at
-    /// A, not at the pot.
-    ///
-    /// Differs from a regular `teleport` + `restore`:
-    ///
-    ///   * Does NOT clear `pendingStops` / `navigation` /
-    ///     `activeRoute` / `activeWaypoints` — the user might
-    ///     have a route running and we don't want to disturb it
-    ///   * Does NOT update `simulatedLocation` / fire the map fly
-    ///     — desktop camera stays parked on the gold pot view
-    ///   * Does NOT call any of the persistence hooks
-    ///
-    /// The whole point is "invisible round-trip from the desktop's
-    /// perspective; only the phone's GPS actually moves."
-    @MainActor
-    func pullGoldDitto(udid: String, lat: Double, lng: Double) async {
-        if udid == Self.virtualMapUDID {
-            lastError = String(
-                localized: "Gold Ditto needs a real iPhone connection.",
-                comment: "Toast when the user fires Gold Ditto while the Map device is selected",
-            )
-            return
-        }
-        guard let client else { return }
-        do {
-            _ = try await client.callRaw("location.gold_ditto", params: [
-                "udid": AnyCodable(udid),
-                "lat":  AnyCodable(lat),
-                "lng":  AnyCodable(lng),
-            ])
         } catch {
             lastError = String(describing: error)
         }
@@ -3417,7 +2373,7 @@ final class AppState {
             if allowDwell, !isLapContinuation, dwellContext == nil, routeLaps >= 2 {
                 multiStopLapContext = MultiStopLapContext(
                     udid: udid,
-                    stops: stops,
+                    routePoints: waypoints,      // origin first — see L6
                     profile: profile,
                     speed: speed,
                     remainingLaps: routeLaps - 1,
@@ -3444,9 +2400,40 @@ final class AppState {
         }
     }
 
+    /// v1.15.2 audit (L8): these used to `try?` the RPC away and then
+    /// update the view model regardless. The daemon answers "ok" when
+    /// there is nothing left to pause — a dwell firing in the last few
+    /// metres, or a pause arriving just after the route ended — so the
+    /// UI showed "paused" over a route that had already finished, with
+    /// a frozen ETA and a resume that also did nothing. The daemon now
+    /// reports `applied`; we only move the view model when it did.
+    @discardableResult
+    private func applyRunnerState(_ method: String, udid: String) async -> Bool {
+        guard let client else { return false }
+        do {
+            let raw = try await client.callRaw(
+                method, params: ["udid": AnyCodable(udid)])
+            // Older daemons don't send `applied`; treating a missing
+            // field as success keeps this forward-compatible in the
+            // only direction that matters.
+            //
+            // The decoder produces [String: AnyCodable], not
+            // [String: Any] — casting to the latter compiles (Any
+            // takes anything) but then every lookup hands back an
+            // AnyCodable and `as? Bool` silently fails, so the guard
+            // would always fall through to `true`. Unwrap properly.
+            guard let dict = raw.value as? [String: AnyCodable] else {
+                return true
+            }
+            return unwrapBool(dict["applied"]) ?? true
+        } catch {
+            lastError = String(describing: error)
+            return false
+        }
+    }
+
     func pauseNavigation(udid: String) async {
-        guard let client else { return }
-        _ = try? await client.callRaw("location.pause", params: ["udid": AnyCodable(udid)])
+        guard await applyRunnerState("location.pause", udid: udid) else { return }
         if var nav = navigation {
             nav.state = .paused
             nav.pausedAt = Date()
@@ -3455,8 +2442,7 @@ final class AppState {
     }
 
     func resumeNavigation(udid: String) async {
-        guard let client else { return }
-        _ = try? await client.callRaw("location.resume", params: ["udid": AnyCodable(udid)])
+        guard await applyRunnerState("location.resume", udid: udid) else { return }
         if var nav = navigation {
             nav.state = .moving
             nav.pausedAt = nil
@@ -3889,7 +2875,7 @@ final class AppState {
     /// Bumped every time the daemon source breaks ABI or behaviour in
     /// a way that requires an in-place restart. Must match the
     /// `__version__` in `Daemon/lociighostd/__init__.py`.
-    static let expectedDaemonVersion = "1.15.1"
+    static let expectedDaemonVersion = "1.16.0"
 
     // MARK: - Update check (v1.5)
 
@@ -3918,7 +2904,8 @@ final class AppState {
             than: appVersion,
         ) {
             latestVersion = manifest.version
-            latestVersionURL = manifest.url
+            // X12: only an https URL ever reaches NSWorkspace.open.
+            latestVersionURL = manifest.safeDownloadURL
         } else {
             // User caught up — clear any stale badge state.
             latestVersion = nil
@@ -4162,6 +3149,7 @@ final class AppState {
     private func handleEvent(_ event: RPCEvent) async {
         switch event.method {
         case "event.device_changed":
+            applyDeviceChangedEvent(event.params)
             await refreshDevices()
         case "event.position_update":
             applyPositionEvent(event.params)
@@ -4309,9 +3297,12 @@ final class AppState {
                             guard let self else { return }
                             await self.pauseNavigation(udid: snap.udid)
                             try? await Task.sleep(for: .seconds(snap.dwellSeconds))
-                            guard self.dwellMonitor != nil else { return }
+                            // L9: same monitor we started on, or nothing.
+                            guard self.dwellMonitor?.generation == snap.generation
+                            else { return }
                             await self.resumeNavigation(udid: snap.udid)
-                            if var dm = self.dwellMonitor {
+                            if var dm = self.dwellMonitor,
+                               dm.generation == snap.generation {
                                 dm.isDwelling = false
                                 dm.nextIndex += 1
                                 if dm.nextIndex >= dm.stops.count {
@@ -4409,6 +3400,32 @@ final class AppState {
         return out
     }
 
+    /// Handle the daemon's richer device-status transitions. See
+    /// `degradedUDIDs`.
+    private func applyDeviceChangedEvent(_ params: [String: AnyCodable]) {
+        guard let udid = stringValue(params["udid"]) else { return }
+        let status = stringValue(params["status"]) ?? ""
+        let reason = stringValue(params["reason"]) ?? ""
+        switch status {
+        case "degraded":
+            if degradedUDIDs.insert(udid).inserted {
+                showInfo(String(localized: "Connection to the iPhone is unstable — locations may not be getting through."))
+            }
+        case "connected":
+            if degradedUDIDs.remove(udid) != nil {
+                showInfo(String(localized: "Connection to the iPhone recovered."))
+            }
+            if reason == "auto_reconnected" {
+                showInfo(String(localized: "Reconnected to the iPhone. Press Resume to pick the route back up."))
+            }
+        default:
+            degradedUDIDs.remove(udid)
+            if reason == "auto_reconnect_exhausted" {
+                lastError = String(localized: "Lost the iPhone and couldn't reconnect. Check Wi-Fi (or the USB cable), then connect again.")
+            }
+        }
+    }
+
     private func applyStateEvent(_ params: [String: AnyCodable]) {
         // Random walk state events also flow through here. They carry a
         // refreshed planned_path roughly every five minutes, so the map
@@ -4424,12 +3441,26 @@ final class AppState {
         }
 
         guard let stateRaw = stringValue(params["state"]) else { return }
+
+        // v1.15.2 audit (W9): the navigator now reports *why* it died
+        // rather than going quiet and leaving a "Task exception was
+        // never retrieved" in the daemon log. "failed" is deliberately
+        // distinct from "idle" — idle means the route finished, and
+        // the lap-continuation logic below keys off exactly that.
+        if stateRaw == "failed" {
+            let detail = stringValue(params["error"]) ?? ""
+            lastError = detail.isEmpty
+                ? String(localized: "The route stopped: lost the connection to the iPhone.")
+                : String(localized: "The route stopped: ") + detail
+        }
+
         let mapped: NavigationVM.State?
         switch stateRaw {
         case "moving":  mapped = .moving
         case "paused":  mapped = .paused
         case "idle":    mapped = nil          // navigation is over
         case "stopped": mapped = nil
+        case "failed":  mapped = nil
         default:        mapped = nil
         }
 
@@ -4552,26 +3583,60 @@ final class AppState {
         // other two lap engines are idle so we never double-navigate
         // the next lap. The dwellContext branch already covers
         // "multi-stop WITH dwell" via remainingDwellLaps.
+        // v1.15.2 audit: which engine may claim an idle event, and what
+        // its counter should read afterwards, now comes from
+        // LapPlanner in LociiGhostCore. The rule had been restated
+        // inline in three places and got out of step twice; there it is
+        // one function with tests.
+        let lapOutcome = LapPlanner.decide(
+            state: stateRaw,
+            wasRunning: wasRunning,
+            savedRouteRemaining: loopContext?.remainingLaps,
+            dwellRemaining: dwellContext?.remainingDwellLaps,
+            multiStopRemaining: multiStopLapContext?.remainingLaps
+        )
+
         var willMultiStopLoop = false
         if stateRaw == "idle", wasRunning,
            loopContext == nil, dwellContext == nil,
            var ctx = multiStopLapContext {
-            if ctx.remainingLaps > 0 {
-                ctx.remainingLaps -= 1
+            if case .advance(engine: .multiStop,
+                             remainingAfter: let remainingAfter) = lapOutcome {
+                ctx.remainingLaps = remainingAfter
                 multiStopLapContext = ctx
                 willMultiStopLoop = true
                 let snap = ctx
+                // v1.15.2 audit (L5): clear `navigation` BEFORE the
+                // teleport, exactly as the dwell branch above does and
+                // for the same reason. Repositioning makes the daemon
+                // stop the current route, which broadcasts a state
+                // change; if that arrives while `navigation` still
+                // reads .moving, this same idle handler runs again,
+                // decrements `remainingLaps` a second time and spawns a
+                // second navigate. Three laps ran as two, with an
+                // occasional double-navigate — and because it depends
+                // on whether the event or the RPC reply wins the race,
+                // it only reproduced sometimes.
+                navigation = nil
                 Task { @MainActor [weak self] in
                     guard let self else { return }
-                    // Teleport back to the first stop, then re-fire
-                    // navigate with isLapContinuation=true so navigate()
-                    // doesn't reset the context. Use the FULL stops
-                    // list (same as the user's original Navigate press).
-                    await self.teleport(udid: snap.udid,
-                                        lat: snap.stops[0].lat,
-                                        lng: snap.stops[0].lng)
+                    // Back to the lap's true origin (routePoints[0]),
+                    // then re-fire with isLapContinuation=true so
+                    // navigate() leaves the context alone.
+                    // teleportPositionOnly, not teleport: the latter
+                    // clears `pendingStops`, which navigate() reads to
+                    // build the trip's waypoints, and losing it is what
+                    // made the stop pins disappear after lap 1.
+                    await self.teleportPositionOnly(udid: snap.udid,
+                                                    lat: snap.routePoints[0].lat,
+                                                    lng: snap.routePoints[0].lng)
+                    guard self.multiStopLapContext != nil else { return }
+                    // Origin is already at routePoints[0], so pass only
+                    // the remaining stops — navigate() prepends the
+                    // origin itself and would otherwise open the route
+                    // with a zero-length first segment.
                     await self.navigate(udid: snap.udid,
-                                        through: snap.stops,
+                                        through: Array(snap.routePoints.dropFirst()),
                                         profile: snap.profile,
                                         speed: snap.speed,
                                         allowDwell: true,
@@ -4816,21 +3881,9 @@ struct DeviceVM: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
-struct Coordinate: Hashable, Sendable, Codable {
-    let lat: Double
-    let lng: Double
-
-    /// True when two coordinates are within ~1 cm on the ground. Used
-    /// by the position-event handler to short-circuit no-op echoes the
-    /// daemon emits while the device sits in simulated-location mode —
-    /// every echo's coord is the spoofed target, but float noise in
-    /// the device→daemon→app pipeline means exact equality fails.
-    /// 1e-7 degrees ≈ 1.1 cm at the equator; well below any meaningful
-    /// device motion, well above any rounding noise in a Double.
-    func isApproximately(_ other: Coordinate) -> Bool {
-        abs(lat - other.lat) < 1e-7 && abs(lng - other.lng) < 1e-7
-    }
-}
+// `Coordinate` moved to LociiGhostCore/Coordinate.swift so the pure
+// geometry that uses it (StopOrdering) can be unit-tested without
+// SwiftUI or SwiftData in the way.
 
 /// Which inline panel the user has open in the Movement Modes
 /// sidebar section. `MovementModesSection` reads + writes this via
@@ -5052,6 +4105,16 @@ struct DwellContext: Sendable, Equatable {
 /// ONE navigate RPC; this struct drives `location.pause` / `location.resume`
 /// when the simulated position arrives near each waypoint in order.
 struct DwellMonitor: Sendable {
+    /// Identity for the in-flight dwell Task.
+    ///
+    /// v1.15.2 audit (L9): the pause-sleep-resume Task only checked
+    /// `dwellMonitor != nil` when it woke. Switching routes during a
+    /// dwell replaced the monitor with a fresh one, and the old Task
+    /// then sent a stray resume for the NEW route and pushed its
+    /// `nextIndex` from 0 to 1 — so the new route's first stop never
+    /// dwelled. If the user had also switched device, the resume went
+    /// to the wrong iPhone.
+    let generation: UUID = UUID()
     let udid: String
     /// Route-snapped trigger coordinates (intermediate stops only; the
     /// last stop is handled by the idle event, not proximity detection).
@@ -5071,7 +4134,22 @@ struct DwellMonitor: Sendable {
 /// natural idle, mirroring the loopContext pattern for route replay.
 struct MultiStopLapContext: Sendable {
     let udid: String
-    let stops: [Coordinate]
+    /// The FULL waypoint list for one lap, origin first — the same
+    /// array `navigate()` sends to the daemon.
+    ///
+    /// v1.15.2 audit (L6): this used to hold `stops`, the destination
+    /// list with the origin stripped off, and the lap continuation
+    /// teleported to `stops[0]` and navigated through `stops`. Three
+    /// things went wrong at once. Lap 2 started from the first stop
+    /// instead of the original origin, so every lap after the first
+    /// traced a different path. `navigate()` prepends the origin, so
+    /// waypoints[0] == waypoints[1] and the daemon opened the route
+    /// with a zero-length segment. And `teleport()` clears
+    /// `pendingStops`, which is what `navigate()` uses to populate the
+    /// trip's waypoints, so the red stop pins vanished from the map
+    /// from lap 2 onward. `LoopContext.routePoints` already had the
+    /// right shape; this now matches it.
+    let routePoints: [Coordinate]
     let profile: TravelProfile
     let speed: Double
     var remainingLaps: Int

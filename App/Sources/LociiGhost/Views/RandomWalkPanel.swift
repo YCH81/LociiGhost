@@ -1,4 +1,5 @@
 import SwiftUI
+import LociiGhostCore
 
 /// Inline configuration + control surface for the random-walk mode.
 /// Lives inside the sidebar's Movement Modes section; no sheet, no

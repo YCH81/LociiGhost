@@ -35,8 +35,8 @@ if you're in Taiwan.
 
 ## Download
 
-- **Latest version**: v1.15.1
-- **Release date**: 2026-06-21
+- **Latest version**: v1.16.0
+- **Release date**: 2026-08-30
 - **Download**: [Google Drive folder](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) — DMG is Apple-Developer-ID-signed and notarised, so it opens with a double-click without the Gatekeeper warning. **Use the DMG, not a zip**: extracting a signed .app into an iCloud-synced folder (Documents, Desktop) lets the File Provider attach extra xattrs that break the signature and show "LociiGhost is damaged".
 
 ## New here?
@@ -60,12 +60,27 @@ if you're in Taiwan.
   shows matches the actual playback time.
 - **Multiple routing engines** — OSRM public demo (default), Google
   Routes API (opt-in), or straight-line.
+- **Docked phone screen** — macOS's built-in iPhone Mirroring, glued to
+  the side of the window, so you can drive the phone on your Mac while
+  the fake location runs. Native input path, no added latency.
 - **Live language switching** — UI flips between zh-Hant and English
   without restart.
 - **Apple-Silicon-native** — 0% idle CPU, no Chromium overhead, bundle
   under 200 MB.
 
 ## What's new
+
+**v1.16.0** (2026-08-30)
+
+- **New: dock your iPhone's screen next to LociiGhost**, using macOS's built-in iPhone Mirroring. Flip the "Mirror" pill in the header and LociiGhost launches the mirroring app for you (without stealing focus), finds its window, and glues it to the left or right of the main window — following as you move, resize, hide or miniaturise. If the pair would run off the display it slides the main window across by exactly as much as it needs; if it genuinely can't fit, it says so instead of quietly overlapping. **Taps take Apple's native input path** — LociiGhost is not in the event loop, so there is no added latency. That's the whole reason this attaches Apple's window rather than doing ScreenCaptureKit capture plus synthetic clicks, which would put a capture/encode/composite round-trip in front of every tap. The two windows are deliberately laid out side by side and never overlap: fighting the window server for z-order between two processes is unwinnable, and adjacency makes z-order irrelevant. Needs a one-time Accessibility grant, used only to position that window.
+- **Fix: WiFi dropping out mid-run** (reported by several users; the big one this release). The old health check had two problems. It only monitored devices connected via `connect_wifi_ip` — anything that came in over Bonjour or the USB tunnel **was not monitored at all**. And it asked the wrong question: on iOS 26 location traffic often rides a USB DVT fallback, so the phone answers happily on its RemotePairing port while the channel we actually push coordinates down is dead. Liveness is now the keepalive's own success rate (degraded at ~9 s, dropped at ~30 s), with the socket probe kept as a secondary check where a peer address is known. A failed check no longer tears the session down for good — it triggers a bounded auto-reconnect (3 tries, 2/5/10 s) that replays whichever connect path built the session. **Movement is deliberately not auto-resumed**: the route state lives on the Mac, so the UI shows "reconnected — press Resume" and leaves the call to you.
+- **Fix: reconnecting pinned the iPhone's tunnel slot.** `DvtLocationService` swaps its internal provider on reconnect, but `DeviceManager` kept holding the old reference — so teardown closed the dead provider and leaked the live one, pinning a tunnel slot for 30–90 s. With up to four reconnects per failed `set()` and a heartbeat every 3 s, a minute of flaky WiFi could strand dozens.
+- **Fix: the heartbeat yanked the iPhone backwards.** It read `last_lat_lng` *before* acquiring the call lock, so by the time it got its turn a running movement mode had advanced several ticks and the heartbeat pushed a stale snapshot. It now skips the tick outright while the channel is busy — which is also the correct semantics. The heartbeat also no longer shares the user-action retry ladder, so a background tick can't park a teleport or a Stop behind it for ~3.75 s.
+- **One owner for movement state.** The phone endpoints' `navigate` / `multistop` used to stop only the navigator, so starting one while the Mac had a random walk or joystick running left two tickers pushing into the same location service and the iPhone's GPS bounced between two sets of coordinates once a second. Phone `restore` didn't stop the mover at all — the navigator re-armed simulation on its next tick, so the "real GPS" you asked for lasted well under a second while the endpoint returned `ok: true`.
+- **Security**: phone PIN goes from 6 to 8 digits, with failure lockout (escalating after 5 attempts, capped at 15 minutes) and a bounded pairing window; Host/Origin checks; the Google Directions API key moves out of preferences and into the Keychain (migrated automatically); peer-uid check and umask on the daemon's Unix socket.
+- **Performance**: much less per-tick main-thread work on the map (MapContent caches, stop-pin decimation thresholds, camera-save debounce), and simulated-location following stops while the window is occluded.
+- **Architecture**: `AppState.swift` split from 5449 lines into 4198 plus five extensions; the two map implementations now share one menu / geometry / camera policy.
+- **Behaviour changes (relevant if you script against the daemon)**: `location.pause` / `location.resume` now return `{"state": …, "applied": bool}`, and stopping broadcasts `stopped` rather than `idle`.
 
 **v1.15.1** (2026-06-21)
 

@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import AppKit
+import LociiGhostCore
 
 /// Inline multi-stop panel. Multi-stop is "click on the map a few
 /// times and press Navigate"; the work happens in the on-map
@@ -34,8 +35,21 @@ struct MultiStopPanel: View {
         let coord: Coordinate
     }
 
-    private var stagedStops: [StagedStop] {
-        state.pendingStops.map { StagedStop(id: stableID(for: $0), coord: $0) }
+    /// Cached projection of `state.pendingStops`.
+    ///
+    /// v1.15.2 audit (P15): this was a computed property, so every body
+    /// pass rebuilt the array and ran a Hasher plus a UUID
+    /// construction per stop. In multi-stop mode `pendingStops` changes
+    /// on every map click, so body passes are frequent and the list can
+    /// be long.
+    @State private var stagedStopsCache: [StagedStop] = []
+
+    private var stagedStops: [StagedStop] { stagedStopsCache }
+
+    private func rebuildStagedStops() {
+        stagedStopsCache = state.pendingStops.map {
+            StagedStop(id: stableID(for: $0), coord: $0)
+        }
     }
 
     /// Stable per-coordinate UUID, derived from a hash of the
@@ -137,6 +151,10 @@ struct MultiStopPanel: View {
         .sheet(isPresented: $showingBulkPaste) {
             BulkPasteStopsSheet()
         }
+        // Keep the cached projection in step with the source of truth
+        // (v1.15.2 audit P15).
+        .onAppear { rebuildStagedStops() }
+        .onChange(of: state.pendingStops) { _, _ in rebuildStagedStops() }
     }
 
     /// Saved-presets list. Right-click on a row → Delete; left-click
@@ -375,11 +393,22 @@ struct MultiStopPanel: View {
     /// them in minimum-total-haversine-distance order. Algorithm is
     /// shared with ControlPanel via `StopOrdering.smartSorted`.
     private func smartSortStops() {
-        let stops = state.pendingStops
-        guard stops.count >= 3 else { return }
-        let sorted = StopOrdering.smartSorted(stops)
-        if sorted != stops {
-            state.pendingStops = sorted
+        let current = state.pendingStops
+        guard current.count >= 3 else { return }
+        // v1.15.2 audit (P4): StopOrdering is pure and now bounded,
+        // but it isn't cheap — a bulk-pasted GPX can drop hundreds of
+        // stops in here, and running it inline from the button action
+        // froze the window with no progress and no way out. It is
+        // documented safe on any thread, so it goes off the main actor
+        // and only the assignment comes back.
+        let appState = state
+        Task { @MainActor in
+            let sorted = await Task.detached(priority: .userInitiated) {
+                StopOrdering.smartSorted(current)
+            }.value
+            if sorted != appState.pendingStops {
+                appState.pendingStops = sorted
+            }
         }
     }
 }

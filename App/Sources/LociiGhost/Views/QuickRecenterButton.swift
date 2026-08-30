@@ -1,4 +1,5 @@
 import SwiftUI
+import LociiGhostCore
 
 /// Floating button that flies the map back to "where the iPhone is".
 ///

@@ -53,6 +53,7 @@ struct AppHeaderBar: View {
             }
             Spacer(minLength: 12)
             s2GridButton
+            MirrorDockButton()
             autoRecenterToggle
             settingsButton
             languageToggle

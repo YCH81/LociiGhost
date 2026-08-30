@@ -22,15 +22,29 @@ final class MapSearchModel: NSObject, @preconcurrency MKLocalSearchCompleterDele
     /// it cancels any in-flight request.
     var query: String = "" {
         didSet {
+            // v1.15.2 audit (P8): the TextField binds straight to this,
+            // so every keystroke used to set `queryFragment` and kick
+            // off an autocomplete round trip. Fast typing produced a
+            // burst of requests whose results each replaced the whole
+            // suggestion list, rebuilding the popup mid-word. 250 ms
+            // after the last keystroke is enough to feel instant and
+            // enough to collapse a burst into one request.
             let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty {
+            debounceTask?.cancel()
+            guard !trimmed.isEmpty else {
                 completions = []
                 completer.queryFragment = ""
-            } else {
-                completer.queryFragment = trimmed
+                return
+            }
+            debounceTask = Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(250))
+                guard !Task.isCancelled, let self else { return }
+                self.completer.queryFragment = trimmed
             }
         }
     }
+
+    @ObservationIgnored private var debounceTask: Task<Void, Never>?
 
     /// Latest suggestions for `query`. Empty until the completer responds.
     var completions: [MKLocalSearchCompletion] = []

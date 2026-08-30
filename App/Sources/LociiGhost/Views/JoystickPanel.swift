@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import LociiGhostCore
 
 /// Inline joystick controller for the sidebar. Same key-capture trick
 /// the sheet version used (an invisible focused TextField + onKeyPress)

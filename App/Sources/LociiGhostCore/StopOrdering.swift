@@ -1,23 +1,45 @@
 import Foundation
 
-/// v1.11.2: TSP-style minimum-distance reorder for staged stops.
+/// TSP-style minimum-distance reorder for staged stops.
+///
 /// Shared between MultiStopPanel (sidebar) and ControlPanel (on-map
 /// popup) so both surfaces offer the same Smart sort affordance.
 ///
-/// Namespace as an `enum` (no cases) so the helper functions feel
-/// scoped — `StopOrdering.smartSorted(...)` reads better than a
-/// loose `smartSortedStops(...)` floating at module scope.
-///
-/// All functions are pure: input coords in, sorted coords out, no
-/// shared state, no UI access. Safe to call from any thread.
-enum StopOrdering {
+/// All functions are pure: coords in, sorted coords out, no shared
+/// state, no UI access — safe to call from any thread, which the
+/// callers now do (see the cost note on `smartSorted`).
+public enum StopOrdering {
+
+    /// Above this many stops the brute-force search is skipped.
+    ///
+    /// v1.15.2 audit (P4): this was 10, i.e. 9! = 362,880 permutations,
+    /// each costing 9 haversines — about 3.3M trig calls — run
+    /// synchronously on the main actor from a button action. 8 is
+    /// 7! = 5,040, roughly seventy times cheaper, and 2-opt handles
+    /// the rest within a few percent of optimal on real geography.
+    public static let bruteForceLimit = 8
+
+    /// Hard ceiling on 2-opt improvement rounds.
+    ///
+    /// The previous loop restarted the whole scan after every single
+    /// improving swap (`break outer`) and had no bound at all: one
+    /// scan is O(n²) haversine pairs and the number of improvements is
+    /// itself O(n²), so a pathological input was O(n⁴). The codebase
+    /// elsewhere talks about 1163- and 4000-point GPX routes, and
+    /// those can be bulk-pasted straight into the stop list.
+    public static let maxTwoOptPasses = 200
+
     /// Reorder `stops` to minimise total path distance via haversine.
     /// `stops[0]` stays fixed as the start. Open path (no return to
     /// the start). Returns the input unchanged when `count < 3` since
     /// any 1- or 2-stop ordering is already optimal.
-    static func smartSorted(_ stops: [Coordinate]) -> [Coordinate] {
+    ///
+    /// Cost is bounded but not small: callers should run this off the
+    /// main actor (`Task.detached`) for anything beyond a handful of
+    /// stops.
+    public static func smartSorted(_ stops: [Coordinate]) -> [Coordinate] {
         guard stops.count > 2 else { return stops }
-        if stops.count <= 10 {
+        if stops.count <= bruteForceLimit {
             return bruteForceMinPath(stops)
         } else {
             return nearestNeighborThen2Opt(stops)
@@ -25,9 +47,7 @@ enum StopOrdering {
     }
 
     /// Enumerate every permutation of `stops[1...]` and keep the one
-    /// with minimum total haversine distance from `stops[0]`. 9! =
-    /// 362_880 permutations at the N=10 boundary — well under a
-    /// second on any modern Mac.
+    /// with minimum total haversine distance from `stops[0]`.
     private static func bruteForceMinPath(_ stops: [Coordinate]) -> [Coordinate] {
         let start = stops[0]
         let tail = Array(stops.dropFirst())
@@ -44,8 +64,8 @@ enum StopOrdering {
     }
 
     /// Heap's algorithm — yields every n! permutation of `arr` with a
-    /// single swap and one yield per step (no array copies). The
-    /// closure receives the current arrangement each call.
+    /// single swap per step. The closure receives the current
+    /// arrangement each call.
     private static func enumeratePermutations<T>(_ arr: [T], yield: ([T]) -> Void) {
         var a = arr
         func generate(_ k: Int) {
@@ -63,10 +83,7 @@ enum StopOrdering {
         generate(a.count)
     }
 
-    /// Nearest-neighbor greedy seed → 2-opt local search until no
-    /// improving swap exists. For N > 10 brute force becomes
-    /// factorial-cost; 2-opt typically lands within a few percent of
-    /// optimal on realistic geographic inputs.
+    /// Nearest-neighbor greedy seed → bounded 2-opt local search.
     private static func nearestNeighborThen2Opt(_ stops: [Coordinate]) -> [Coordinate] {
         let start = stops[0]
         var remaining = Array(stops.dropFirst())
@@ -80,25 +97,34 @@ enum StopOrdering {
                 if d < bestD { bestD = d; bestI = i }
             }
             path.append(remaining.remove(at: bestI))
-            current = path.last!
+            current = path[path.count - 1]
         }
-        // 2-opt: reverse every sub-segment [i...j] and keep the swap
-        // if it strictly shortens the path. Restart the outer loop
-        // after any improvement so cascading wins aren't missed.
-        // i ≥ 1 because the start is pinned at path[0].
-        var improved = true
-        while improved {
-            improved = false
-            if path.count < 4 { break }
-            outer: for i in 1..<(path.count - 1) {
+        guard path.count >= 4 else { return path }
+
+        // 2-opt, best-improvement: each pass scans every candidate and
+        // applies only the single best one. The old code applied the
+        // FIRST improving swap and restarted the scan
+        // (`improved = true; break outer`), which converges in far more
+        // passes for the same result. i >= 1 because the start is
+        // pinned at path[0].
+        var passes = 0
+        while passes < maxTwoOptPasses {
+            passes += 1
+            var bestDelta = -1e-6
+            var bestI = -1
+            var bestJ = -1
+            for i in 1..<(path.count - 1) {
                 for j in (i + 1)..<path.count {
-                    if twoOptDelta(path, i: i, j: j) < -1e-6 {
-                        path[i...j].reverse()
-                        improved = true
-                        break outer
+                    let delta = twoOptDelta(path, i: i, j: j)
+                    if delta < bestDelta {
+                        bestDelta = delta
+                        bestI = i
+                        bestJ = j
                     }
                 }
             }
+            if bestI < 0 { break }          // local optimum
+            path[bestI...bestJ].reverse()
         }
         return path
     }
@@ -117,7 +143,8 @@ enum StopOrdering {
         return added - removed
     }
 
-    private static func totalPathDistance(start: Coordinate, path: [Coordinate]) -> Double {
+    /// Total open-path length from `start` through `path` in order.
+    public static func totalPathDistance(start: Coordinate, path: [Coordinate]) -> Double {
         var d = 0.0
         var prev = start
         for c in path {
@@ -130,7 +157,7 @@ enum StopOrdering {
     /// Great-circle distance in metres. Earth radius 6,371,000 m.
     /// The app's coord system is plain WGS-84 lat/lng — exactly
     /// what haversine expects.
-    static func haversineMeters(_ a: Coordinate, _ b: Coordinate) -> Double {
+    public static func haversineMeters(_ a: Coordinate, _ b: Coordinate) -> Double {
         let R = 6_371_000.0
         let lat1 = a.lat * .pi / 180
         let lat2 = b.lat * .pi / 180

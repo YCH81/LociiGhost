@@ -32,6 +32,25 @@ enum UpdateService {
         let version: String
         let url: URL?
         let notes: String?
+
+        /// The download URL, but only if it's something we're willing
+        /// to hand to `NSWorkspace.open`.
+        ///
+        /// v1.15.2 audit (X12): the raw `url` went straight to
+        /// NSWorkspace with no scheme check. The manifest lives in a
+        /// GitHub repo and points at a shared Google Drive folder —
+        /// two independent accounts, neither of which signs anything.
+        /// Whoever controls either could swap in `file:///…` to launch
+        /// a local app, or `smb://attacker/share`, which mounts a
+        /// remote volume and leaks the user's credential hash. All the
+        /// user did was click "Update".
+        var safeDownloadURL: URL? {
+            guard let url,
+                  url.scheme?.lowercased() == "https",
+                  url.host?.isEmpty == false
+            else { return nil }
+            return url
+        }
     }
 
     /// Fetch the manifest. Returns nil on any failure — caller

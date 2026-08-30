@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import LociiGhostCore
 
 /// Capsule button + popover for the v1.9 "Recent Places" feature.
 ///

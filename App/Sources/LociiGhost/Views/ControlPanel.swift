@@ -1,4 +1,5 @@
 import SwiftUI
+import LociiGhostCore
 
 /// Floating panel shown over the top-left of the map when the user has
 /// at least one staged stop. Two actions:
@@ -282,9 +283,20 @@ struct ControlPanel: View {
     private func smartSortStops() {
         let current = state.pendingStops
         guard current.count >= 3 else { return }
-        let sorted = StopOrdering.smartSorted(current)
-        if sorted != current {
-            state.pendingStops = sorted
+        // v1.15.2 audit (P4): StopOrdering is pure and now bounded,
+        // but it isn't cheap — a bulk-pasted GPX can drop hundreds of
+        // stops in here, and running it inline from the button action
+        // froze the window with no progress and no way out. It is
+        // documented safe on any thread, so it goes off the main actor
+        // and only the assignment comes back.
+        let appState = state
+        Task { @MainActor in
+            let sorted = await Task.detached(priority: .userInitiated) {
+                StopOrdering.smartSorted(current)
+            }.value
+            if sorted != appState.pendingStops {
+                appState.pendingStops = sorted
+            }
         }
     }
 }

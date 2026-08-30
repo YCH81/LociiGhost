@@ -1,5 +1,5 @@
 {
-  "version": "1.15.1",
+  "version": "1.16.0",
   "url": "https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing",
-  "notes": "v1.15.1 — 修復多點模式選圈數 > 1 時只走一圈就停（多人回報）。根因：multiStopLapContext 雖然定義了但 navigate() 從未 populate，applyStateEvent 的 idle handler 因此看不到要再跑一圈。現在 multi-stop 第一圈結束後會 teleport 回 stop[0] 再走，跟 saved-route 的 loop 同一套機制。影響直線 + OSRM 模式（停留模式不受影響，那個走 dwellContext.remainingDwellLaps）。"
+  "notes": "v1.16.0 — 新增：把 iPhone 螢幕釘在 LociiGhost 旁邊（用 macOS 內建的 iPhone 鏡像）。標題列「Mirror」打開後會自動啟動鏡像 app、抓到它的視窗貼在主視窗側邊，跟著移動／縮放／隱藏；點擊走 Apple 原生輸入路徑，LociiGhost 不在事件迴圈裡，所以沒有額外延遲。需要一次性的「輔助使用」授權。同時併入全面稽核的修正：Wi-Fi 斷線恢復（改用 keepalive 成功率判斷存活 + 有上限的自動重連，取代原本會直接把 session 拆掉的健康檢查）、移動狀態統一由 DeviceManager 收斂、多點模式圈數、手機端 PIN 改 8 碼並加上失敗鎖定、Google API key 改存 Keychain、以及 per-tick 主執行緒工作的效能整理。行為變更：location.pause／resume 現在回傳 applied、停止時廣播 stopped（原為 idle）。"
 }
