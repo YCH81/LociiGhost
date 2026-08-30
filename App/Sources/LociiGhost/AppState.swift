@@ -82,6 +82,12 @@ final class AppState {
     /// invisible UI stops doing per-tick work. See P9 there.
     var windowIsVisible: Bool = true
 
+    /// Docked iPhone-Mirroring panel (v1.16). Owns its own AppKit /
+    /// Accessibility machinery; AppState just holds it so every view
+    /// can reach it through `@Environment(AppState.self)` the same
+    /// way it reaches everything else.
+    let mirrorDock = MirrorDock()
+
     // v1.15.2 audit (P13): see the note at `eventTask` -- an
     // un-ignored stored Task property gets a per-access observation
     // hook, which is what produced the _AccessList.addAccess crash.
@@ -1774,6 +1780,12 @@ final class AppState {
             selectedUDID = Self.virtualMapUDID
         }
 
+        // Bring the mirror dock back if it was on last time. This
+        // never prompts for Accessibility -- if the grant is gone the
+        // dock parks in `.needsPermission` and the header pill
+        // explains it when clicked.
+        mirrorDock.restoreIfPreviouslyEnabled()
+
         // Fire-and-forget update check. Runs in parallel with
         // daemon bring-up so it never blocks app launch. Failures
         // are silent — the header-bar badge just stays hidden.
@@ -1890,6 +1902,12 @@ final class AppState {
     }
 
     func teardown() async {
+        // Put the mirrored phone window away before we start tearing
+        // the daemon down -- otherwise the last thing the user sees
+        // on quit is an orphaned iPhone window sitting where our
+        // window used to be.
+        mirrorDock.detachForAppExit()
+
         eventTask?.cancel()
         eventTask = nil
 
