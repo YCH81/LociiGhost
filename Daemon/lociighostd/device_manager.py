@@ -153,6 +153,15 @@ class _Session:
     # this session, so a phone that roamed between APs or slept its
     # radio can be picked back up instead of being dropped for good.
     reconnect_hint: Optional[dict] = None
+    # v1.15.2 audit (L4): serialises "stop every mover, attach the new
+    # one, start it". Without it two RPCs arriving together could each
+    # observe an empty session, each stop nothing, and each attach --
+    # leaving two movers ticking into the same location service.
+    runner_lock: Any = field(default_factory=asyncio.Lock)
+    # v1.15.2 audit (L7): serialises the lazy construction in
+    # location_for(), which performs several multi-second awaits
+    # (tunnel + RSD + DVT) between "is it None?" and the assignment.
+    location_lock: Any = field(default_factory=asyncio.Lock)
 
 
 class DeviceManager:
@@ -1696,6 +1705,80 @@ class DeviceManager:
     # Location service accessor
     # ------------------------------------------------------------------
 
+    # Every attribute on `_Session` that holds something driving the
+    # iPhone's position. Order matters only for logging.
+    MOVER_ATTRS = ("navigator", "walker", "joystick")
+    MOVER_STOP_TIMEOUT_S = 2.0
+
+    async def _stop_movers(self, sess: "_Session") -> bool:
+        """Stop every mover on `sess`. Returns True if any was running.
+
+        Caller must hold `sess.runner_lock`.
+
+        Two deliberate details. The attribute is cleared BEFORE the
+        await, not after: the old code awaited `runner.stop()` and only
+        then assigned None, so a runner attached during that await got
+        silently wiped and became an orphan that kept pushing positions
+        with nothing holding a reference to stop it. And the stop is
+        bounded -- `Navigator.stop()` awaits its own loop, which can be
+        parked inside a location `set()`, so an unbounded wait here is
+        what turned a WiFi blip into a ten-second "Stop" spinner.
+        """
+        stopped = False
+        for attr in self.MOVER_ATTRS:
+            runner = getattr(sess, attr, None)
+            if runner is None:
+                continue
+            stopped = True
+            setattr(sess, attr, None)
+            try:
+                await asyncio.wait_for(runner.stop(),
+                                       timeout=self.MOVER_STOP_TIMEOUT_S)
+            except asyncio.TimeoutError:
+                log.warning("%s.stop() exceeded %.1fs for %s; cancelling",
+                            attr, self.MOVER_STOP_TIMEOUT_S, sess.udid)
+                task = getattr(runner, "_task", None)
+                if task is not None:
+                    task.cancel()
+            except Exception:
+                log.exception("%s.stop() raised for %s", attr, sess.udid)
+        return stopped
+
+    async def stop_all_movement(self, udid: str) -> bool:
+        """Stop every mover on `udid`. Returns True if any was running.
+
+        Safe to call for an unknown / disconnected device (returns
+        False) -- callers use this on teardown paths where the session
+        may already be gone.
+        """
+        try:
+            sess = await self.session_for(udid)
+        except errors.RpcError:
+            return False
+        async with sess.runner_lock:
+            return await self._stop_movers(sess)
+
+    async def attach_runner(self, udid: str, kind: str, runner: Any) -> bool:
+        """Atomically replace whatever is moving `udid` with `runner`.
+
+        Stop-everything, attach and start happen under one lock, which
+        is the whole point: they used to be separate awaits in every
+        caller, so `location.navigate` racing `location.joystick.start`
+        (Mac and phone at once, or a double-click) could end with both
+        attached and both ticking. Returns whether anything was
+        actually stopped, so the caller can decide about broadcasting.
+        """
+        if kind not in self.MOVER_ATTRS:
+            raise ValueError(f"unknown runner kind {kind!r}")
+        sess = await self.session_for(udid)
+        async with sess.runner_lock:
+            stopped = await self._stop_movers(sess)
+            setattr(sess, kind, runner)
+            start = getattr(runner, "start", None)
+            if callable(start):
+                start()
+            return stopped
+
     async def session_for(self, udid: str) -> "_Session":
         """Return the live session for `udid` or raise device_not_connected."""
         async with self._lock:
@@ -1740,6 +1823,27 @@ class DeviceManager:
         if sess.location is not None:
             return sess.location
 
+        # v1.15.2 audit (L7): everything below performs several
+        # multi-second awaits (CoreDeviceTunnelProxy, RSD connect, DVT
+        # __aenter__) before assigning sess.location. Two callers
+        # arriving together -- e.g. a quick double tap-to-teleport right
+        # after connecting -- both saw None and both built a full
+        # tunnel + provider. The loser's resources were never recorded
+        # on the session, so _teardown_session never closed them, and
+        # the iPhone held that tunnel slot until it timed out by
+        # itself. start_keepalive() also ran twice, one of them bound
+        # to the orphan. Per-session (not global) so building a tunnel
+        # for one device doesn't block operations on another.
+        async with sess.location_lock:
+            if sess.location is not None:
+                return sess.location
+            return await self._build_location_service(sess)
+
+    async def _build_location_service(self, sess: "_Session") -> LocationService:
+        """Construct the right LocationService for `sess`.
+
+        Caller must hold `sess.location_lock`.
+        """
         # When the session was opened over Bonjour/RemotePairing the
         # `usbmux_lockdown` is None and the version string can be a
         # placeholder ("0.0"). DVT only cares about the RSD, and any

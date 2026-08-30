@@ -425,7 +425,6 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
             profile=profile,
         )
 
-        await _stop_all_movement(manager, udid, server)
         loc = await manager.location_for(udid)
 
         async def emit(method: str, status) -> None:
@@ -438,8 +437,12 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
             profile=profile,
             on_event=emit,
         )
-        await manager.set_navigator(udid, nav)
-        nav.start()
+        # Stop-and-attach is one critical section now; see
+        # DeviceManager.attach_runner (v1.15.2 audit L4). We don't
+        # broadcast the stop -- the state_changed for the new run
+        # follows immediately and a "stopped" in between made the
+        # Mac's ETA panel flicker.
+        await manager.attach_runner(udid, "navigator", nav)
         await server.broadcast_event("event.state_changed", {
             "udid": udid,
             **nav.status().to_json(),
@@ -519,7 +522,6 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
                 message=f"dwell_seconds must be > 0 when set (got {dwell_seconds})",
             )
 
-        await _stop_all_movement(manager, udid, server)
         loc = await manager.location_for(udid)
 
         async def emit(method: str, status) -> None:
@@ -537,8 +539,7 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
             profile=profile,
             dwell_seconds_override=dwell_seconds,
         )
-        await manager.set_walker(udid, walker)
-        walker.start()
+        await manager.attach_runner(udid, "walker", walker)
         await server.broadcast_event("event.state_changed", {
             "udid": udid,
             "mode": "random_walk",
@@ -557,7 +558,6 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
         lng: float,
     ) -> dict[str, Any]:
         _validate_coord(lat, lng)
-        await _stop_all_movement(manager, udid, server)
         loc = await manager.location_for(udid)
 
         async def emit(method: str, status) -> None:
@@ -568,8 +568,7 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
             origin=(lat, lng),
             on_event=emit,
         )
-        await manager.set_joystick(udid, ctrl)
-        ctrl.start()
+        await manager.attach_runner(udid, "joystick", ctrl)
         await server.broadcast_event("event.state_changed", {
             "udid": udid,
             "mode": "joystick",
@@ -712,27 +711,6 @@ def _straight_line_route(
     )
 
 
-async def _stop_navigation_if_any(
-    manager: DeviceManager, udid: str, server: RpcServer
-) -> None:
-    """Stop the navigator on `udid` if one is running. Best-effort: a missing
-    session or a navigator that already finished is fine."""
-    try:
-        sess = await manager.session_for(udid)
-    except errors.RpcError:
-        return
-    if sess.navigator is None:
-        return
-    try:
-        await sess.navigator.stop()
-    finally:
-        sess.navigator = None
-        await server.broadcast_event("event.state_changed", {
-            "udid": udid,
-            "state": "idle",
-        })
-
-
 async def _stop_all_movement(
     manager: DeviceManager, udid: str, server: RpcServer
 ) -> None:
@@ -752,23 +730,16 @@ async def _stop_all_movement(
     the route — even though the daemon kept playing. Now the idle
     event only fires when there really was a runner to stop.
     """
-    try:
-        sess = await manager.session_for(udid)
-    except errors.RpcError:
-        return
-    stopped_any = False
-    for attr in ("navigator", "walker", "joystick"):
-        runner = getattr(sess, attr, None)
-        if runner is None:
-            continue
-        stopped_any = True
-        try:
-            await runner.stop()
-        except Exception:
-            pass
-        setattr(sess, attr, None)
+    stopped_any = await manager.stop_all_movement(udid)
     if stopped_any:
+        # v1.15.2 audit (L5): "stopped", not "idle". The Mac treats
+        # "idle" as natural route completion and uses it to drive lap
+        # continuation, so a stop issued as part of the next lap's own
+        # teleport looked like a second completion and decremented the
+        # lap counter twice -- three laps ran as two. A stop we
+        # initiated is by definition user-driven; natural completion is
+        # emitted by the Navigator's own loop.
         await server.broadcast_event("event.state_changed", {
             "udid": udid,
-            "state": "idle",
+            "state": "stopped",
         })

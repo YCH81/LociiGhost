@@ -547,30 +547,21 @@ def create_http_app(
     ) -> dict[str, Any]:
         udid = _resolve_udid(req.udid, session)
         loc = await manager.location_for(udid)
-        # Cancel any in-flight navigator before teleport — same
-        # semantics as the desktop right-click "Teleport" path.
-        sess = await manager.session_for(udid)
-        for runner_attr in ("navigator", "walker", "joystick"):
-            runner = getattr(sess, runner_attr, None)
-            if runner is not None:
-                try:
-                    await runner.stop()
-                except Exception:
-                    pass
-                setattr(sess, runner_attr, None)
-                # Tell the desktop the previous mode is over so it
-                # clears its NavigationVM / RandomWalkVM / JoystickVM.
-                await _emit("event.state_changed", {
-                    "udid": udid, "mode": "idle",
-                    # v1.15.2 audit (L2): AppState.applyStateEvent
-                    # keys off "state"; "mode" alone was dropped on
-                    # the floor, so the desktop stayed stuck on
-                    # "moving" forever. "stopped" (not "idle")
-                    # because this is a user-driven cancel -- "idle"
-                    # means natural route completion and triggers
-                    # lap continuation on the Mac.
-                    "state": "stopped",
-                })
+        # Cancel any in-flight mover before teleport — same semantics
+        # as the desktop right-click "Teleport" path. v1.15.2 audit
+        # (L4): one atomic stop instead of an unsynchronised loop, and
+        # (L2) one event instead of one per stopped mover.
+        if await manager.stop_all_movement(udid):
+            # Tell the desktop the previous mode is over so it clears
+            # its NavigationVM / RandomWalkVM / JoystickVM.
+            # AppState.applyStateEvent keys off "state"; "mode" alone
+            # was dropped on the floor, so the desktop stayed stuck on
+            # "moving" forever. "stopped" rather than "idle" because
+            # this is a user-driven cancel — "idle" means natural route
+            # completion and starts the next lap on the Mac.
+            await _emit("event.state_changed", {
+                "udid": udid, "mode": "idle", "state": "stopped",
+            })
         await loc.set(req.lat, req.lng)
         # Broadcast position so the desktop's `simulatedLocation`
         # tracks the phone's pin instead of staying at wherever the
@@ -585,6 +576,13 @@ def create_http_app(
         req: UdidOnlyRequest, session: _PhoneSession = Depends(require_session),
     ) -> dict[str, Any]:
         udid = _resolve_udid(req.udid, session)
+        # v1.15.2 audit (L3): this used to clear the simulation while
+        # leaving the mover running, so within one tick the navigator
+        # pushed a fresh coordinate and the "real GPS" the user asked
+        # for lasted well under a second — while the endpoint returned
+        # ok: true. The RPC-side location.restore always did this; the
+        # phone endpoint was the one that didn't.
+        await manager.stop_all_movement(udid)
         loc = await manager.location_for(udid)
         await loc.clear()
         await _emit("event.state_changed", {
@@ -597,15 +595,7 @@ def create_http_app(
         req: UdidOnlyRequest, session: _PhoneSession = Depends(require_session),
     ) -> dict[str, Any]:
         udid = _resolve_udid(req.udid, session)
-        sess = await manager.session_for(udid)
-        for runner_attr in ("navigator", "walker", "joystick"):
-            runner = getattr(sess, runner_attr, None)
-            if runner is not None:
-                try:
-                    await runner.stop()
-                except Exception:
-                    pass
-                setattr(sess, runner_attr, None)
+        await manager.stop_all_movement(udid)
         await _emit("event.state_changed", {
             "udid": udid, "mode": "idle", "state": "stopped",
         })
@@ -660,16 +650,13 @@ def create_http_app(
         from .interpolator import route_length_m
 
         udid = _resolve_udid(req.udid, session)
-        sess = await manager.session_for(udid)
         loc = await manager.location_for(udid)
-
-        # Cancel existing nav.
-        if sess.navigator is not None:
-            try:
-                await sess.navigator.stop()
-            except Exception:
-                pass
-            sess.navigator = None
+        # v1.15.2 audit (L1): this used to stop only `sess.navigator`.
+        # Starting a phone navigate while the Mac had a random walk (or
+        # a joystick) running left BOTH tickers pushing into the same
+        # location service, and the iPhone's GPS bounced between the
+        # two sets of coordinates once a second. The stop happens
+        # inside attach_runner below, atomically with the attach.
 
         # Origin: the last position we successfully pushed to this
         # iPhone, tracked by `LocationService.last_lat_lng`. Phone
@@ -724,8 +711,7 @@ def create_http_app(
             profile=req.profile,
             on_event=_nav_emit,
         )
-        await manager.set_navigator(udid, nav)
-        nav.start()                # NOT async — fires a background task
+        await manager.attach_runner(udid, "navigator", nav)
         await _emit("event.state_changed", {
             "udid": udid, "mode": "navigate",
             **nav.status().to_json(),
@@ -756,13 +742,10 @@ def create_http_app(
             raise HTTPException(status_code=400, detail="no_stops")
 
         udid = _resolve_udid(req.udid, session)
-        sess = await manager.session_for(udid)
         loc = await manager.location_for(udid)
-
-        if sess.navigator is not None:
-            try: await sess.navigator.stop()
-            except Exception: pass
-            sess.navigator = None
+        # v1.15.2 audit (L1): see /api/phone/navigate — stopping only
+        # the navigator left a walker or joystick competing for the
+        # same iPhone. attach_runner below stops everything atomically.
 
         origin = getattr(loc, "last_lat_lng", None)
         if origin is None:
@@ -798,8 +781,7 @@ def create_http_app(
             profile=req.profile,
             on_event=_nav_emit,
         )
-        await manager.set_navigator(udid, nav)
-        nav.start()
+        await manager.attach_runner(udid, "navigator", nav)
         await _emit("event.state_changed", {
             "udid": udid, "mode": "navigate",
             **nav.status().to_json(),
@@ -827,24 +809,9 @@ def create_http_app(
         """
         from .joystick import JoystickController
         udid = _resolve_udid(req.udid, session)
-        sess = await manager.session_for(udid)
         loc = await manager.location_for(udid)
-        # Cancel any other movement before taking over.
-        for runner_attr in ("navigator", "walker"):
-            runner = getattr(sess, runner_attr, None)
-            if runner is not None:
-                try:
-                    await runner.stop()
-                except Exception:
-                    pass
-                setattr(sess, runner_attr, None)
-        # If there's already a joystick, stop it first.
-        if sess.joystick is not None:
-            try:
-                await sess.joystick.stop()
-            except Exception:
-                pass
-            sess.joystick = None
+        # Taking over from whatever else was moving happens inside
+        # attach_runner, atomically with the attach (v1.15.2 audit L4).
 
         async def _joystick_emit(method: str, status) -> None:
             payload = status.to_json() if hasattr(status, "to_json") else dict(status)
@@ -856,8 +823,7 @@ def create_http_app(
             origin=(req.lat, req.lng),
             on_event=_joystick_emit,
         )
-        await manager.set_joystick(udid, ctrl)
-        ctrl.start()
+        await manager.attach_runner(udid, "joystick", ctrl)
         await _emit("event.state_changed", {
             "udid": udid, "mode": "joystick",
             **ctrl.status().to_json(),
@@ -894,23 +860,9 @@ def create_http_app(
                                 detail="invalid speed band")
 
         udid = _resolve_udid(req.udid, session)
-        sess = await manager.session_for(udid)
         loc = await manager.location_for(udid)
-        # Cancel competing motion first.
-        for runner_attr in ("navigator", "joystick"):
-            runner = getattr(sess, runner_attr, None)
-            if runner is not None:
-                try:
-                    await runner.stop()
-                except Exception:
-                    pass
-                setattr(sess, runner_attr, None)
-        if sess.walker is not None:
-            try:
-                await sess.walker.stop()
-            except Exception:
-                pass
-            sess.walker = None
+        # Competing motion is stopped inside attach_runner, atomically
+        # with the attach (v1.15.2 audit L4).
 
         async def _walker_emit(method: str, status) -> None:
             payload = status.to_json() if hasattr(status, "to_json") else dict(status)
@@ -925,8 +877,7 @@ def create_http_app(
             max_speed_mps=req.max_speed_mps,
             on_event=_walker_emit,
         )
-        await manager.set_walker(udid, walker)
-        walker.start()
+        await manager.attach_runner(udid, "walker", walker)
         await _emit("event.state_changed", {
             "udid": udid, "mode": "random_walk",
             **walker.status().to_json(),
