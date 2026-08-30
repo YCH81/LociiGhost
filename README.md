@@ -30,8 +30,8 @@
 
 ## 下載
 
-- **最新版本**：v1.15.1
-- **發布日期**：2026-06-21
+- **最新版本**：v1.16.0
+- **發布日期**：2026-08-30
 - **下載連結**：[Google Drive 下載資料夾](https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing) —— DMG 已通過 Apple Developer ID 簽名 + Apple notarize，雙擊即可開啟，不會被 Gatekeeper 擋下。**請務必用 DMG 安裝**，不要把 .app 解壓到 iCloud 同步的資料夾（Documents、Desktop），File Provider 會蓋上額外 xattr 把簽章弄壞
 
 ## 第一次使用？
@@ -49,10 +49,23 @@
 - **即時切換速度** —— 播放中可動態調整移動速度，無須重新規劃路徑
 - **準確 ETA** —— 隨 SpeedPicker 即時重算，UI 顯示時間 = 實際播放時間
 - **多路由引擎** —— OSRM 公開 demo（預設）／ Google Routes API（可選）／ 直線
+- **手機畫面吸附** —— 用 macOS 內建 iPhone 鏡像，把手機螢幕釘在視窗旁邊，一邊 spoof 一邊在電腦上操作（原生輸入，無額外延遲）
 - **繁中／英雙語** —— UI 可即時切換語言，無須重啟
 - **Apple Silicon 原生** —— 閒置 CPU 0%、無 Chromium 開銷、Bundle < 200 MB
 
 ## 最新更新
+
+**v1.16.0**（2026-08-30）
+
+- **新增：把 iPhone 螢幕釘在 LociiGhost 旁邊**（用 macOS 內建的 iPhone 鏡像）。標題列「Mirror」打開後，LociiGhost 會自己啟動鏡像 app（不搶焦點）、找到它的視窗，貼在主視窗左側或右側，跟著你移動、縮放、隱藏、最小化；螢幕放不下時會把主視窗往旁邊挪剛好夠的距離，真的塞不下就直說重疊了。**點擊走的是 Apple 原生輸入路徑**，LociiGhost 不在事件迴圈裡，所以沒有多出來的延遲 —— 這正是選擇「吸附 Apple 的視窗」而不是「ScreenCaptureKit 擷取畫面 + 合成點擊」的原因，後者會在每一次點擊前面塞進一輪擷取／編碼／合成。兩個視窗刻意並排、永不重疊：跨行程搶 z-order 是打不贏的仗，貼齊之後 z-order 就不重要了。需要一次性的「輔助使用」授權（只用來擺那個視窗）。
+- **修好 Wi-Fi 常斷線**（多人回報，這版最重要的一項）。原本的健康檢查有兩個問題：它只監控用 `connect_wifi_ip` 連的裝置，透過 Bonjour 或 USB tunnel 連進來的**完全沒有在監控**；而且它問錯問題 —— iOS 26 上定位流量常常走 USB DVT fallback，手機會在 RemotePairing 埠好好回應，但我們真正推座標的通道已經死了。現在存活與否看 keepalive 自己的成功率（約 9 秒判定不穩、約 30 秒判定斷線），socket 探測只在知道 peer 時當第二道確認。斷線後不再直接把 session 拆掉 —— 改成有上限的自動重連（3 次，間隔 2／5／10 秒），沿用當初建立這個 session 的連線路徑。**移動不會自動續跑**：路線狀態在 Mac 這邊，重連完成後 UI 顯示「已重新連線，按繼續」，由你決定。
+- **修好重連會卡住 iPhone 的 tunnel slot**。`DvtLocationService` 重連時會換掉內部的 provider，但 `DeviceManager` 手上還握著舊的參考，結果關閉的是死掉的那個、活著的那個被漏掉，把 iPhone 的 tunnel slot 釘住 30–90 秒。一次失敗的 `set()` 最多重連四次、心跳每 3 秒一拍，網路差的一分鐘可以漏掉幾十個。
+- **修好心跳把 iPhone 往回拉**。心跳在拿到 call lock 之前就先讀了 `last_lat_lng`，等它排到時移動模式已經前進好幾拍，於是心跳把一個過期的座標推下去 —— 畫面上就是 iPhone 突然倒退。現在通道忙的時候直接跳過那一拍（忙碌的通道本來就不需要心跳）。心跳也不再跟使用者操作搶同一條五次重試的路徑，不會再把一個瞬移或 Stop 卡在背景心跳後面約 3.75 秒。
+- **移動狀態統一由 DeviceManager 收斂**。手機端的 navigate／multistop 以前只停 navigator，Mac 這邊正在跑隨機漫步或搖桿時，兩個 ticker 會同時往同一個定位服務推座標，iPhone 的 GPS 就在兩組座標之間每秒跳一次。手機端的 restore 也沒有停下移動模式，導航器下一拍就把模擬重新裝回去 —— 你要的「真實 GPS」撐不到一秒，而且 endpoint 還回你 `ok: true`。
+- **安全性**：手機端 PIN 從 6 碼改成 8 碼，加上失敗鎖定（5 次後遞增鎖定，上限 15 分鐘）與配對視窗；Host／Origin 檢查；Google Directions API key 從偏好設定搬到 Keychain（自動搬移，不用重打）；daemon 的 Unix socket 加上 peer uid 檢查與 umask。
+- **效能**：地圖每一拍在主執行緒做的事大幅減少（MapContent 快取、stop pin 縮點門檻、相機儲存 debounce）；視窗被遮住時停止跟隨模擬位置。
+- **架構**：`AppState.swift` 從 5449 行拆成 4198 行 + 五個 extension；兩套地圖實作共用同一份選單／幾何／相機政策。
+- **行為變更（會影響自動化腳本）**：`location.pause` / `location.resume` 現在回傳 `{"state": …, "applied": bool}`；停止時廣播的狀態是 `stopped` 而不是 `idle`。
 
 **v1.15.1**（2026-06-21）
 

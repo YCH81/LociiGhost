@@ -273,12 +273,6 @@ final class MirrorDock {
                 MainActor.assumeIsolated { self?.snap(force: true) }
             })
         }
-        localObservers.append(nc.addObserver(
-            forName: NSWindow.didMiniaturizeNotification, object: nil, queue: .main,
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.mirrorFollowsHidden() }
-        })
-
         let wnc = NSWorkspace.shared.notificationCenter
         workspaceObservers.append(wnc.addObserver(
             forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main,
@@ -292,20 +286,6 @@ final class MirrorDock {
                 self.disable()
             }
         })
-
-        localObservers.append(nc.addObserver(
-            forName: NSApplication.didHideNotification, object: nil, queue: .main,
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.mirrorFollowsHidden() }
-        })
-        localObservers.append(nc.addObserver(
-            forName: NSApplication.didUnhideNotification, object: nil, queue: .main,
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                MirrorDock.runningMirrorApp()?.unhide()
-                self?.snap(force: true)
-            }
-        })
     }
 
     private func removeObservers() {
@@ -313,11 +293,6 @@ final class MirrorDock {
         for o in workspaceObservers { NSWorkspace.shared.notificationCenter.removeObserver(o) }
         localObservers.removeAll()
         workspaceObservers.removeAll()
-    }
-
-    private func mirrorFollowsHidden() {
-        guard isEnabled else { return }
-        Self.runningMirrorApp()?.hide()
     }
 
     /// The heart of it: read both windows, compute the target, write
@@ -336,9 +311,27 @@ final class MirrorDock {
         // mouse-up (the next tick).
         if !force, NSEvent.pressedMouseButtons != 0 { return }
 
-        guard let appWindow = Self.mainAppWindow() else { return }
-        guard appWindow.isVisible, !appWindow.isMiniaturized else { return }
+        guard let running = Self.runningMirrorApp() else {
+            if status != .waitingForWindow { status = .waitingForWindow }
+            return
+        }
 
+        // The mirror follows our window's visibility. Deciding it
+        // here, from the current state, rather than from a fan of
+        // didHide / didMiniaturize / willClose notifications, means
+        // one rule covers every way our window can go away — and
+        // there's no state to get stuck in if two of those arrive
+        // out of order.
+        let appWindow = Self.mainAppWindow()
+        let appIsOnScreen = !NSApp.isHidden
+            && (appWindow.map { $0.isVisible && !$0.isMiniaturized } ?? false)
+        if !appIsOnScreen {
+            if !running.isHidden { running.hide() }
+            return
+        }
+        if running.isHidden { running.unhide() }
+
+        guard let appWindow else { return }
         guard let mirrorWindow = resolveMirrorWindow() else {
             if status != .waitingForWindow { status = .waitingForWindow }
             return
@@ -354,26 +347,33 @@ final class MirrorDock {
         isApplyingLayout = true
         defer { isApplyingLayout = false }
 
-        // One speculative attempt per session to make the phone
-        // exactly as tall as our window. Some macOS releases honour
-        // it; where they don't we stop asking and adapt instead.
+        // First pass: one speculative write to find out whether
+        // this macOS release lets us size the mirror at all. After
+        // that we only keep trying while the answer was yes — so a
+        // release that refuses gets asked exactly once, and one that
+        // accepts stays glued to our height as the user resizes us.
         var effectiveSize = currentMirrorSize
-        if !didAttemptResize {
-            didAttemptResize = true
+        if !didAttemptResize || mirrorSizeIsSettable == true {
             if let want = MirrorDockGeometry.aspectFittedSize(
                 current: currentMirrorSize,
                 targetHeight: appAX.height,
                 maxHeight: screenAX.height,
-            ), abs(want.height - currentMirrorSize.height) > 2 {
+            ), abs(want.height - currentMirrorSize.height) > 4 {
                 AXBridge.setSize(want, on: mirrorWindow)
                 let after = AXBridge.size(of: mirrorWindow) ?? currentMirrorSize
-                mirrorSizeIsSettable = abs(after.height - currentMirrorSize.height) > 2
+                let moved = abs(after.height - currentMirrorSize.height) > 2
+                // A "yes" that stops being true (the window hits its
+                // own min/max, the app changes behaviour) demotes
+                // itself here, so we can never spin writing a size
+                // the app keeps rejecting.
+                mirrorSizeIsSettable = moved
                 effectiveSize = after
                 mirrorSize = after
-            } else {
+            } else if !didAttemptResize {
                 // Already the right height — no evidence either way.
                 mirrorSizeIsSettable = nil
             }
+            didAttemptResize = true
         }
 
         let placement = MirrorDockGeometry.place(
