@@ -3450,7 +3450,7 @@ final class AppState {
             if allowDwell, !isLapContinuation, dwellContext == nil, routeLaps >= 2 {
                 multiStopLapContext = MultiStopLapContext(
                     udid: udid,
-                    stops: stops,
+                    routePoints: waypoints,      // origin first — see L6
                     profile: profile,
                     speed: speed,
                     remainingLaps: routeLaps - 1,
@@ -4626,26 +4626,60 @@ final class AppState {
         // other two lap engines are idle so we never double-navigate
         // the next lap. The dwellContext branch already covers
         // "multi-stop WITH dwell" via remainingDwellLaps.
+        // v1.15.2 audit: which engine may claim an idle event, and what
+        // its counter should read afterwards, now comes from
+        // LapPlanner in LociiGhostCore. The rule had been restated
+        // inline in three places and got out of step twice; there it is
+        // one function with tests.
+        let lapOutcome = LapPlanner.decide(
+            state: stateRaw,
+            wasRunning: wasRunning,
+            savedRouteRemaining: loopContext?.remainingLaps,
+            dwellRemaining: dwellContext?.remainingDwellLaps,
+            multiStopRemaining: multiStopLapContext?.remainingLaps
+        )
+
         var willMultiStopLoop = false
         if stateRaw == "idle", wasRunning,
            loopContext == nil, dwellContext == nil,
            var ctx = multiStopLapContext {
-            if ctx.remainingLaps > 0 {
-                ctx.remainingLaps -= 1
+            if case .advance(engine: .multiStop,
+                             remainingAfter: let remainingAfter) = lapOutcome {
+                ctx.remainingLaps = remainingAfter
                 multiStopLapContext = ctx
                 willMultiStopLoop = true
                 let snap = ctx
+                // v1.15.2 audit (L5): clear `navigation` BEFORE the
+                // teleport, exactly as the dwell branch above does and
+                // for the same reason. Repositioning makes the daemon
+                // stop the current route, which broadcasts a state
+                // change; if that arrives while `navigation` still
+                // reads .moving, this same idle handler runs again,
+                // decrements `remainingLaps` a second time and spawns a
+                // second navigate. Three laps ran as two, with an
+                // occasional double-navigate — and because it depends
+                // on whether the event or the RPC reply wins the race,
+                // it only reproduced sometimes.
+                navigation = nil
                 Task { @MainActor [weak self] in
                     guard let self else { return }
-                    // Teleport back to the first stop, then re-fire
-                    // navigate with isLapContinuation=true so navigate()
-                    // doesn't reset the context. Use the FULL stops
-                    // list (same as the user's original Navigate press).
-                    await self.teleport(udid: snap.udid,
-                                        lat: snap.stops[0].lat,
-                                        lng: snap.stops[0].lng)
+                    // Back to the lap's true origin (routePoints[0]),
+                    // then re-fire with isLapContinuation=true so
+                    // navigate() leaves the context alone.
+                    // teleportPositionOnly, not teleport: the latter
+                    // clears `pendingStops`, which navigate() reads to
+                    // build the trip's waypoints, and losing it is what
+                    // made the stop pins disappear after lap 1.
+                    await self.teleportPositionOnly(udid: snap.udid,
+                                                    lat: snap.routePoints[0].lat,
+                                                    lng: snap.routePoints[0].lng)
+                    guard self.multiStopLapContext != nil else { return }
+                    // Origin is already at routePoints[0], so pass only
+                    // the remaining stops — navigate() prepends the
+                    // origin itself and would otherwise open the route
+                    // with a zero-length first segment.
                     await self.navigate(udid: snap.udid,
-                                        through: snap.stops,
+                                        through: Array(snap.routePoints.dropFirst()),
                                         profile: snap.profile,
                                         speed: snap.speed,
                                         allowDwell: true,
@@ -5145,7 +5179,22 @@ struct DwellMonitor: Sendable {
 /// natural idle, mirroring the loopContext pattern for route replay.
 struct MultiStopLapContext: Sendable {
     let udid: String
-    let stops: [Coordinate]
+    /// The FULL waypoint list for one lap, origin first — the same
+    /// array `navigate()` sends to the daemon.
+    ///
+    /// v1.15.2 audit (L6): this used to hold `stops`, the destination
+    /// list with the origin stripped off, and the lap continuation
+    /// teleported to `stops[0]` and navigated through `stops`. Three
+    /// things went wrong at once. Lap 2 started from the first stop
+    /// instead of the original origin, so every lap after the first
+    /// traced a different path. `navigate()` prepends the origin, so
+    /// waypoints[0] == waypoints[1] and the daemon opened the route
+    /// with a zero-length segment. And `teleport()` clears
+    /// `pendingStops`, which is what `navigate()` uses to populate the
+    /// trip's waypoints, so the red stop pins vanished from the map
+    /// from lap 2 onward. `LoopContext.routePoints` already had the
+    /// right shape; this now matches it.
+    let routePoints: [Coordinate]
     let profile: TravelProfile
     let speed: Double
     var remainingLaps: Int
