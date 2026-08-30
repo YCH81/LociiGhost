@@ -185,6 +185,9 @@ class DeviceManager:
         self._device_names: dict[str, str] = {}
         self._device_ios: dict[str, str] = {}
         self._device_dev_mode: dict[str, bool] = {}
+        # Strong references to in-flight auto-reconnect tasks; see
+        # _health_check_once.
+        self._reconnect_tasks: set[asyncio.Task] = set()
         self._load_device_cache()
 
     @property
@@ -446,10 +449,17 @@ class DeviceManager:
             # simulation the user can't see would be worse than making
             # them press Resume.
             if hint is not None:
-                asyncio.create_task(
+                # Hold the reference. asyncio keeps only a WEAK one to
+                # a running task, so a fire-and-forget create_task can
+                # be garbage-collected mid-execution — and this one
+                # spends most of its life asleep in a 2/5/10 s backoff,
+                # which is exactly when a collection would catch it.
+                task = asyncio.create_task(
                     self._attempt_reconnect(udid, hint, on_reconnect),
                     name=f"reconnect-{udid[:8]}",
                 )
+                self._reconnect_tasks.add(task)
+                task.add_done_callback(self._reconnect_tasks.discard)
 
     RECONNECT_BACKOFFS_S = (2.0, 5.0, 10.0)
 
@@ -1483,6 +1493,12 @@ class DeviceManager:
         stop navigators, leave simulations in place. Pass
         ``clear_simulations=True`` for an explicit "log out everywhere"
         flow."""
+        # An auto-reconnect sleeping in its backoff would otherwise
+        # wake during shutdown and rebuild a session we are in the
+        # middle of tearing down.
+        for task in list(self._reconnect_tasks):
+            task.cancel()
+        self._reconnect_tasks.clear()
         async with self._lock:
             sessions = list(self._sessions.values())
             self._sessions.clear()
