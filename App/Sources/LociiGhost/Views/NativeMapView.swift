@@ -122,6 +122,17 @@ struct NativeMapView: View {
             }
             .mapStyle(currentMapStyle)
             .onMapCameraChange(frequency: .onEnd) { context in
+                s2Holder.lastObservedRegion = context.region
+                if s2Holder.applyingProgrammaticFly {
+                    // Our own follow tick, not the user. Keep the zoom
+                    // reading current (scheduleSave would have done
+                    // that) but skip the SwiftData write and the S2
+                    // recompute. See the flag's doc comment.
+                    s2Holder.applyingProgrammaticFly = false
+                    lastCameraDistance =
+                        max(500, context.region.span.latitudeDelta * 111_000)
+                    return
+                }
                 scheduleSave(region: context.region)
                 // The S2 grid piggybacks on the camera-end notification
                 // rather than `.continuous` — `.onEnd` fires once when
@@ -129,7 +140,6 @@ struct NativeMapView: View {
                 // when we want to recompute. `.continuous` fired at
                 // 60 Hz and the resulting @State writes invalidated
                 // body each tick.
-                s2Holder.lastObservedRegion = context.region
                 recomputeS2(region: context.region)
             }
             .onChange(of: state.showS2GridOnMap) { _, _ in
@@ -462,6 +472,10 @@ struct NativeMapView: View {
     // MARK: - pendingMapFly handling
 
     private func applyFly(_ req: MapFlyRequest) {
+        // See S2GridHolder.applyingProgrammaticFly. Set before the
+        // camera moves so the change callback this triggers can tell
+        // itself apart from a real user pan.
+        s2Holder.applyingProgrammaticFly = true
         let center = CLLocationCoordinate2D(latitude: req.coordinate.lat,
                                             longitude: req.coordinate.lng)
         // preserveZoom = follow-puck path; mirror MapContainerView's
@@ -508,7 +522,10 @@ struct NativeMapView: View {
         let snapshotCenter = region.center
         let snapshotSpan = spanMeters
         saveCameraTask = Task { @MainActor [state] in
-            try? await Task.sleep(for: .milliseconds(500))
+            // 1.5 s, not 500 ms: the follow tick is 1 Hz, so a 500 ms
+            // debounce could never coalesce anything and every tick
+            // reached the store (v1.15.2 audit P3).
+            try? await Task.sleep(for: .milliseconds(1500))
             guard !Task.isCancelled else { return }
             state.saveMapCamera(
                 centerLat: snapshotCenter.latitude,
@@ -796,6 +813,25 @@ private extension Coordinate {
 @MainActor
 fileprivate final class S2GridHolder {
     var lastObservedRegion: MKCoordinateRegion?
+
+    /// True from the moment `applyFly` moves the camera itself until
+    /// the resulting camera-change callback has been absorbed.
+    ///
+    /// v1.15.2 audit (P3): MapContainerView has had this guard for a
+    /// while, with a comment spelling out what happens without it —
+    /// "programmatic follow ticks fire at 1 Hz during navigation;
+    /// saving the camera on every tick floods the SwiftData WAL and
+    /// causes app-wide lag within a few minutes". NativeMapView, which
+    /// is the path most users are actually on, never got the same
+    /// guard. Its 500 ms save debounce didn't help either: follow ticks
+    /// arrive every 1000 ms, so every single one cleared the debounce
+    /// and reached `modelContext.save()`. With the S2 grid on, the same
+    /// callback also re-ran a scanline BFS once a second.
+    ///
+    /// It lives on the holder rather than in @State because writes here
+    /// don't invalidate `body` — which is the entire point of the
+    /// holder.
+    var applyingProgrammaticFly = false
 
     init() {}
 }

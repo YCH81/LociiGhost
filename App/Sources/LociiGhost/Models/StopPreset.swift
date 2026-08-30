@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import LociiGhostCore
 
 /// User-saved list of multi-stop coordinates — like a "favourite" for
 /// the Multi-Stop panel. v1.11.0 addition.

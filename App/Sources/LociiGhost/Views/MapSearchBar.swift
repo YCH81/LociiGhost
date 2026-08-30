@@ -3,6 +3,7 @@ import MapKit
 import CoreLocation
 import Contacts
 import AppKit
+import LociiGhostCore
 
 /// Floating search field on top of the map.
 ///

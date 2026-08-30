@@ -1,4 +1,5 @@
 import SwiftUI
+import LociiGhostCore
 
 struct MainView: View {
     @Environment(AppState.self) private var state

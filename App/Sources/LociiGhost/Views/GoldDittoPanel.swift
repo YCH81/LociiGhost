@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import LociiGhostCore
 
 /// Pikmin Bloom 拉金盆 (Gold-Ditto exploit) — ported from
 /// LocWarp 0.2.143.

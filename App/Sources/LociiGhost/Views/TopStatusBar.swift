@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import LociiGhostCore
 
 /// "Status Bar A" — the strip directly above the map, between
 /// AppHeaderBar (version + lang + Phone Control) and the map itself.

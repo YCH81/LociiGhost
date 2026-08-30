@@ -1,4 +1,5 @@
 import SwiftUI
+import LociiGhostCore
 
 /// Modal sheet that renders a bookmark's `imageURL` inline so the user
 /// can preview the photo associated with a saved location. Loading is

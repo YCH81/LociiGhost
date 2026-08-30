@@ -1,4 +1,5 @@
 import SwiftUI
+import LociiGhostCore
 
 /// Modal sheet for creating or editing a bookmark. Two presentation
 /// modes — driven by which AppState field is non-nil:

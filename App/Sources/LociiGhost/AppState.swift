@@ -968,7 +968,28 @@ final class AppState {
     /// random walk). Set by `runRoute` on Start; cleared by
     /// `stopNavigation` and on natural completion. `position_update`
     /// snapping reads this to find which on-disk Route to update.
-    @ObservationIgnored var currentlyPlayingRoute: Route?
+    @ObservationIgnored private var _currentlyPlayingRoute: Route?
+    /// Decoded copy of `_currentlyPlayingRoute?.points`, refreshed
+    /// whenever the played route changes.
+    ///
+    /// v1.15.2 audit (P2): `Route.points` is a computed property that
+    /// runs a full `JSONDecoder` over the persisted blob on every read,
+    /// and `updateRouteSnap` read it on every position event — 1 Hz
+    /// while navigating, 2 Hz on the joystick. On a 4000-point GPX
+    /// that meant turning ~150 KB of String into Data, decoding 4000
+    /// Coordinates and throwing them all away, once a second, on the
+    /// main actor. The `lookAhead = 64` bound below was written to keep
+    /// that path cheap; the decode on the line above it undid the
+    /// entire optimisation.
+    @ObservationIgnored private var playingRoutePointsCache: [Coordinate] = []
+
+    var currentlyPlayingRoute: Route? {
+        get { _currentlyPlayingRoute }
+        set {
+            _currentlyPlayingRoute = newValue
+            playingRoutePointsCache = newValue?.points ?? []
+        }
+    }
     /// 0-based snap progress into `currentlyPlayingRoute!.points`.
     /// Mirrors what'll get written into Route.lastPlayedStopIndex on
     /// the next periodic flush. Held in-memory so the per-tick
@@ -2300,8 +2321,8 @@ final class AppState {
     /// every tick.
     @MainActor
     func updateRouteSnap(toCoord coord: Coordinate) {
-        guard let route = currentlyPlayingRoute else { return }
-        let pts = route.points
+        guard currentlyPlayingRoute != nil else { return }
+        let pts = playingRoutePointsCache
         let n = pts.count
         guard n > 1, currentRouteSnapIndex < n - 1 else { return }
         let lookAhead = 64       // points
@@ -2392,6 +2413,11 @@ final class AppState {
     func updateRouteWaypoints(_ route: Route, points: [Coordinate]) {
         guard let ctx = modelContext else { return }
         route.points = points
+        // Keep the playback cache honest if the user edited the very
+        // route that's currently playing (v1.15.2 audit P2).
+        if route === _currentlyPlayingRoute {
+            playingRoutePointsCache = points
+        }
         try? ctx.save()
     }
 
@@ -2473,11 +2499,6 @@ final class AppState {
         // pin there and the navigate guard bails cleanly).
         let clampedStart = max(0, min(startFromIndex, allCoords.count - 1))
         let coords = Array(allCoords[clampedStart...])
-        // Resume state: remember which Route we're playing AND seed
-        // the snap-progress index with the start offset so the next
-        // periodic flush doesn't reset the user back to 0 mid-walk.
-        currentlyPlayingRoute = route
-        currentRouteSnapIndex = clampedStart
         let connected = devices.first(where: { $0.udid == udid })?.connected == true
         guard connected else {
             lastError = String(localized: "Connect a device first.")
@@ -2516,6 +2537,24 @@ final class AppState {
         activeMovementMode = nil
         pendingStops = []
         schedulePreviewRefresh()
+
+        // Resume state: remember which Route we're playing AND seed the
+        // snap-progress index with the start offset so the next
+        // periodic flush doesn't reset the user back to 0 mid-walk.
+        //
+        // v1.15.2 audit (L10): this used to run *before* the connected
+        // guard and before the stopNavigation above. Two consequences.
+        // Switching routes mid-playback pointed
+        // `currentlyPlayingRoute` at the NEW route before
+        // stopNavigation's flushRouteProgressNow() ran, so the flush
+        // wrote the new route's index 0 and the old route's real
+        // progress — 150 points in, say — was never persisted; "Resume
+        // from last" then sent the user back to the start. And bailing
+        // out on a disconnected device left the route claimed, so every
+        // subsequent position event kept rewriting the progress of a
+        // route that had never played.
+        currentlyPlayingRoute = route
+        currentRouteSnapIndex = clampedStart
 
         let speed = customSpeedMps ?? travelProfile.defaultSpeedMps
 
@@ -4924,21 +4963,9 @@ struct DeviceVM: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
-struct Coordinate: Hashable, Sendable, Codable {
-    let lat: Double
-    let lng: Double
-
-    /// True when two coordinates are within ~1 cm on the ground. Used
-    /// by the position-event handler to short-circuit no-op echoes the
-    /// daemon emits while the device sits in simulated-location mode —
-    /// every echo's coord is the spoofed target, but float noise in
-    /// the device→daemon→app pipeline means exact equality fails.
-    /// 1e-7 degrees ≈ 1.1 cm at the equator; well below any meaningful
-    /// device motion, well above any rounding noise in a Double.
-    func isApproximately(_ other: Coordinate) -> Bool {
-        abs(lat - other.lat) < 1e-7 && abs(lng - other.lng) < 1e-7
-    }
-}
+// `Coordinate` moved to LociiGhostCore/Coordinate.swift so the pure
+// geometry that uses it (StopOrdering) can be unit-tested without
+// SwiftUI or SwiftData in the way.
 
 /// Which inline panel the user has open in the Movement Modes
 /// sidebar section. `MovementModesSection` reads + writes this via

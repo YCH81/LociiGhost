@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import LociiGhostCore
 
 /// User-saved multi-point route — typically the result of a GPX import
 /// of a recorded track (hundreds of points). Like `Bookmark` but stores
