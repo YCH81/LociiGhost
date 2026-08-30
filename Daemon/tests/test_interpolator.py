@@ -1,4 +1,10 @@
-"""Pure-math tests for the interpolator. No I/O, no asyncio."""
+"""Pure-math tests for the interpolator. No I/O, no asyncio.
+
+Note: the `interpolate()` tests that used to make up most of this
+file were removed in v1.15.2 — see the note in interpolator.py. The
+playback loop they were standing in for is covered by
+test_navigator.py.
+"""
 
 from __future__ import annotations
 
@@ -7,9 +13,7 @@ import math
 import pytest
 
 from lociighostd.interpolator import (
-    Tick,
     haversine_m,
-    interpolate,
     route_duration_s,
     route_length_m,
 )
@@ -60,57 +64,3 @@ def test_route_duration_zero_speed():
 # ----------------------------------------------------------------------
 # interpolate
 # ----------------------------------------------------------------------
-
-def test_interpolate_yields_first_point_first():
-    coords = [(0.0, 0.0), (0.001, 0.0)]
-    ticks = list(interpolate(coords, speed_mps=1.0, tick_s=1.0))
-    assert ticks[0].lat == 0.0 and ticks[0].lng == 0.0
-    assert ticks[0].elapsed_s == 0.0
-    assert ticks[0].cumulative_m == 0.0
-
-
-def test_interpolate_yields_last_point_last():
-    coords = [(0.0, 0.0), (0.001, 0.0)]
-    ticks = list(interpolate(coords, speed_mps=1.0, tick_s=1.0))
-    assert ticks[-1].lat == pytest.approx(0.001)
-    assert ticks[-1].lng == 0.0
-
-
-def test_interpolate_total_time_matches_route_duration():
-    coords = [(0.0, 0.0), (0.001, 0.0), (0.001, 0.001)]
-    speed = 0.5
-    expected = route_duration_s(coords, speed)
-    ticks = list(interpolate(coords, speed_mps=speed, tick_s=0.5))
-    assert ticks[-1].elapsed_s == pytest.approx(expected, rel=1e-3)
-
-
-def test_interpolate_total_distance_matches_route_length():
-    coords = [(25.0, 121.0), (25.001, 121.0), (25.001, 121.001)]
-    expected = route_length_m(coords)
-    ticks = list(interpolate(coords, speed_mps=1.0, tick_s=0.5))
-    assert ticks[-1].cumulative_m == pytest.approx(expected, rel=1e-3)
-
-
-def test_interpolate_invalid_speed_raises():
-    with pytest.raises(ValueError):
-        next(interpolate([(0.0, 0.0), (0.001, 0.0)], speed_mps=0))
-
-
-def test_interpolate_invalid_tick_raises():
-    with pytest.raises(ValueError):
-        next(interpolate([(0.0, 0.0), (0.001, 0.0)], speed_mps=1.0, tick_s=0))
-
-
-def test_interpolate_single_point():
-    ticks = list(interpolate([(25.0, 121.0)], speed_mps=1.0))
-    assert len(ticks) == 1
-    assert ticks[0].lat == 25.0
-
-
-def test_interpolate_monotonic_progress():
-    """Each successive tick must be at least as far along as the last."""
-    coords = [(0.0, 0.0), (0.005, 0.0), (0.005, 0.005), (0.01, 0.005)]
-    ticks = list(interpolate(coords, speed_mps=2.0, tick_s=0.5))
-    for i in range(1, len(ticks)):
-        assert ticks[i].cumulative_m >= ticks[i - 1].cumulative_m
-        assert ticks[i].elapsed_s >= ticks[i - 1].elapsed_s
