@@ -1400,6 +1400,16 @@ class DeviceManager:
             if runner is not None:
                 await _bounded(runner.stop, f"{runner_attr}.stop")
 
+        if sess.location is not None:
+            # v1.15.2 Phase 1: kill the keepalive ticker BEFORE
+            # touching the underlying DVT provider so an in-flight
+            # heartbeat tick doesn't race against the channel
+            # teardown a few lines below.
+            await _bounded(
+                sess.location.stop_keepalive, "location.stop_keepalive",
+                timeout=1.5,
+            )
+
         if clear_simulation and sess.location is not None:
             # location.clear talks over the (possibly-dead) tunnel; cap
             # it tighter than the close ops since we don't actually need
@@ -1738,4 +1748,11 @@ class DeviceManager:
         else:
             sess.location = LegacyLocationService(sess.usbmux_lockdown)
 
+        # v1.15.2 Phase 1: spin up the keepalive ticker the moment the
+        # location service is wired in. Re-pushes the last successful
+        # coord every ~3 s when there's been no real set in a while,
+        # keeping the DVT runloop from being suspended by iOS power
+        # management during idle / pause / dwell windows. See
+        # location_service.LocationService for the loop body.
+        sess.location.start_keepalive()
         return sess.location

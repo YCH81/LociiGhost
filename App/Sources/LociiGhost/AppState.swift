@@ -8,9 +8,20 @@ import UniformTypeIdentifiers
 import LociiGhostCore
 
 // MARK: - Debug file logger (DwellMonitor diagnostic only)
+//
+// v1.15.2 audit (P1): this ran on EVERY position event (1 Hz while
+// navigating, 2 Hz on the joystick) with no #if DEBUG guard, doing
+// fileExists + open + lseek + write + close on the main actor and
+// growing /tmp/dwell_debug.txt without bound -- in shipping builds,
+// with the user's coordinates in world-readable plaintext. The
+// @autoclosure means release builds don't even evaluate the
+// interpolated message.
+#if DEBUG
 private let _dwellLogURL = URL(fileURLWithPath: "/tmp/dwell_debug.txt")
-private func dwellLog(_ msg: String) {
-    let line = "[\(Date())] \(msg)\n"
+#endif
+private func dwellLog(_ msg: @autoclosure () -> String) {
+    #if DEBUG
+    let line = "[\(Date())] \(msg())\n"
     if let data = line.data(using: .utf8) {
         if FileManager.default.fileExists(atPath: _dwellLogURL.path) {
             if let fh = try? FileHandle(forWritingTo: _dwellLogURL) {
@@ -20,6 +31,7 @@ private func dwellLog(_ msg: String) {
             try? data.write(to: _dwellLogURL)
         }
     }
+    #endif
 }
 
 /// Top-level @Observable state for the SwiftUI app.
@@ -57,7 +69,10 @@ final class AppState {
     /// actual failures so the colour coding in the overlay stays
     /// meaningful.
     var lastInfo: String?
-    private var infoDismissTask: Task<Void, Never>?
+    // v1.15.2 audit (P13): see the note at `eventTask` -- an
+    // un-ignored stored Task property gets a per-access observation
+    // hook, which is what produced the _AccessList.addAccess crash.
+    @ObservationIgnored private var infoDismissTask: Task<Void, Never>?
 
     /// Show an info toast for ~10 seconds, then auto-dismiss. Cancels
     /// any previous pending dismiss so a second call doesn't blink the
@@ -594,7 +609,7 @@ final class AppState {
     /// Held outside the didSet so back-to-back writes from a single
     /// user action (e.g. picking a preset clears customSpeedMps too)
     /// only schedule one restart.
-    private var randomWalkSpeedRestartTask: Task<Void, Never>?
+    @ObservationIgnored private var randomWalkSpeedRestartTask: Task<Void, Never>?
     /// When true, the next Navigate skips OSRM and walks the iPhone
     /// straight-line between consecutive stops. Cannot be toggled mid-
     /// navigation — the route was already computed; if you want to
@@ -3047,7 +3062,18 @@ final class AppState {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         do {
-            _ = try await URLSession.shared.data(for: req)
+            // v1.15.2 audit (X6): the response used to be discarded, so
+            // the daemon-side 500 (it called a method that didn't
+            // exist) read as success and the sheet re-displayed the
+            // unchanged PIN. Surface the failure instead of implying
+            // the old PIN was revoked when it wasn't.
+            let (_, resp) = try await URLSession.shared.data(for: req)
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
+            guard code == 200 else {
+                lastError = String(localized: "Couldn't change the PIN — the old one is still active.")
+                    + " (HTTP \(code))"
+                return
+            }
             await fetchPhoneControlInfo()
         } catch {
             lastError = String(describing: error)

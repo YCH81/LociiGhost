@@ -428,7 +428,14 @@ def create_http_app(
     async def phone_rotate(request: Request) -> dict[str, Any]:
         if not _is_localhost(request):
             raise HTTPException(status_code=404)
-        auth.rotate()
+        # v1.15.2 audit (X6): this used to call `auth.rotate()`, which
+        # does not exist -> AttributeError -> 500 on every attempt. The
+        # Mac ignored the status code, so "Change PIN" silently did
+        # nothing and the old PIN stayed valid for the daemon's whole
+        # lifetime. Rotating now also drops live sessions, which is
+        # what the button's label ("kick my phones") actually promises.
+        auth.rotate_pin()
+        auth.clear_all()
         return {"ok": True, "pin": auth.pin}
 
     # ---- State (read) ----
@@ -555,6 +562,14 @@ def create_http_app(
                 # clears its NavigationVM / RandomWalkVM / JoystickVM.
                 await _emit("event.state_changed", {
                     "udid": udid, "mode": "idle",
+                    # v1.15.2 audit (L2): AppState.applyStateEvent
+                    # keys off "state"; "mode" alone was dropped on
+                    # the floor, so the desktop stayed stuck on
+                    # "moving" forever. "stopped" (not "idle")
+                    # because this is a user-driven cancel -- "idle"
+                    # means natural route completion and triggers
+                    # lap continuation on the Mac.
+                    "state": "stopped",
                 })
         await loc.set(req.lat, req.lng)
         # Broadcast position so the desktop's `simulatedLocation`
@@ -573,7 +588,7 @@ def create_http_app(
         loc = await manager.location_for(udid)
         await loc.clear()
         await _emit("event.state_changed", {
-            "udid": udid, "mode": "restored",
+            "udid": udid, "mode": "restored", "state": "stopped",
         })
         return {"ok": True, "udid": udid}
 
@@ -592,7 +607,7 @@ def create_http_app(
                     pass
                 setattr(sess, runner_attr, None)
         await _emit("event.state_changed", {
-            "udid": udid, "mode": "idle",
+            "udid": udid, "mode": "idle", "state": "stopped",
         })
         return {"ok": True, "udid": udid}
 
@@ -611,7 +626,8 @@ def create_http_app(
                     await runner.pause()
                 except Exception:
                     pass
-        await _emit("event.state_changed", {"udid": udid, "mode": "paused"})
+        await _emit("event.state_changed",
+                    {"udid": udid, "mode": "paused", "state": "paused"})
         return {"ok": True, "udid": udid}
 
     @app.post("/api/phone/resume")
@@ -627,7 +643,8 @@ def create_http_app(
                     await runner.resume()
                 except Exception:
                     pass
-        await _emit("event.state_changed", {"udid": udid, "mode": "moving"})
+        await _emit("event.state_changed",
+                    {"udid": udid, "mode": "moving", "state": "moving"})
         return {"ok": True, "udid": udid}
 
     @app.post("/api/phone/navigate")
