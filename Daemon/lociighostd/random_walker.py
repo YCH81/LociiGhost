@@ -33,6 +33,84 @@ log = logging.getLogger(__name__)
 METRES_PER_DEGREE_LAT = 111_000.0
 
 
+def _point_at(a: tuple[float, float], b: tuple[float, float], t: float) -> tuple[float, float]:
+    """Linear interpolation between two coordinates, `t` in [0, 1]."""
+    return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+
+
+def boundary_point(
+    inside: tuple[float, float],
+    outside: tuple[float, float],
+    center: tuple[float, float],
+    radius_m: float,
+    steps: int = 24,
+) -> tuple[float, float]:
+    """Where the segment `inside`→`outside` crosses the disc boundary.
+
+    Bisection rather than closed-form: the boundary is defined by
+    haversine distance, and solving that analytically against a segment
+    that is itself linear in degrees means picking a projection and
+    inheriting its error. Bisecting on the same distance function the
+    rest of the walker uses means the answer is consistent with the
+    containment test by construction, and 24 halvings put it well under
+    a millimetre for any radius a person would type in.
+    """
+    lo, hi = 0.0, 1.0
+    for _ in range(steps):
+        mid = (lo + hi) / 2.0
+        if haversine_m(_point_at(inside, outside, mid), center) <= radius_m:
+            lo = mid
+        else:
+            hi = mid
+    return _point_at(inside, outside, lo)
+
+
+def clip_polyline_to_disc(
+    origin: tuple[float, float],
+    points: list[tuple[float, float]],
+    center: tuple[float, float],
+    radius_m: float,
+) -> list[tuple[float, float]]:
+    """Trim a planned leg to the part that stays inside the disc.
+
+    The walker picks targets inside the circle, but in map mode the
+    route between two inside points is a real road, and roads bulge.
+    A target 200 m away across a river can route half a kilometre out
+    and back. Nothing downstream re-checks, so the iPhone visibly left
+    the circle the user drew -- which is the whole contract of the
+    bounded walk.
+
+    So every planned leg passes through here, straight-line legs
+    included. For straight legs it is a no-op (both endpoints are
+    inside a convex region), which is exactly why it belongs on the
+    shared path: one rule, one place, and it keeps holding if the
+    target-picking ever changes.
+
+    Returns the leading run of points inside the disc, with the
+    boundary crossing interpolated and appended, so the walker reaches
+    the edge and turns around there rather than stopping at whatever
+    sparse road node happened to be the last one inside. An empty list
+    means the leg leaves immediately and the caller should plan a
+    different one.
+    """
+    if haversine_m(origin, center) > radius_m:
+        return []
+    kept: list[tuple[float, float]] = []
+    prev = origin
+    for p in points:
+        if haversine_m(p, center) <= radius_m:
+            kept.append(p)
+            prev = p
+            continue
+        edge = boundary_point(prev, p, center, radius_m)
+        # A sub-metre hop isn't worth a tick of its own; the walker is
+        # already effectively at the edge.
+        if haversine_m(prev, edge) > 1.0:
+            kept.append(edge)
+        break
+    return kept
+
+
 @dataclass(frozen=True, slots=True)
 class RandomWalkStatus:
     state: str                   # "moving" | "stopped"
@@ -68,6 +146,11 @@ class RandomWalker:
     TICK_S = 1.0
     DWELL_RANGE_S = (1.5, 4.0)            # pause between targets
     TARGET_DISTANCE_FRACTION = (0.15, 1.0) # what fraction of radius to aim for
+    # How many targets to try before giving up on road-following for
+    # this leg. Only ever exercised in map mode when the walker is
+    # pinned against the boundary and every road out of here leaves
+    # the disc within the first node.
+    MAX_PLAN_ATTEMPTS = 3
 
     def __init__(
         self,
@@ -225,36 +308,62 @@ class RandomWalker:
 
     async def _plan_next_leg(self) -> None:
         """Pick one random target inside the disc and (in map mode)
-        resolve its OSRM polyline. Populates `_current_target` and
-        `_current_polyline`; the latter is what `_run` walks through
-        and what `status()` exposes to the GUI."""
-        target = self._pick_target()
-        self._current_target = target
+        resolve its OSRM polyline, then clip the result to the disc.
+        Populates `_current_target` and `_current_polyline`; the latter
+        is what `_run` walks through and what `status()` exposes.
 
-        if self._routing_engine == "map" and self._osrm is not None:
-            try:
-                route = await self._osrm.route(
-                    from_lat=self._current[0],
-                    from_lng=self._current[1],
-                    to_lat=target[0],
-                    to_lng=target[1],
-                    profile=self._profile,
-                )
-            except (NoRouteError, RoutingError) as exc:
-                log.info("osrm leg planning failed (%s); using straight target", exc)
-                self._current_polyline = [target]
+        The clip is the part that makes "bounded" actually bounded.
+        Picking targets inside the circle is not enough in map mode:
+        the route BETWEEN two inside points is a real road, and roads
+        bulge outside. See `clip_polyline_to_disc`.
+        """
+        for _ in range(self.MAX_PLAN_ATTEMPTS):
+            target = self._pick_target()
+            pts = await self._resolve_leg(target)
+            pts = clip_polyline_to_disc(
+                self._current, pts, self._center, self._radius_m,
+            )
+            if pts:
+                # The reachable end of this leg, which after clipping
+                # is not necessarily the target we asked for.
+                self._current_target = pts[-1]
+                self._current_polyline = pts
                 return
-            except Exception:
-                log.exception("osrm leg planning raised unexpectedly")
-                self._current_polyline = [target]
-                return
-            # Drop the duplicate origin point — we're already at the
-            # first coord (we passed it in as `from_lat`/`from_lng`),
-            # so walking to it again would no-op the first tick.
-            pts = route.coordinates[1:] if route.coordinates else []
-            self._current_polyline = pts if pts else [target]
-        else:
-            self._current_polyline = [target]
+
+        # Every candidate route left the disc before its first node.
+        # That means we're pinned against the boundary with the road
+        # network running outward here. Rather than stall, hop straight
+        # to a point we know is inside and pick roads up again from
+        # there. Cosmetically off-road for one leg; still bounded.
+        target = self._pick_target()
+        log.info("random walk: all %d routed legs left the disc; "
+                 "falling back to a straight leg", self.MAX_PLAN_ATTEMPTS)
+        self._current_target = target
+        self._current_polyline = [target]
+
+    async def _resolve_leg(self, target: tuple[float, float]) -> list[tuple[float, float]]:
+        """The raw polyline for one leg, before any disc clipping."""
+        if self._routing_engine != "map" or self._osrm is None:
+            return [target]
+        try:
+            route = await self._osrm.route(
+                from_lat=self._current[0],
+                from_lng=self._current[1],
+                to_lat=target[0],
+                to_lng=target[1],
+                profile=self._profile,
+            )
+        except (NoRouteError, RoutingError) as exc:
+            log.info("osrm leg planning failed (%s); using straight target", exc)
+            return [target]
+        except Exception:
+            log.exception("osrm leg planning raised unexpectedly")
+            return [target]
+        # Drop the duplicate origin point — we're already at the
+        # first coord (we passed it in as `from_lat`/`from_lng`),
+        # so walking to it again would no-op the first tick.
+        pts = route.coordinates[1:] if route.coordinates else []
+        return pts if pts else [target]
 
     def _pick_target(self) -> tuple[float, float]:
         """Choose the next destination uniformly within the bounded disc."""
