@@ -139,13 +139,26 @@ Swift 工具鏈在 Mac 鎖屏期間無法使用（雲端容器也裝不了，`do
 
 ## 刻意未做（需要你決定）
 
-**1. SMAppService + LaunchDaemon 遷移（X1–X3 的根本解）**
-現況已用「exec 前驗證 owner / 權限 / 簽章」堵住漏洞。要做根本解需要：
-在 `.app/Contents/Library/LaunchDaemons/` 放 plist、daemon 執行檔搬進
-`Contents/MacOS/`、改用 `SMAppService.daemon(plistName:).register()`、
-移除 osascript 提權路徑。這會整段換掉特權啟動流程，而且沒有真的做一次 root
-安裝就無法驗證——弄錯的話 App 會完全起不了 daemon。建議你在能實機測的時候
-單獨開一個分支做。
+**1. SMAppService + LaunchDaemon 遷移（X1–X3 的根本解）——決定不做**
+
+2026-08-31 決定：**不遷移**，維持現在這條經過強化的 osascript 路徑。
+
+漏洞本身已經堵住（見下方 X1/X2/X3/X14），剩下的是架構債而不是 open hole。
+遷移的代價太集中在使用者身上、也太集中在一次不可逆的切換上：
+
+- 拿掉 osascript 之後 `register()` 失敗就沒有退路，App 完全起不了 daemon。
+- 首次啟動從「輸一次管理者密碼」變成「自己去系統設定 → 登入項目與延伸功能
+  開啟」，沒開就什麼都不會動，而且 App 這端無法自救。
+- SMAppService 對簽章與 bundle 位置很挑，ad-hoc build 與從 dist/ 直接跑的
+  版本會被拒——本機開發每一輪都要 Developer ID 簽章。
+- 註冊過的 LaunchDaemon 由 launchd 開機以 root 啟動，跟 App 是否開啟無關，
+  與 README 承諾的「閒置 0% CPU、無背景開銷」衝突。
+- 拖進垃圾桶不會移除它。沒有 `unregister()` 就會留下孤兒 root daemon。
+- daemon 是 PyInstaller onedir（`_internal/`），搬進 bundle 要同時滿足巢狀
+  簽章規則。
+
+若日後要重啟這件事，三個前提：單獨分支、osascript 路徑至少保留一個版本當
+fallback 而不是直接移除、反安裝流程先寫好再寫註冊流程。
 
 **2. W6 自動重連後不自動續跑路線**
 Session 會自動接回來，但不會自己重新開始移動——路線狀態在 Mac 端，
@@ -161,15 +174,17 @@ UI 會跳「已重新連線，按繼續」。若你想要自動續跑，要在 M
 
 ## 待辦
 
-**唯一刻意未做：SMAppService + LaunchDaemon 遷移（X1–X3 的根本解）**
+**SMAppService + LaunchDaemon 遷移：2026-08-31 決定不做**
 
 漏洞本身已經堵住：root 執行前會拒絕 symlink、拒絕 group/other 可寫、檢查
-owner、驗證簽章 Team ID 與 App 一致，並且固定 `PATH`。要做根本解需要把 plist
-放進 `.app/Contents/Library/LaunchDaemons/`、daemon 執行檔搬進
-`Contents/MacOS/`、改用 `SMAppService.daemon(plistName:).register()`、移除
-osascript 提權路徑。這會整段換掉特權啟動流程，而且沒有真的做一次 root 安裝
-就無法驗證——弄錯的話 App 會完全起不了 daemon。建議單獨開分支、在能實機測的
-時候做。
+owner、驗證簽章 Team ID 與 App 一致，並且固定 `PATH`。根本解（LaunchDaemon）
+的取捨與不做的理由記在上方「刻意未做」章節。
+
+順帶一提，v1.16.0 修掉的 X2 exec 位元問題正是這條路徑脆弱的證據：稽核把
+bootstrap 腳本從 0755 收緊到 0600，卻沒同時改掉「直接 exec 路徑」的呼叫方式，
+而沒有 x bit 的檔案連 root 都不能執行。修法是改成交給 `/bin/sh`，兩處現在
+互相註記。這說明維持這條路徑需要持續小心——但那是已知成本，比一次不可逆的
+切換可控。
 
 **一個設計決定**
 
