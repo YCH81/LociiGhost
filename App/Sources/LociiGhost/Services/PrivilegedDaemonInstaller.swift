@@ -345,6 +345,13 @@ enum PrivilegedDaemonInstaller {
         // withIntermediateDirectories:false (so it fails rather than
         // reusing an attacker-planted directory) and is itself 0600 —
         // only root, which is who reads it, needs access at all.
+        //
+        // 0600 means NOT EXECUTABLE, root included: exec needs an x
+        // bit somewhere in the mode, and root's read/write override
+        // doesn't extend to it. `runAsAdmin` therefore has to feed
+        // this file to an interpreter rather than exec it. That
+        // pairing is load-bearing — see the matching note there
+        // before changing either half.
         let dir = FileManager.default.temporaryDirectory
             .appending(path: "lociighost-elevate-\(UUID().uuidString)",
                        directoryHint: .isDirectory)
@@ -367,8 +374,23 @@ enum PrivilegedDaemonInstaller {
     private static func runAsAdmin(scriptPath: URL) async throws {
         // `quoted form of` is AppleScript's own POSIX-escape for paths,
         // so we don't have to backslash-escape anything ourselves.
+        //
+        // The explicit `/bin/sh` is required, not stylistic. The
+        // bootstrap file is written 0600 (see the note at its write
+        // site), and a file with no x bit cannot be executed even by
+        // root. Handing the bare path to `do shell script` makes the
+        // shell try to exec it, which fails with
+        //
+        //     /bin/sh: …/bootstrap.sh: Permission denied (126)
+        //
+        // after the user has already authenticated — so the symptom
+        // is "Admin install failed" with a password prompt that
+        // looked like it worked. That is exactly what the v1.15.2
+        // audit shipped: it tightened the mode from 0755 to 0600 and
+        // left the invocation execing the path. Passing the script to
+        // an interpreter keeps the tightened mode AND works.
         let appleScript = """
-        do shell script (quoted form of "\(scriptPath.path)") with administrator privileges
+        do shell script ("/bin/sh " & quoted form of "\(scriptPath.path)") with administrator privileges
         """
 
         let process = Process()
