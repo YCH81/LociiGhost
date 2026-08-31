@@ -143,6 +143,39 @@ merge_internal_dup() {
     done
 }
 
+# Refuse to ship a daemon binary older than the daemon sources.
+#
+# v1.16.0 nearly went out with the random-walk containment fix missing:
+# build-daemon.sh failed (a broken pip inside its venv), the caller
+# didn't check its exit status, and package-app.sh happily bundled the
+# PyInstaller output from the previous day. Everything downstream --
+# signing, notarisation, the DMG, the Gatekeeper check -- passed
+# cleanly, because all of it was true of the stale binary.
+#
+# Nothing here can tell whether a rebuild was *attempted*, but it can
+# tell that the artefact predates the code, which is the part that
+# actually matters. Compared against the daemon package only:
+# lociighostd_entry.py and pyproject are checked too, tests are not.
+if [[ -d "$DAEMON_DIST" ]]; then
+    DAEMON_BIN="$DAEMON_DIST/lociighostd"
+    if [[ -f "$DAEMON_BIN" ]]; then
+        NEWER=$(find "$ROOT/Daemon/lociighostd" \
+                     "$ROOT/Daemon/lociighostd_entry.py" \
+                     "$ROOT/Daemon/pyproject.toml" \
+                     -newer "$DAEMON_BIN" 2>/dev/null | head -5)
+        if [[ -n "$NEWER" ]]; then
+            echo "❌ the built daemon is older than the daemon source." >&2
+            echo "   Newer than $DAEMON_BIN:" >&2
+            echo "$NEWER" | sed 's/^/     /' >&2
+            echo >&2
+            echo "   Run ./Scripts/build-daemon.sh first (and check that it" >&2
+            echo "   actually succeeded — it can fail and still leave a" >&2
+            echo "   working binary from a previous run in place)." >&2
+            exit 1
+        fi
+    fi
+fi
+
 if [[ -d "$DAEMON_DIST" ]]; then
     # Defensive merge on the source side — ditto might re-read the
     # split or carry it forward into OUT otherwise.
