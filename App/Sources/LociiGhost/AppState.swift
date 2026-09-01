@@ -814,6 +814,70 @@ final class AppState {
         let legacy = d.integer(forKey: "dwell.seconds")
         return legacy > 0 ? legacy : fallback
     }
+    /// User-chosen colours per bookmark category. Categories missing
+    /// from this map fall back to a colour derived from their name, so
+    /// the sidebar looks organised before anyone configures anything.
+    /// Backed by `AppPreferences.bookmarkCategoryColorsJSON`.
+    var categoryColorOverrides: [String: String] = [:] {
+        didSet {
+            guard !isHydratingPreferences, categoryColorOverrides != oldValue else { return }
+            persistCategoryColors()
+        }
+    }
+
+    /// The colour to draw for `category`, as `#RRGGBB`.
+    func categoryColorHex(_ category: String) -> String {
+        CategoryPalette.hex(for: category, overrides: categoryColorOverrides)
+    }
+
+    /// Set or clear one category's colour. Passing nil (or something
+    /// that isn't a colour) reverts to the derived default rather than
+    /// storing a broken value.
+    func setCategoryColor(_ hex: String?, for category: String) {
+        let key = CategoryPalette.key(for: category)
+        guard !key.isEmpty else { return }
+        if let hex, let ok = CategoryPalette.normalisedHex(hex) {
+            categoryColorOverrides[key] = ok
+        } else {
+            categoryColorOverrides.removeValue(forKey: key)
+        }
+    }
+
+    private func persistCategoryColors() {
+        guard let prefs = preferences else { return }
+        if categoryColorOverrides.isEmpty {
+            prefs.bookmarkCategoryColorsJSON = nil
+            return
+        }
+        // A failed encode must not wipe what's stored -- L11 in the
+        // last audit was a setter that swallowed an encoding failure
+        // and updated the count anyway, leaving a route that displayed
+        // 274 points and contained none.
+        guard let data = try? JSONEncoder().encode(categoryColorOverrides),
+              let json = String(data: data, encoding: .utf8) else {
+            NSLog("LociiGhost: could not encode category colours; keeping the stored value")
+            return
+        }
+        prefs.bookmarkCategoryColorsJSON = json
+    }
+
+    /// Called from bootstrap once the model context exists.
+    func loadCategoryColors() {
+        guard let prefs = preferences,
+              let json = prefs.bookmarkCategoryColorsJSON,
+              let data = json.data(using: .utf8),
+              let map = try? JSONDecoder().decode([String: String].self, from: data)
+        else { return }
+        // Drop anything that isn't a colour on the way in, so a
+        // hand-edited or corrupted store can't paint the sidebar with
+        // garbage.
+        var clean: [String: String] = [:]
+        for (k, v) in map {
+            if let ok = CategoryPalette.normalisedHex(v) { clean[CategoryPalette.key(for: k)] = ok }
+        }
+        categoryColorOverrides = clean
+    }
+
     /// Bookmark sidebar sort order ("date" / "alpha" / "manual").
     /// Kept in AppState rather than @AppStorage to avoid the macOS
     /// global UserDefaults.didChangeNotification re-render trap that
@@ -1302,6 +1366,7 @@ final class AppState {
         // didSet guards on `isHydratingPreferences` skip the
         // redundant write-back-to-disk that would otherwise fire here.
         isHydratingPreferences = true
+        loadCategoryColors()
         alertSoundEnabled = prefs.alertSoundEnabled
         // X8 migration: an older build stored the key in plaintext
         // here. Move it into the Keychain on first launch and wipe the

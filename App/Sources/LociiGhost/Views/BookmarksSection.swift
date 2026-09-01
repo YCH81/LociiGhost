@@ -322,6 +322,9 @@ struct BookmarksSection: View {
                 Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                Circle()
+                    .fill(CategorySwatch.color(state.categoryColorHex(category)))
+                    .frame(width: 8, height: 8)
                 Text(category.isEmpty
                      ? String(localized: "Uncategorized",
                               comment: "Header for bookmarks with no category set")
@@ -339,6 +342,11 @@ struct BookmarksSection: View {
             .hoverHighlight(cornerRadius: 4, changesCursor: false)
             .onTapGesture {
                 if isExpanded { expanded.remove(key) } else { expanded.insert(key) }
+            }
+            .contextMenu {
+                if !category.isEmpty {
+                    CategoryColorMenu(category: category)
+                }
             }
 
             if isExpanded {

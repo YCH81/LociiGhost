@@ -100,6 +100,23 @@ final class AppPreferences {
     /// AppIcon. The Settings → Appearance section exposes the picker.
     var appearanceModeRaw: String = "system"
 
+    /// Per-category bookmark colours, as a JSON object of
+    /// `{"<category>": "#RRGGBB"}`.
+    ///
+    /// Stored as one optional String rather than a new SwiftData model
+    /// on purpose. Categories are free-form strings binned at render
+    /// time -- there is no category entity to hang a colour off, and
+    /// introducing one would mean a schema migration and a second
+    /// source of truth for a name that already lives on every
+    /// bookmark. An optional scalar migrates without touching the
+    /// container, which for a cosmetic feature is the right amount of
+    /// risk: X18 in the last audit was the store failing to open, and
+    /// that takes the whole app with it.
+    ///
+    /// Categories the user hasn't coloured are absent from the map and
+    /// get a colour derived from their name -- see `CategoryPalette`.
+    var bookmarkCategoryColorsJSON: String? = nil
+
     init(
         travelProfileRaw: String = "driving"
     ) {

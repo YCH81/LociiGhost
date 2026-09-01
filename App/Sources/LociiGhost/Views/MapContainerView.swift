@@ -363,10 +363,16 @@ struct MapContainerView: NSViewRepresentable {
                     let subtitle = bm.category.isEmpty ? nil : bm.category
                     if existing.subtitle != subtitle { existing.subtitle = subtitle }
                     existing.hasImage = (bm.imageURL?.isEmpty == false)
+                    let hex = state.categoryColorHex(bm.category)
+                    if existing.colorHex != hex { existing.colorHex = hex }
+                    let flower = FlowerPin.design(forStoredSymbol: bm.iconSymbol)?.id
+                    if existing.flowerID != flower { existing.flowerID = flower }
                 } else {
                     let ann = BookmarkAnnotation(
                         persistentID: bm.persistentModelID,
                         hasImage: bm.imageURL?.isEmpty == false,
+                        colorHex: state.categoryColorHex(bm.category),
+                        flowerID: FlowerPin.design(forStoredSymbol: bm.iconSymbol)?.id,
                     )
                     ann.coordinate = CLLocationCoordinate2D(
                         latitude: bm.lat, longitude: bm.lng,
@@ -1315,19 +1321,30 @@ struct MapContainerView: NSViewRepresentable {
                 return v
 
             case let bm as BookmarkAnnotation:
-                // Indigo bookmark pins. Distinct from every other tint
-                // currently in use (green/blue=simulated, red/blue=stops,
-                // purple=destination, orange=search-preview) so users
-                // don't mistake bookmarks for a navigable waypoint.
-                // Clustering keeps the map readable at low zoom with
-                // 3000+ entries; displayPriority .defaultLow yields the
-                // simulated puck + active waypoints when stacks form.
+                // v1.17: tinted per category rather than a flat indigo.
+                // With 3 000+ bookmarks the colour is the only thing
+                // separating them once the labels collapse, so a single
+                // tint wasted the one channel that still reads at low
+                // zoom. Same `CategoryPalette` values the sidebar and
+                // the SwiftUI map use -- one source, three renderers.
+                // Clustering keeps the map readable; displayPriority
+                // .defaultLow yields the simulated puck + active
+                // waypoints when stacks form.
                 let id = "bookmark"
                 let v = (mapView.dequeueReusableAnnotationView(withIdentifier: id) as? MKMarkerAnnotationView)
                     ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: id)
                 v.annotation = annotation
-                v.markerTintColor = .systemIndigo
-                v.glyphImage = NSImage(systemSymbolName: "bookmark.fill", accessibilityDescription: nil)
+                v.markerTintColor = CategorySwatch.nsColor(bm.colorHex)
+                // The glyph is a template image, so the marker tints it
+                // with the category colour above -- one colour source,
+                // one set of petal discs, whichever renderer draws it.
+                if let id = bm.flowerID,
+                   let design = FlowerPin.designs.first(where: { $0.id == id }) {
+                    v.glyphImage = FlowerGlyph.image(for: design)
+                } else {
+                    v.glyphImage = NSImage(systemSymbolName: "bookmark.fill",
+                                           accessibilityDescription: nil)
+                }
                 v.canShowCallout = true
                 v.clusteringIdentifier = "bookmark"
                 v.displayPriority = .defaultLow
@@ -1511,9 +1528,19 @@ private final class BookmarkAnnotation: MKPointAnnotation {
     /// whether to render a "view photo" button without re-fetching
     /// the Bookmark per render pass.
     var hasImage: Bool
-    init(persistentID: PersistentIdentifier, hasImage: Bool) {
+    /// Category colour, resolved at sync time for the same reason:
+    /// `viewFor:` runs per pin per pass and must not reach back into
+    /// AppState for a lookup it can be handed.
+    var colorHex: String
+    /// Flower design id, or nil when this bookmark carries an SF
+    /// Symbol (every bookmark made before v1.17 does).
+    var flowerID: String?
+    init(persistentID: PersistentIdentifier, hasImage: Bool,
+         colorHex: String, flowerID: String?) {
         self.persistentID = persistentID
         self.hasImage = hasImage
+        self.colorHex = colorHex
+        self.flowerID = flowerID
         super.init()
     }
 }

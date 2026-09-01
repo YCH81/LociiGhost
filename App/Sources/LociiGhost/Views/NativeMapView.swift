@@ -331,7 +331,22 @@ struct NativeMapView: View {
                     systemImage: "bookmark.fill",
                     coordinate: CLLocationCoordinate2D(latitude: bm.lat, longitude: bm.lng),
                 )
-                .tint(.indigo)
+                // v1.17: was a flat indigo for every bookmark. Tinting
+                // by category is what makes 3 000 pins readable — the
+                // colour is the only thing distinguishing them at a
+                // zoom level where the labels have collapsed.
+                //
+                // The flower glyphs are on the MKMapView path only, for
+                // now. `Marker` takes a systemImage or an asset-catalogue
+                // resource name, not a Shape, and the alternative —
+                // `Annotation` with a custom view — gives up the
+                // automatic clustering this overlay depends on with
+                // 3 000+ entries. Getting flowers here means rendering
+                // the six designs to bundled images at build time, the
+                // way Scripts/generate-icon.swift already does for the
+                // app icon. Deliberately a separate step, not a silent
+                // switch that costs clustering.
+                .tint(CategorySwatch.color(state.categoryColorHex(bm.category)))
                 .tag(bm.persistentModelID)
             }
         }

@@ -45,9 +45,17 @@ struct BookmarkEditSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
-                Image(systemName: iconSymbol)
-                    .font(.title2)
-                    .foregroundStyle(.tint)
+                if let design = FlowerPin.design(forStoredSymbol: iconSymbol) {
+                    FlowerPinView(
+                        design: design,
+                        colorHex: state.categoryColorHex(category),
+                        size: 24,
+                    )
+                } else {
+                    Image(systemName: iconSymbol)
+                        .font(.title2)
+                        .foregroundStyle(.tint)
+                }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(editing == nil
                          ? LocalizedStringKey("Save bookmark")
@@ -136,6 +144,40 @@ struct BookmarkEditSheet: View {
     }
 
     private var iconPicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Flowers first: they take the category's colour, so a pin
+            // carries two pieces of information at a glance — which
+            // category (colour) and which kind of place (shape).
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 6),
+                      spacing: 6) {
+                ForEach(FlowerPin.designs) { design in
+                    let stored = FlowerPin.storedSymbol(for: design)
+                    Button {
+                        iconSymbol = stored
+                    } label: {
+                        FlowerPinView(
+                            design: design,
+                            colorHex: state.categoryColorHex(category),
+                            size: 22,
+                        )
+                        .frame(width: 32, height: 32)
+                        .background(
+                            iconSymbol == stored
+                                ? AnyShapeStyle(Color.lociSage.opacity(0.25))
+                                : AnyShapeStyle(Color.secondary.opacity(0.10)),
+                            in: .rect(cornerRadius: 6),
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .help(Text(verbatim: design.name))
+                }
+            }
+            Divider()
+            symbolGrid
+        }
+    }
+
+    private var symbolGrid: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 6),
                   spacing: 6) {
             ForEach(Self.iconChoices, id: \.self) { sym in
