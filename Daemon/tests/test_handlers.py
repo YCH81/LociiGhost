@@ -313,3 +313,90 @@ async def test_the_gate_lets_the_first_position_of_a_session_through():
 
     assert reply["result"]["ok"] is True
     fake.set.assert_awaited()
+
+
+# ── Groups (v1.17) ──────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_a_group_teleport_moves_every_member():
+    from lociighostd.location_service import LocationService
+
+    services = {}
+    for udid in ("lead", "second", "third"):
+        fake = MagicMock(spec=LocationService)
+        fake.last_lat_lng = None
+        fake._last_set_at = time.monotonic()
+        fake.set = AsyncMock()
+        services[udid] = fake
+
+    with patch("lociighostd.device_manager.list_devices", AsyncMock(return_value=[])):
+        async with serving_with_handlers() as (sock, manager, _server):
+            manager.location_for = AsyncMock(side_effect=lambda u: services[u])
+            reply = await _call(sock, "location.teleport",
+                                udid="lead", lat=25.0, lng=121.0,
+                                group={"udids": ["lead", "second", "third"]})
+
+    assert reply["result"]["ok"] is True
+    for udid, fake in services.items():
+        fake.set.assert_awaited_once()
+        assert fake.set.await_args.args == (25.0, 121.0), f"{udid} went somewhere else"
+
+
+@pytest.mark.asyncio
+async def test_a_disconnected_member_is_skipped_not_fatal():
+    """One phone unplugged shouldn't refuse the run for the other two —
+    but it must not pass silently either."""
+    from lociighostd import errors as err
+    from lociighostd.location_service import LocationService
+
+    lead = MagicMock(spec=LocationService)
+    lead.last_lat_lng = None
+    lead._last_set_at = time.monotonic()
+    lead.set = AsyncMock()
+
+    async def location_for(udid):
+        if udid == "lead":
+            return lead
+        raise err.device_not_connected(udid)
+
+    events: list[dict] = []
+
+    with patch("lociighostd.device_manager.list_devices", AsyncMock(return_value=[])):
+        async with serving_with_handlers() as (sock, manager, server):
+            manager.location_for = AsyncMock(side_effect=location_for)
+            original = server.broadcast_event
+
+            async def capture(method, params):
+                events.append({"method": method, **params})
+                await original(method, params)
+
+            server.broadcast_event = capture
+            reply = await _call(sock, "location.teleport",
+                                udid="lead", lat=25.0, lng=121.0,
+                                group={"udids": ["lead", "ghost"]})
+
+    assert reply["result"]["ok"] is True
+    lead.set.assert_awaited_once()
+    assert any(e["method"] == "event.group_changed" and e.get("skipped") == ["ghost"]
+               for e in events), events
+
+
+@pytest.mark.asyncio
+async def test_a_group_of_one_takes_the_ordinary_path():
+    from lociighostd.location_service import LocationService
+
+    lead = MagicMock(spec=LocationService)
+    lead.last_lat_lng = None
+    lead._last_set_at = time.monotonic()
+    lead.set = AsyncMock()
+
+    with patch("lociighostd.device_manager.list_devices", AsyncMock(return_value=[])):
+        async with serving_with_handlers() as (sock, manager, _server):
+            manager.location_for = AsyncMock(return_value=lead)
+            reply = await _call(sock, "location.teleport",
+                                udid="lead", lat=25.0, lng=121.0,
+                                group={"udids": ["lead"]})
+
+    assert reply["result"]["ok"] is True
+    lead.set.assert_awaited_once()

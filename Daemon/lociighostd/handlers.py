@@ -13,9 +13,12 @@ from typing import Any
 
 from . import cooldown as cooldown_mod
 from . import errors
+from .device_group import DeviceGroup, GroupMember
+from .device_group import from_params as group_from_params
 from .device_manager import DeviceManager
 from .flower_plan import FlowerSettings, summarise, with_defaults
 from .flower_runner import FlowerRunner
+from .group_location import GroupLocation
 from .interpolator import route_length_m
 from .joystick import JoystickController
 from .navigator import Navigator
@@ -186,6 +189,66 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
     # ------------------------------------------------------------------
 
     # ------------------------------------------------------------------
+    # Groups — one run, several phones (v1.17)
+    # ------------------------------------------------------------------
+
+    async def _location_for_run(udid: str, group_params: Any) -> Any:
+        """The location service a mover should write to.
+
+        For a lone device that is the device's own service, unchanged.
+        For a group it is a `GroupLocation`, which is the only place
+        that knows about groups at all — movers just call `set`, so a
+        mover written next year is group-capable by having been
+        written.
+        """
+        group = group_from_params(group_params)
+        if not group.is_active:
+            return await manager.location_for(udid)
+
+        # The device the call names leads, wherever it appears in the
+        # list: the run's status, its events and its stop all belong to
+        # that session.
+        members = [m for m in group.members if m.udid == udid]
+        members += [m for m in group.members if m.udid != udid]
+        if not members or members[0].udid != udid:
+            members = [GroupMember(udid)] + members
+
+        leader_service = await manager.location_for(udid)
+        services: dict[str, Any] = {udid: leader_service}
+        usable = [members[0]]
+        skipped: list[str] = []
+        for member in members[1:]:
+            try:
+                services[member.udid] = await manager.location_for(member.udid)
+            except errors.RpcError:
+                # One phone being unplugged shouldn't refuse the run for
+                # the other two — but it must not pass silently either.
+                skipped.append(member.udid)
+                continue
+            usable.append(member)
+
+        if skipped:
+            await server.broadcast_event("event.group_changed", {
+                "udid": udid,
+                "skipped": skipped,
+                "reason": "not_connected",
+            })
+
+        resolved = DeviceGroup(tuple(usable))
+        if not resolved.is_active:
+            return leader_service
+
+        async def dropped(member_udid: str, error: BaseException) -> None:
+            await server.broadcast_event("event.group_changed", {
+                "udid": udid,
+                "dropped": [member_udid],
+                "reason": "push_failed",
+                "detail": str(error),
+            })
+
+        return GroupLocation(resolved, services, on_member_dropped=dropped)
+
+    # ------------------------------------------------------------------
     # Cooldown — the user's own plausibility gate (v1.17)
     # ------------------------------------------------------------------
     #
@@ -244,13 +307,18 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
                 verdict.remaining_s, verdict.required_s, verdict.distance_m)
 
     @server.method("location.teleport")
-    async def location_teleport(udid: str, lat: float, lng: float) -> dict[str, Any]:
+    async def location_teleport(
+        udid: str,
+        lat: float,
+        lng: float,
+        group: Any = None,
+    ) -> dict[str, Any]:
         _validate_coord(lat, lng)
         await _gate_jump(udid, lat, lng)
         # Stop any active mover so it doesn't fight the teleport.
         await _stop_all_movement(manager, udid, server)
 
-        loc = await manager.location_for(udid)
+        loc = await _location_for_run(udid, group)
         await loc.set(float(lat), float(lng))
         await server.broadcast_event("event.position_update", {
             "udid": udid,
@@ -351,6 +419,10 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
         # can't call it, so the Mac has to do that work and hand us the
         # result. Each entry is {"lat": float, "lng": float}.
         polyline: list[dict[str, float]] | None = None,
+        # v1.17: when present, every position of this run goes to each
+        # member as well. `_location_for_run` is where that happens;
+        # the navigator never learns about it.
+        group: Any = None,
     ) -> dict[str, Any]:
         if speed_mps is None:
             speed_mps = SPEED_PRESETS.get(profile, SPEED_PRESETS["driving"])
@@ -532,7 +604,7 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
             profile=profile,
         )
 
-        loc = await manager.location_for(udid)
+        loc = await _location_for_run(udid, group)
 
         async def emit(method: str, status) -> None:
             await server.broadcast_event(method, {"udid": udid, **status.to_json()})
@@ -611,6 +683,7 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
         dwell_seconds: float | None = None,
         dwell_seconds_min: float | None = None,
         dwell_seconds_max: float | None = None,
+        group: Any = None,
     ) -> dict[str, Any]:
         _validate_coord(center_lat, center_lng)
         if radius_m <= 0 or radius_m > 50_000:
@@ -645,7 +718,7 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
             )
 
         await _gate_jump(udid, center_lat, center_lng)
-        loc = await manager.location_for(udid)
+        loc = await _location_for_run(udid, group)
 
         async def emit(method: str, status) -> None:
             await server.broadcast_event(method, {"udid": udid, **status.to_json()})
@@ -720,12 +793,13 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
         points: list[Any],
         settings: dict[str, Any] | None = None,
         resume_from_step: int = 0,
+        group: Any = None,
     ) -> dict[str, Any]:
         centers = _flower_centers(points)
         config: FlowerSettings = with_defaults(settings)
 
         await _gate_jump(udid, centers[0][0], centers[0][1])
-        loc = await manager.location_for(udid)
+        loc = await _location_for_run(udid, group)
 
         async def emit(method: str, status) -> None:
             await server.broadcast_event(method, {"udid": udid, **status.to_json()})
