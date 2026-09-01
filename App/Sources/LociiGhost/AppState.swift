@@ -3712,7 +3712,20 @@ final class AppState {
                 showInfo(String(localized: "Connection to the iPhone recovered."))
             }
             if reason == "auto_reconnected" {
-                showInfo(String(localized: "Reconnected to the iPhone. Press Resume to pick the route back up."))
+                // A route does not restart itself: the state lives on
+                // the Mac, and a run that quietly resumed while the
+                // user was deciding what to do is worse than one that
+                // waits to be told. Flower mode is the exception the
+                // user asked for — it is a background grind, its
+                // progress is one integer, and the whole point is
+                // leaving it running.
+                if flowerRun != nil, udid == selectedUDID {
+                    showInfo(String(localized: "Reconnected — picking the flower run back up."))
+                    let points = pendingStops
+                    Task { @MainActor in await resumeFlower(udid: udid, points: points) }
+                } else {
+                    showInfo(String(localized: "Reconnected to the iPhone. Press Resume to pick the route back up."))
+                }
             }
         default:
             degradedUDIDs.remove(udid)

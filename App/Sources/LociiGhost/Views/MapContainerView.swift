@@ -189,6 +189,12 @@ struct MapContainerView: NSViewRepresentable {
         private var routePolyline: StyledPolyline?
         private var previewPolyline: StyledPolyline?
         private var randomWalkPreviewCircle: MKCircle?
+        /// One ring per staged waypoint while the flower panel is open.
+        /// Kept as a list rather than an MKCircle subclass because
+        /// MKCircle's initialisers are class factories — the renderer
+        /// tells these apart by identity instead.
+        private var flowerRingCircles: [MKCircle] = []
+        private var lastFlowerSignature: ([Coordinate], Double)?
         private var randomWalkPathPolyline: StyledPolyline?
         private var lastRWPathSignature: [Coordinate] = []
         private var lastRouteSignature: [Coordinate] = []
@@ -270,6 +276,8 @@ struct MapContainerView: NSViewRepresentable {
                 _ = state.searchPreviewCoord
                 _ = state.randomWalkPreviewCenter
                 _ = state.randomWalkPreviewRadiusM
+                _ = state.activeMovementMode
+                _ = state.flowerConfig
                 _ = state.randomWalk
                 _ = state.currentMapFocus
                 _ = state.isVirtualMapSelected
@@ -697,6 +705,42 @@ struct MapContainerView: NSViewRepresentable {
                     randomWalkPreviewCircle = circle
                 }
                 lastRWPreviewSignature = rwSig
+            }
+
+            // --- Flower rings -------------------------------------------
+            // One ring per staged waypoint, drawn while the flower panel
+            // is open so the radius is something the user can see rather
+            // than a number they have to imagine. Also drawn during a
+            // run: the rings are the route.
+            let flowerCenters = state.activeMovementMode == .flower
+                ? state.pendingStops
+                : []
+            let flowerRadius = state.flowerConfig.radiusM
+            let flowerChanged: Bool = {
+                switch (lastFlowerSignature, flowerCenters.isEmpty) {
+                case (nil, true): return false
+                case (nil, false): return true
+                case (let previous?, _):
+                    return previous.0 != flowerCenters || abs(previous.1 - flowerRadius) > 0.5
+                }
+            }()
+            if flowerChanged {
+                if !flowerRingCircles.isEmpty {
+                    map.removeOverlays(flowerRingCircles)
+                    flowerRingCircles = []
+                }
+                for centre in flowerCenters {
+                    let ring = MKCircle(
+                        center: CLLocationCoordinate2D(latitude: centre.lat,
+                                                       longitude: centre.lng),
+                        radius: flowerRadius,
+                    )
+                    map.addOverlay(ring, level: .aboveLabels)
+                    flowerRingCircles.append(ring)
+                }
+                lastFlowerSignature = flowerCenters.isEmpty
+                    ? nil
+                    : (flowerCenters, flowerRadius)
             }
 
             // --- Preview polyline (faded) -------------------------------
@@ -1151,6 +1195,16 @@ struct MapContainerView: NSViewRepresentable {
             }
             if let circle = overlay as? MKCircle {
                 let r = MKCircleRenderer(circle: circle)
+                // Flower rings are metres across and there can be dozens
+                // of them, so they get a thin outline and no fill — a
+                // filled 40 m disc at city zoom is a dot, and thirty of
+                // them are a smear.
+                if flowerRingCircles.contains(where: { $0 === circle }) {
+                    r.strokeColor = NSColor.systemGreen.withAlphaComponent(0.85)
+                    r.fillColor = NSColor.systemGreen.withAlphaComponent(0.06)
+                    r.lineWidth = 1.5
+                    return r
+                }
                 r.fillColor = NSColor.systemPurple.withAlphaComponent(0.12)
                 r.strokeColor = NSColor.systemPurple.withAlphaComponent(0.7)
                 r.lineWidth = 2
