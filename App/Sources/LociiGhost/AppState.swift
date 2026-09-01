@@ -1249,10 +1249,6 @@ final class AppState {
         }
     }
 
-    /// Waypoints the user is staging in the flower panel, so the map
-    /// can draw the rings before anything starts.
-    var flowerPreviewCenters: [Coordinate] = []
-
     /// The user's cooldown gate. The daemon enforces it; this is where
     /// the numbers live and where they are persisted.
     var cooldownConfig: CooldownConfig = .standard {
