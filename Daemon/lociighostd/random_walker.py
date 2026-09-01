@@ -23,6 +23,7 @@ from typing import Awaitable, Callable
 
 from .interpolator import haversine_m, normalize_latlng
 from .location_service import LocationService
+from .movement import walk_segment
 from .routing import NoRouteError, OsrmClient, RoutingError
 
 log = logging.getLogger(__name__)
@@ -401,30 +402,26 @@ class RandomWalker:
         between adjacent waypoints visually traces real roads. In
         straight mode, the planned path is sparse random targets and
         the same interpolator hops directly between them.
+
+        v1.17: the tick loop itself moved to `movement.walk_segment`,
+        which the flower runner also uses. Two hand-written copies of
+        the same timing loop is how one of them ends up checking the
+        stop event on the wrong side of the sleep.
         """
-        while not self._stop_event.is_set():
-            d = haversine_m(self._current, target)
-            step = speed_mps * self.TICK_S
-            if d <= step:
-                self._distance_total += d
-                self._current = target
-                await self._location.set(*target)
-                await self._emit("event.position_update")
-                return True
-            frac = step / d
-            new_lat = self._current[0] + (target[0] - self._current[0]) * frac
-            new_lng = self._current[1] + (target[1] - self._current[1]) * frac
-            self._distance_total += step
-            self._current = (new_lat, new_lng)
-            await self._location.set(new_lat, new_lng)
+        async def on_step(position: tuple[float, float], covered_m: float) -> None:
+            self._distance_total += covered_m
+            self._current = position
+            await self._location.set(*position)
             await self._emit("event.position_update")
-            try:
-                await asyncio.wait_for(self._stop_event.wait(), timeout=self.TICK_S)
-                if self._stop_event.is_set():
-                    return False
-            except asyncio.TimeoutError:
-                pass
-        return False
+
+        return await walk_segment(
+            start=self._current,
+            target=target,
+            speed_mps=speed_mps,
+            tick_s=self.TICK_S,
+            stop_event=self._stop_event,
+            on_step=on_step,
+        )
 
     async def _emit(self, method: str) -> None:
         if self._on_event is None:

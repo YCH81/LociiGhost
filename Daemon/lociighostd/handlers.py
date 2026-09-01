@@ -15,6 +15,8 @@ from .device_manager import DeviceManager
 from .interpolator import route_length_m
 from .joystick import JoystickController
 from .navigator import Navigator
+from .flower_plan import FlowerSettings, summarise, with_defaults
+from .flower_runner import FlowerRunner
 from .random_walker import RandomWalker
 from .routing import GoogleDirectionsClient, NoRouteError, OsrmClient, Route, RoutingError
 from .rpc import RpcServer
@@ -606,6 +608,85 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
             **walker.status().to_json(),
         })
         return {"ok": True, **walker.status().to_json()}
+
+    # ------------------------------------------------------------------
+    # location.flower — orbit each waypoint, lap after lap
+    # ------------------------------------------------------------------
+
+    def _flower_centers(points: list[Any]) -> list[tuple[float, float]]:
+        centers: list[tuple[float, float]] = []
+        for point in points or []:
+            if isinstance(point, dict):
+                lat, lng = point.get("lat"), point.get("lng")
+            elif isinstance(point, (list, tuple)) and len(point) >= 2:
+                lat, lng = point[0], point[1]
+            else:
+                raise errors.RpcError(
+                    code=errors.PYMD3_ERROR,
+                    message=f"unreadable waypoint {point!r}",
+                )
+            _validate_coord(float(lat), float(lng))
+            centers.append((float(lat), float(lng)))
+        if not centers:
+            raise errors.RpcError(
+                code=errors.PYMD3_ERROR,
+                message="flower mode needs at least one waypoint",
+            )
+        return centers
+
+    @server.method("location.flower_estimate")
+    async def location_flower_estimate(
+        points: list[Any],
+        settings: dict[str, Any] | None = None,
+        origin_lat: float | None = None,
+        origin_lng: float | None = None,
+    ) -> dict[str, Any]:
+        """What the settings panel shows while the user is still
+        choosing. Touches no device on purpose — the panel is open
+        before anything is connected, and an estimate that needs a
+        phone would be an estimate nobody sees."""
+        centers = _flower_centers(points)
+        origin = None
+        if origin_lat is not None and origin_lng is not None:
+            _validate_coord(origin_lat, origin_lng)
+            origin = (origin_lat, origin_lng)
+        return summarise(centers, with_defaults(settings), origin)
+
+    @server.method("location.flower")
+    async def location_flower(
+        udid: str,
+        points: list[Any],
+        settings: dict[str, Any] | None = None,
+        resume_from_step: int = 0,
+    ) -> dict[str, Any]:
+        centers = _flower_centers(points)
+        config: FlowerSettings = with_defaults(settings)
+
+        loc = await manager.location_for(udid)
+
+        async def emit(method: str, status) -> None:
+            await server.broadcast_event(method, {"udid": udid, **status.to_json()})
+
+        # Resume starts from where the phone is, not from the first
+        # waypoint: a run that dropped on the far side of the city
+        # would otherwise walk back across it before carrying on.
+        start = getattr(loc, "last_lat_lng", None) or centers[0]
+
+        runner = FlowerRunner(
+            location=loc,
+            centers=centers,
+            settings=config,
+            on_event=emit,
+            start_position=start,
+            completed_steps=max(0, int(resume_from_step)),
+        )
+        await manager.attach_runner(udid, "flower", runner)
+        await server.broadcast_event("event.state_changed", {
+            "udid": udid,
+            "mode": "flower",
+            **runner.status().to_json(),
+        })
+        return {"ok": True, **runner.status().to_json()}
 
     # ------------------------------------------------------------------
     # location.joystick — real-time WASD-style control

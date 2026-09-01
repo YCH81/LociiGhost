@@ -162,3 +162,62 @@ async def test_device_connect_disconnect_emits_events():
             )
 
             writer.close()
+
+
+# ── location.flower_estimate (v1.17) ────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_flower_estimate_needs_no_device():
+    """The settings panel is open before anything is connected. An
+    estimate that needed a phone would be an estimate nobody sees."""
+    with patch("lociighostd.device_manager.list_devices", AsyncMock(return_value=[])):
+        async with serving_with_handlers() as (sock, _manager, _server):
+            reply = await _call(
+                sock, "location.flower_estimate",
+                points=[{"lat": 25.0339, "lng": 121.5645}],
+                settings={"segments": 4, "laps": 1.0, "radius_m": 50, "rounds": 2},
+                origin_lat=25.0339, origin_lng=121.5645,
+            )
+    result = reply["result"]
+    assert result["points"] == 1
+    assert result["rounds"] == 2
+    assert result["vertices_per_point"] == 4
+    assert result["steps"] == 2 * 5
+    assert result["seconds"] > 0
+
+
+@pytest.mark.asyncio
+async def test_flower_estimate_accepts_bare_pairs_too():
+    with patch("lociighostd.device_manager.list_devices", AsyncMock(return_value=[])):
+        async with serving_with_handlers() as (sock, _manager, _server):
+            reply = await _call(sock, "location.flower_estimate",
+                                points=[[25.0339, 121.5645]])
+    assert reply["result"]["points"] == 1
+
+
+@pytest.mark.asyncio
+async def test_flower_estimate_rejects_an_empty_waypoint_list():
+    with patch("lociighostd.device_manager.list_devices", AsyncMock(return_value=[])):
+        async with serving_with_handlers() as (sock, _manager, _server):
+            reply = await _call(sock, "location.flower_estimate", points=[])
+    assert "error" in reply
+
+
+@pytest.mark.asyncio
+async def test_flower_estimate_rejects_an_off_the_planet_waypoint():
+    with patch("lociighostd.device_manager.list_devices", AsyncMock(return_value=[])):
+        async with serving_with_handlers() as (sock, _manager, _server):
+            reply = await _call(sock, "location.flower_estimate",
+                                points=[{"lat": 91.0, "lng": 0.0}])
+    assert "error" in reply
+
+
+@pytest.mark.asyncio
+async def test_flower_on_a_disconnected_device_is_an_error_not_a_crash():
+    with patch("lociighostd.device_manager.list_devices", AsyncMock(return_value=[])):
+        async with serving_with_handlers() as (sock, _manager, _server):
+            reply = await _call(sock, "location.flower",
+                                udid="nope",
+                                points=[{"lat": 25.0, "lng": 121.0}])
+    assert "error" in reply

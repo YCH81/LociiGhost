@@ -120,6 +120,7 @@ class _Session:
     navigator: Optional[Any] = None       # lociighostd.navigator.Navigator
     walker: Optional[Any] = None          # lociighostd.random_walker.RandomWalker
     joystick: Optional[Any] = None        # lociighostd.joystick.JoystickController
+    flower: Optional[Any] = None          # lociighostd.flower_runner.FlowerRunner
     # Bonjour-only sessions hold a RemotePairingTunnelService instead of
     # a CoreDeviceTunnelProxy; the rest of the lifecycle is the same.
     remote_pairing_service: Any = None
@@ -1735,7 +1736,7 @@ class DeviceManager:
 
     # Every attribute on `_Session` that holds something driving the
     # iPhone's position. Order matters only for logging.
-    MOVER_ATTRS = ("navigator", "walker", "joystick")
+    MOVER_ATTRS = ("navigator", "walker", "joystick", "flower")
     MOVER_STOP_TIMEOUT_S = 2.0
 
     async def _stop_movers(self, sess: "_Session") -> bool:

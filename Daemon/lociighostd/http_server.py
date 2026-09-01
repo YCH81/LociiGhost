@@ -720,6 +720,21 @@ def create_http_app(
                     entry["walk_radius_m"]   = radius
                     entry["mode"] = "random_walk"
 
+            # Active flower run — the phone draws the ring the device
+            # is currently orbiting, same idea as the walk circle.
+            flower = getattr(sess, "flower", None)
+            if flower is not None:
+                status = flower.status()
+                centers = getattr(flower, "_centers", None) or []
+                if 0 <= status.point_index < len(centers):
+                    center = centers[status.point_index]
+                    entry["flower_center_lat"] = center[0]
+                    entry["flower_center_lng"] = center[1]
+                    entry["flower_radius_m"] = flower._settings.radius_m
+                entry["flower_step"] = status.step_index
+                entry["flower_total_steps"] = status.total_steps
+                entry["mode"] = "flower"
+
             # Active joystick — just a flag; the map dot is enough.
             if sess.joystick is not None:
                 entry["mode"] = "joystick"
