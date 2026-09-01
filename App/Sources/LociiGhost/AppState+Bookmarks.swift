@@ -487,4 +487,196 @@ extension AppState {
         )
         return entries.count
     }
+
+    // MARK: - Bookmarks GPX import / export (v1.17)
+
+    /// Write every bookmark out as GPX waypoints.
+    ///
+    /// GPX rather than another JSON format because the point of this
+    /// one is leaving LociiGhost: a `.gpx` of `<wpt>`s opens in Garmin
+    /// Connect, Gaia, Organic Maps, Google Earth and Apple's own
+    /// Quick Look. The JSON export stays — it is the LocWarp
+    /// interchange format and carries fields GPX has no home for.
+    @MainActor
+    func exportBookmarksGPX() async {
+        guard let ctx = modelContext else {
+            lastError = String(localized: "Database not ready yet — try again in a second.")
+            return
+        }
+        let all: [Bookmark]
+        do {
+            all = try ctx.fetch(FetchDescriptor<Bookmark>(
+                sortBy: [SortDescriptor(\Bookmark.name)]
+            ))
+        } catch {
+            lastError = "Couldn't read bookmarks: \(error.localizedDescription)"
+            return
+        }
+        guard !all.isEmpty else {
+            lastError = String(
+                localized: "No bookmarks to export.",
+                comment: "Toast when bookmark export is invoked on an empty list",
+            )
+            return
+        }
+
+        let date = DateFormatter()
+        date.dateFormat = "yyyy-MM-dd"
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "gpx") ?? .xml]
+        panel.nameFieldStringValue = "lociighost-bookmarks-\(date.string(from: .now)).gpx"
+        panel.title = String(
+            localized: "Export bookmarks to GPX",
+            comment: "Title of the save-file dialog for bookmarks GPX export",
+        )
+        guard let url = await presentPanel(panel) else { return }
+
+        let xml = BookmarkGPX.encode(all.map { waypoint(for: $0) })
+        guard let data = xml.data(using: .utf8) else {
+            // Same trap as GPXService's L18 fix: a nil encode must not
+            // report a successful export of a file that isn't there.
+            lastError = String(localized: "Export failed: could not encode the file as UTF-8.")
+            return
+        }
+        do {
+            try data.write(to: url, options: .atomic)
+            lastError = String(
+                format: String(
+                    localized: "Exported %lld bookmarks.",
+                    comment: "Toast after a successful bookmark GPX export",
+                ),
+                all.count,
+            )
+        } catch {
+            lastError = "Export failed: \(error.localizedDescription)"
+        }
+    }
+
+    /// Read a `.gpx` file and insert one bookmark per `<wpt>`.
+    ///
+    /// Any GPX file works, not only ours — a foreign waypoint lands
+    /// uncategorised with the default pin. Category colours ride along
+    /// in an extension element and are applied as overrides here,
+    /// which is the only part of the import that touches state outside
+    /// the bookmarks table.
+    @MainActor
+    func importBookmarksGPX() async {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "gpx") ?? .xml]
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.title = String(
+            localized: "Import bookmarks from GPX",
+            comment: "Title of the open-file dialog for bookmarks GPX import",
+        )
+        guard let url = await presentPanel(panel) else { return }
+        guard let ctx = modelContext else { return }
+
+        let waypoints: [BookmarkWaypoint]
+        do {
+            waypoints = try BookmarkGPX.decode(try Data(contentsOf: url))
+        } catch let error as BookmarkGPXError {
+            lastError = Self.message(for: error)
+            return
+        } catch {
+            lastError = error.localizedDescription
+            return
+        }
+
+        // Batched insert, one save, one revision bump — a 3 000-pin
+        // file would otherwise re-fetch every @Query 3 000 times.
+        for w in waypoints {
+            let trimmed = w.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            let nameToSave = trimmed.isEmpty
+                ? String(format: "(%.5f, %.5f)", w.lat, w.lng)
+                : trimmed
+            let bm = Bookmark(
+                name: nameToSave,
+                lat: w.lat,
+                lng: w.lng,
+                category: w.category.trimmingCharacters(in: .whitespaces),
+                iconSymbol: Self.usableSymbol(w.symbol),
+                imageURL: w.imageURL,
+            )
+            ctx.insert(bm)
+        }
+        try? ctx.save()
+
+        // Colours after the insert: applying them writes preferences,
+        // and doing that per-waypoint mid-import would persist the
+        // JSON blob once per pin.
+        for w in waypoints {
+            guard let hex = w.colorHex else { continue }
+            setCategoryColor(hex, for: w.category)
+        }
+
+        bookmarksRevision &+= 1
+        lastError = String(
+            format: String(
+                localized: "Imported %lld bookmarks.",
+                comment: "Toast after a successful bookmark GPX import",
+            ),
+            waypoints.count,
+        )
+    }
+
+    /// One bookmark as a waypoint.
+    ///
+    /// The colour is emitted only when the user actually picked one:
+    /// `CategoryPalette` derives the rest from the category name with
+    /// a hash we own, so they are already identical on the machine
+    /// this file lands on. Writing them would convert every derived
+    /// colour into an explicit override on import.
+    private func waypoint(for bm: Bookmark) -> BookmarkWaypoint {
+        BookmarkWaypoint(
+            name: bm.name,
+            lat: bm.lat,
+            lng: bm.lng,
+            category: bm.category,
+            symbol: bm.iconSymbol,
+            colorHex: categoryColorOverrides[CategoryPalette.key(for: bm.category)],
+            imageURL: bm.imageURL,
+        )
+    }
+
+    /// Keep an imported `<sym>` only if it will actually draw.
+    ///
+    /// GPX's `sym` is a free-form string and other apps put their own
+    /// vocabulary in it ("Flag, Blue"). Storing that verbatim gives a
+    /// bookmark whose icon renders as nothing at all, so anything that
+    /// isn't one of our flowers or a real SF Symbol falls back to the
+    /// default pin.
+    private static func usableSymbol(_ raw: String?) -> String {
+        let fallback = "mappin.circle.fill"
+        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else { return fallback }
+        // A `flower.` value is kept verbatim even when this build
+        // doesn't know the id: the renderer already falls back to a
+        // daisy for those, and rewriting it here would permanently
+        // flatten a flower added by a newer version the first time an
+        // older one imported the file.
+        if raw.hasPrefix(FlowerPin.symbolPrefix) { return raw }
+        return NSImage(systemSymbolName: raw, accessibilityDescription: nil) == nil
+            ? fallback
+            : raw
+    }
+
+    private static func message(for error: BookmarkGPXError) -> String {
+        switch error {
+        case .unparseable(let why):
+            return String(
+                format: String(
+                    localized: "GPX file is malformed: %@",
+                    comment: "Error when bookmark GPX import fails to parse",
+                ),
+                why,
+            )
+        case .empty:
+            return String(
+                localized: "GPX parsed, but it has no waypoints. Tracks import as routes, not bookmarks — use File ▸ Import GPX for those.",
+                comment: "Error when an imported GPX has tracks but no waypoints",
+            )
+        }
+    }
 }

@@ -117,6 +117,33 @@ final class AppPreferences {
     /// get a colour derived from their name -- see `CategoryPalette`.
     var bookmarkCategoryColorsJSON: String? = nil
 
+    // ── v1.17: Address-search provider ──────────────────────────
+    /// Raw value of `GeocodeProvider` — which service the search bar
+    /// asks. "apple" (the default) is the only one with true
+    /// as-you-type completion and no quota; the two OpenStreetMap
+    /// services index the Chinese shop and landmark names Apple
+    /// misses; "google" needs the user's own key and is shown
+    /// disabled until there is one.
+    ///
+    /// Defaulted rather than optional so an existing store migrates
+    /// without a schema version bump, same as `routingEngineRaw`.
+    var geocodeProviderRaw: String = "apple"
+
+    // ── v1.17: Flower mode ──────────────────────────────────────
+    /// `FlowerConfig` as JSON. Nine numbers for one optional mode is
+    /// not worth nine columns and a migration; nil means the defaults.
+    var flowerSettingsJSON: String? = nil
+
+    // ── v1.17: Group sync ───────────────────────────────────────
+    /// The other iPhones that mirror the selected one, as a JSON array
+    /// of udids. nil / empty means no group, which is the default and
+    /// the behaviour every earlier version had.
+    var groupUDIDsJSON: String? = nil
+
+    /// Whether the group is applied. Kept apart from the list so
+    /// turning it off for one run doesn't lose the user's selection.
+    var groupSyncEnabled: Bool = false
+
     init(
         travelProfileRaw: String = "driving"
     ) {

@@ -713,6 +713,7 @@ final class AppState {
     var navigationPaused: Bool = false
     var randomWalkActive: Bool = false
     var joystickActive: Bool = false
+    var flowerActive: Bool = false
 
     /// Convenience: any session is running. Reads only the three cheap
     /// booleans above, not the full VMs.
@@ -841,6 +842,47 @@ final class AppState {
         } else {
             categoryColorOverrides.removeValue(forKey: key)
         }
+    }
+
+    private func persistGroupUDIDs() {
+        guard let prefs = preferences else { return }
+        guard let data = try? JSONEncoder().encode(groupUDIDs),
+              let json = String(data: data, encoding: .utf8) else {
+            NSLog("LociiGhost: could not encode the device group; keeping the stored value")
+            return
+        }
+        prefs.groupUDIDsJSON = json
+    }
+
+    private func loadGroup() {
+        groupSyncEnabled = preferences?.groupSyncEnabled ?? false
+        guard let json = preferences?.groupUDIDsJSON,
+              let data = json.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode([String].self, from: data)
+        else { return }
+        groupUDIDs = decoded
+    }
+
+    private func persistFlowerConfig() {
+        guard let prefs = preferences else { return }
+        // A failed encode keeps what is stored rather than wiping it —
+        // same rule as the category colours (L11 in the last audit was
+        // a setter that swallowed an encode failure and reported
+        // success).
+        guard let data = try? JSONEncoder().encode(flowerConfig),
+              let json = String(data: data, encoding: .utf8) else {
+            NSLog("LociiGhost: could not encode the flower settings; keeping the stored value")
+            return
+        }
+        prefs.flowerSettingsJSON = json
+    }
+
+    private func loadFlowerConfig() {
+        guard let json = preferences?.flowerSettingsJSON,
+              let data = json.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode(FlowerConfig.self, from: data)
+        else { return }
+        flowerConfig = decoded
     }
 
     private func persistCategoryColors() {
@@ -1164,6 +1206,57 @@ final class AppState {
             if randomWalkActive != active { randomWalkActive = active }
         }
     }
+    /// Latest snapshot from a `location.flower` session — orbiting a
+    /// list of waypoints. nil means no flower run.
+    var flowerRun: FlowerRunVM? {
+        didSet {
+            let active = flowerRun != nil
+            if flowerActive != active { flowerActive = active }
+        }
+    }
+
+    /// The user's flower settings. Persisted as JSON beside the other
+    /// preferences rather than as columns: nine numbers for one
+    /// optional mode is not worth a schema migration, and X18 in the
+    /// last audit was a store that wouldn't open.
+    var flowerConfig: FlowerConfig = .standard {
+        didSet {
+            guard !isHydratingPreferences, flowerConfig != oldValue else { return }
+            persistFlowerConfig()
+        }
+    }
+
+    /// Waypoints the user is staging in the flower panel, so the map
+    /// can draw the rings before anything starts.
+    var flowerPreviewCenters: [Coordinate] = []
+
+    // ── v1.17: group sync ───────────────────────────────────────
+    /// Other iPhones that should mirror whatever the selected one is
+    /// doing. Empty — the default — means every mode behaves exactly
+    /// as it did before.
+    ///
+    /// Held as udids rather than as device objects: a member can be
+    /// unplugged and plugged back in mid-session, and the daemon
+    /// resolves udids at the moment a run starts. A stale object
+    /// reference would be a member that silently stopped mirroring.
+    var groupUDIDs: [String] = [] {
+        didSet {
+            guard !isHydratingPreferences, groupUDIDs != oldValue else { return }
+            persistGroupUDIDs()
+        }
+    }
+
+    /// Whether the group is actually applied. Separate from the list so
+    /// turning it off for one run doesn't make the user re-pick three
+    /// phones afterwards.
+    var groupSyncEnabled: Bool = false {
+        didSet {
+            guard !isHydratingPreferences, groupSyncEnabled != oldValue else { return }
+            preferences?.groupSyncEnabled = groupSyncEnabled
+            try? modelContext?.save()
+        }
+    }
+
     /// Latest snapshot from a `location.joystick` session.
     var joystick: JoystickVM? {
         didSet {
@@ -1379,6 +1472,9 @@ final class AppState {
         }
         googleGeocodeAPIKey = KeychainSecret.read(KeychainSecret.googleDirectionsKey)
         routingEngine = RoutingEngine(rawValue: prefs.routingEngineRaw) ?? .osrmDemo
+        geocodeProvider = GeocodeProvider(rawValue: prefs.geocodeProviderRaw) ?? .apple
+        loadFlowerConfig()
+        loadGroup()
         appearanceMode = AppearanceMode(rawValue: prefs.appearanceModeRaw) ?? .brand
         isHydratingPreferences = false
         // NOTE: We deliberately do NOT restore simulatedLocation
@@ -1501,6 +1597,27 @@ final class AppState {
             preferences?.routingEngineRaw = routingEngine.rawValue
             try? modelContext?.save()
         }
+    }
+
+    /// Which service the search bar asks for addresses.
+    ///
+    /// Separate from `routingEngine` on purpose: they answer different
+    /// questions (where is this place / how do I get there), the good
+    /// answers come from different services, and tying them together
+    /// would mean a user who wants OSM place names also gets OSM
+    /// routing whether or not that suits them.
+    var geocodeProvider: GeocodeProvider = .apple {
+        didSet {
+            guard !isHydratingPreferences else { return }
+            preferences?.geocodeProviderRaw = geocodeProvider.rawValue
+            try? modelContext?.save()
+        }
+    }
+
+    /// True when the chosen provider can actually run a search. Only
+    /// Google can fail this, and only for want of a key.
+    var geocodeProviderIsUsable: Bool {
+        !geocodeProvider.needsAPIKey || (googleGeocodeAPIKey?.isEmpty == false)
     }
 
     /// v1.9.4: brand vs system appearance tint. `.brand` (default)
@@ -2182,11 +2299,18 @@ final class AppState {
         if udid == Self.virtualMapUDID { return }
         guard let client else { return }
         do {
-            _ = try await client.callRaw("location.teleport", params: [
+            var params: [String: AnyCodable] = [
                 "udid": AnyCodable(udid),
                 "lat":  AnyCodable(lat),
                 "lng":  AnyCodable(lng),
-            ])
+            ]
+            // v1.17: when a group is on, the other phones make the same
+            // jump. The daemon fans out inside the location service, so
+            // this is the entire change on the app side.
+            if let group = groupParams(leader: udid) {
+                params["group"] = AnyCodable(group)
+            }
+            _ = try await client.callRaw("location.teleport", params: params)
             lastTeleportedAt = Date()
             setSimulatedLocation(Coordinate(lat: lat, lng: lng), for: udid)
             // Force the geo + weather refresh in addition to the
@@ -2619,6 +2743,9 @@ final class AppState {
                 "max_speed_mps":  AnyCodable(maxSpeedMps),
                 "routing_engine": AnyCodable(routingEngine),
             ]
+            if let group = groupParams(leader: udid) {
+                params["group"] = AnyCodable(group)
+            }
             if dwellEnabled {
                 let range = dwellRange
                 params["dwell_seconds_min"] = AnyCodable(Double(range.minSeconds))
@@ -3253,8 +3380,15 @@ final class AppState {
             await refreshDevices()
         case "event.position_update":
             applyPositionEvent(event.params)
+            applyFlowerEvent(event.params)
         case "event.state_changed":
             applyStateEvent(event.params)
+            applyFlowerEvent(event.params)
+        case "event.group_changed":
+            // A member was skipped (not connected) or dropped mid-run
+            // (its channel failed). The run continues without it, so
+            // this is a notice, not an error state.
+            applyGroupChangedEvent(event.params)
         case "event.wifi_pair_progress":
             applyPairProgressEvent(event.params)
         case "event.phone_session":
@@ -3296,6 +3430,25 @@ final class AppState {
         default:
             pairProgress = PairProgress(stage: stage, message: message)
         }
+    }
+
+    /// A group member was skipped at the start (not connected) or
+    /// dropped mid-run (its channel failed). The run carries on without
+    /// it, so this is a notice rather than a failure — but a silent one
+    /// would look like the group had quietly shrunk itself.
+    @MainActor
+    func applyGroupChangedEvent(_ params: [String: AnyCodable]) {
+        let affected = parseUDIDList(params["skipped"])
+            .union(parseUDIDList(params["dropped"]))
+        let names = affected
+            .map { udid in devices.first { $0.udid == udid }?.name ?? udid }
+            .sorted()
+        guard !names.isEmpty else { return }
+        lastError = String(
+            format: String(
+                localized: "Group sync: %@ isn't moving with the others.",
+                comment: "Toast when a group member is skipped or dropped"),
+            names.joined(separator: ", "))
     }
 
     private func applyPositionEvent(_ params: [String: AnyCodable]) {

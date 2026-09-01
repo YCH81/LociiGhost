@@ -189,6 +189,42 @@ struct SettingsView: View {
                 Spacer()
             }
             .buttonStyle(.bordered)
+
+            // GPX on its own row: JSON is the LocWarp interchange
+            // format (it carries fields GPX has no home for), GPX is
+            // the one every other map app reads. Same data, different
+            // audience — putting all five buttons in one row made it
+            // read as five variants of the same thing.
+            Text("GPX opens in other map apps. Categories, icons and any colour you picked come along.",
+                 comment: "Settings — explanation of the bookmark GPX buttons")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 10) {
+                Button {
+                    Task { @MainActor in await state.importBookmarksGPX() }
+                } label: {
+                    Label {
+                        Text("Import from GPX…",
+                             comment: "Settings — bookmarks GPX import button")
+                    } icon: {
+                        Image(systemName: "square.and.arrow.down")
+                    }
+                }
+                Button {
+                    Task { @MainActor in await state.exportBookmarksGPX() }
+                } label: {
+                    Label {
+                        Text("Export to GPX…",
+                             comment: "Settings — bookmarks GPX export button")
+                    } icon: {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                }
+                Spacer()
+            }
+            .buttonStyle(.bordered)
         }
     }
 
@@ -243,11 +279,54 @@ struct SettingsView: View {
     private var geocodingSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             sectionHeader(symbol: "globe.asia.australia", titleKey: "Geocoding")
-            Text("When MapKit can't find a place (common for Chinese store / landmark names), LociiGhost can fall back to Google Geocoding using your own API key. Leave blank to disable.",
+            Text("Which service the search bar asks for addresses. Whichever you pick, Google is still tried as a fallback when nothing is found and you have a key saved below.",
                  comment: "Settings — Geocoding section explanation")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            // Same get/set binding form as the routing-engine picker:
+            // Swift can't infer Picker's SelectionValue from
+            // `$state.geocodeProvider` when the wrapped type is a
+            // custom enum.
+            let providerBinding = Binding<GeocodeProvider>(
+                get: { state.geocodeProvider },
+                set: { state.geocodeProvider = $0 },
+            )
+            Picker(selection: providerBinding) {
+                ForEach(GeocodeProvider.allCases) { provider in
+                    Text(provider.displayName).tag(provider)
+                }
+            } label: {
+                Text("Search provider:",
+                     comment: "Settings — address search provider picker label")
+            }
+            .pickerStyle(.radioGroup)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(Self.caption(for: state.geocodeProvider))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let credit = state.geocodeProvider.attribution {
+                    Text(credit)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                if state.geocodeProvider.needsAPIKey && !state.geocodeProviderIsUsable {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Text("Google search needs an API key — paste one in below.",
+                             comment: "Settings — Google search provider selected but no key")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+
+            Divider().padding(.vertical, 2)
 
             HStack {
                 Text("Google API key:",
@@ -759,6 +838,26 @@ struct SettingsView: View {
     // MARK: - Helpers
 
     @ViewBuilder
+    /// One line per provider, saying what it is actually good and bad
+    /// at. Lives here rather than on the enum in Core because Core has
+    /// no localisation catalogue.
+    private static func caption(for provider: GeocodeProvider) -> String {
+        switch provider {
+        case .apple:
+            return String(localized: "Suggestions as you type, no key and no quota. Weakest on Chinese shop and landmark names.",
+                          comment: "Settings — Apple search provider caption")
+        case .nominatim:
+            return String(localized: "OpenStreetMap's own search. Free, and strong on places Apple doesn't index — but it allows one search per second, so results appear a moment after you stop typing.",
+                          comment: "Settings — Nominatim search provider caption")
+        case .photon:
+            return String(localized: "OpenStreetMap data through komoot's search, built for typing. Free, faster to respond than Nominatim, occasionally looser matches.",
+                          comment: "Settings — Photon search provider caption")
+        case .google:
+            return String(localized: "The most accurate for Taiwanese addresses. Uses your own API key, and every search is billed to you.",
+                          comment: "Settings — Google search provider caption")
+        }
+    }
+
     private func sectionHeader(symbol: String, titleKey: LocalizedStringKey) -> some View {
         HStack(spacing: 8) {
             Image(systemName: symbol)

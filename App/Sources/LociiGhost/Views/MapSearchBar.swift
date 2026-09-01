@@ -23,7 +23,7 @@ struct MapSearchBar: View {
     @FocusState private var isFocused: Bool
 
     private var dropdownIsVisible: Bool {
-        isFocused && (!model.completions.isEmpty || coordCandidate != nil)
+        isFocused && (!model.suggestions.isEmpty || coordCandidate != nil)
     }
 
     /// If the user typed something that parses as a `lat, lng` pair,
@@ -50,7 +50,7 @@ struct MapSearchBar: View {
                 suggestionsList
                     .frame(maxWidth: 320)
             }
-            if let msg = statusMessage {
+            if let msg = statusMessage ?? model.errorMessage {
                 Text(msg)
                     .font(.caption)
                     .foregroundStyle(statusIsError ? .red : .secondary)
@@ -63,6 +63,18 @@ struct MapSearchBar: View {
             }
         }
         .fixedSize(horizontal: true, vertical: false)
+        // The model holds its own copy of the provider rather than
+        // reading AppState: it runs searches from a detached task and
+        // has to compare the provider a response was requested under
+        // with the one in force when it lands.
+        .onAppear { syncProvider() }
+        .onChange(of: state.geocodeProvider) { _, _ in syncProvider() }
+        .onChange(of: state.googleGeocodeAPIKey) { _, _ in syncProvider() }
+    }
+
+    private func syncProvider() {
+        model.apiKey = state.googleGeocodeAPIKey
+        model.provider = state.geocodeProvider
     }
 
     /// Four buttons next to the field: Paste / Teleport / Preview /
@@ -153,7 +165,7 @@ struct MapSearchBar: View {
     /// either a typed `lat,lng` OR at least one autocomplete result
     /// (we'll take the first one for the action).
     private var hasResolvableTarget: Bool {
-        coordCandidate != nil || !model.completions.isEmpty
+        coordCandidate != nil || !model.suggestions.isEmpty
     }
 
     private enum SearchAction { case teleport, preview, navigate }
@@ -167,28 +179,28 @@ struct MapSearchBar: View {
         let coord: Coordinate
         if let c = coordCandidate {
             coord = c
-        } else if let first = model.completions.first {
+        } else if let first = model.suggestions.first {
             resolvingTitle = first.title
             defer { resolvingTitle = nil }
             do {
-                let (cl, item) = try await model.resolve(first)
-                coord = Coordinate(lat: cl.latitude, lng: cl.longitude)
-                model.query = item.name ?? first.title
-                model.completions = []
+                let resolved = try await model.resolve(first)
+                coord = resolved.coordinate
+                model.query = resolved.name
+                model.suggestions = []
             } catch {
                 statusIsError = true
                 statusMessage = error.localizedDescription
                 return
             }
         } else if let googleHit = await tryGoogleFallback() {
-            // MapKit returned nothing usable (common for Chinese
-            // store / landmark names). Fall back to Google if the
-            // user pasted an API key in Settings. We replace the
-            // search field with the resolved address so the user
-            // sees what Google matched.
+            // The chosen provider returned nothing usable (common for
+            // Chinese store / landmark names against Apple's index).
+            // Fall back to Google if the user has a key in Settings.
+            // We replace the search field with the resolved address so
+            // the user sees what Google matched.
             coord = googleHit.coordinate
-            model.query = googleHit.formatted
-            model.completions = []
+            model.query = googleHit.title
+            model.suggestions = []
         } else {
             statusIsError = true
             statusMessage = String(
@@ -303,7 +315,7 @@ struct MapSearchBar: View {
                 // so both intents remain reachable — Enter is the
                 // one-shot shortcut.
                 .onSubmit { Task { await act(.teleport) } }
-            if resolvingTitle != nil {
+            if resolvingTitle != nil || model.isSearching {
                 ProgressView().controlSize(.small)
             } else if !model.query.isEmpty {
                 Button {
@@ -328,44 +340,34 @@ struct MapSearchBar: View {
 
     /// One autocomplete suggestion with a content-derived identity.
     ///
-    /// v1.15.2 audit (P8): the list used `id: \.offset`, so when a new
-    /// set of completions arrived SwiftUI reused row 0's view for a
-    /// suggestion with entirely different text. Identity now follows
-    /// the content, with a counter only as a tiebreaker for genuinely
-    /// duplicated entries.
-    private struct SuggestionItem: Identifiable {
-        let completion: MKLocalSearchCompletion
-        let id: String
-    }
-
-    private var suggestionItems: [SuggestionItem] {
-        var seen: [String: Int] = [:]
-        return model.completions.prefix(8).map { c in
-            let base = "\(c.title)|\(c.subtitle)"
-            let n = seen[base, default: 0]
-            seen[base] = n + 1
-            return SuggestionItem(completion: c,
-                                  id: n == 0 ? base : "\(base)#\(n)")
-        }
-    }
-
     private var suggestionsList: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let coord = coordCandidate {
                 CoordinateRow(coordinate: coord)
                     .contentShape(.rect)
                     .onTapGesture { pickCoordinate(coord) }
-                if !model.completions.isEmpty {
+                if !model.suggestions.isEmpty {
                     Divider().padding(.leading, 12)
                 }
             }
-            ForEach(suggestionItems) { item in
-                SuggestionRow(completion: item.completion)
+            ForEach(model.suggestions) { item in
+                SuggestionRow(title: item.title, subtitle: item.subtitle)
                     .contentShape(.rect)
                     .onTapGesture {
-                        Task { await pick(item.completion) }
+                        Task { await pick(item) }
                     }
                 Divider().padding(.leading, 12)
+            }
+            // Required by ODbL for the OpenStreetMap-derived
+            // providers, and useful for the others: when a search
+            // finds nothing, the first question is which service was
+            // asked.
+            if let credit = model.provider.attribution, !model.suggestions.isEmpty {
+                Text(credit)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
             }
         }
         .background(.regularMaterial, in: .rect(cornerRadius: 8))
@@ -387,7 +389,7 @@ struct MapSearchBar: View {
             pickCoordinate(coord)
             return
         }
-        guard let first = model.completions.first else {
+        guard let first = model.suggestions.first else {
             statusIsError = true
             statusMessage = "No suggestions yet — keep typing."
             return
@@ -399,52 +401,49 @@ struct MapSearchBar: View {
     private func pickCoordinate(_ coord: Coordinate) {
         state.pendingStops.append(coord)
         state.pendingMapFly = MapFlyRequest(coordinate: coord, spanMeters: 2_000)
-        model.completions = []
+        model.suggestions = []
         isFocused = false
         statusIsError = false
         statusMessage = String(format: "Coordinates set: %.6f, %.6f", coord.lat, coord.lng)
     }
 
     @MainActor
-    private func pick(_ completion: MKLocalSearchCompletion) async {
-        resolvingTitle = completion.title
+    private func pick(_ suggestion: SearchSuggestion) async {
+        resolvingTitle = suggestion.title
         defer { resolvingTitle = nil }
         do {
-            let (coord, item) = try await model.resolve(completion)
-            let cc = Coordinate(lat: coord.latitude, lng: coord.longitude)
-            state.pendingStops.append(cc)
-            state.pendingMapFly = MapFlyRequest(coordinate: cc, spanMeters: 2_500)
+            let resolved = try await model.resolve(suggestion)
+            state.pendingStops.append(resolved.coordinate)
+            state.pendingMapFly = MapFlyRequest(coordinate: resolved.coordinate,
+                                                spanMeters: 2_500)
 
             // Replace the live query with the friendly name so the user
             // sees what was selected; suppress further suggestions by
             // dropping focus.
-            model.query = item.name ?? completion.title
-            model.completions = []
+            model.query = resolved.name
+            model.suggestions = []
             isFocused = false
             statusIsError = false
-            statusMessage = formattedAddress(item: item, fallback: completion)
+            statusMessage = resolved.detail
         } catch {
             statusIsError = true
             statusMessage = error.localizedDescription
         }
     }
 
-    private func formattedAddress(item: MKMapItem, fallback: MKLocalSearchCompletion) -> String {
-        if let postal = item.placemark.postalAddress {
-            let parts = [postal.street, postal.city, postal.country].filter { !$0.isEmpty }
-            if !parts.isEmpty { return parts.joined(separator: ", ") }
-        }
-        return fallback.subtitle.isEmpty ? fallback.title : "\(fallback.title) — \(fallback.subtitle)"
-    }
-
-    /// Try Google Geocoding when MapKit produces nothing. Returns the
-    /// first hit, or nil if the user has no key configured or Google
-    /// also returned no results. Throwing errors are surfaced through
-    /// `statusMessage` so the user sees why their query failed
-    /// (e.g. "REQUEST_DENIED — bad API key").
+    /// Try Google when the chosen provider produced nothing.
+    ///
+    /// Only a fallback, never a silent replacement: if the user picked
+    /// Google it is already the provider, and if they picked one of the
+    /// others we still fall back rather than leave them stuck on a
+    /// query Apple's index doesn't cover — but only when they have
+    /// supplied a key, since every one of these requests is billed to
+    /// them. Errors surface through `statusMessage` so a bad key reads
+    /// as "REQUEST_DENIED" rather than as no results.
     @MainActor
-    private func tryGoogleFallback() async -> GoogleGeocodingService.Hit? {
-        guard let key = state.googleGeocodeAPIKey else { return nil }
+    private func tryGoogleFallback() async -> GeocodeHit? {
+        guard state.geocodeProvider != .google,
+              let key = state.googleGeocodeAPIKey, !key.isEmpty else { return nil }
         let query = model.query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return nil }
 
@@ -452,17 +451,15 @@ struct MapSearchBar: View {
         defer { resolvingTitle = nil }
 
         do {
-            let lang = Locale.current.identifier
-            let hits = try await GoogleGeocodingService.search(
+            return try await GeocodingService.search(
+                provider: .google,
                 query: query,
-                apiKey: key,
-                language: lang,
                 limit: 1,
-            )
-            return hits.first
+                apiKey: key,
+            ).first
         } catch {
             statusIsError = true
-            statusMessage = "Google fallback: \(error.localizedDescription)"
+            statusMessage = "Google fallback: \(GeocodingService.message(for: error))"
             return nil
         }
     }
@@ -520,7 +517,8 @@ private struct CoordinateRow: View {
 }
 
 private struct SuggestionRow: View {
-    let completion: MKLocalSearchCompletion
+    let title: String
+    let subtitle: String
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -528,11 +526,11 @@ private struct SuggestionRow: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 16)
             VStack(alignment: .leading, spacing: 2) {
-                Text(completion.title)
+                Text(title)
                     .font(.body)
                     .lineLimit(1)
-                if !completion.subtitle.isEmpty {
-                    Text(completion.subtitle)
+                if !subtitle.isEmpty {
+                    Text(subtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -548,6 +546,6 @@ private struct SuggestionRow: View {
     /// Distinguish landmarks ("Eiffel Tower") from raw addresses
     /// ("123 Main St") with a different SF Symbol.
     private var glyph: String {
-        completion.subtitle.isEmpty ? "mappin.and.ellipse" : "magnifyingglass"
+        subtitle.isEmpty ? "mappin.and.ellipse" : "magnifyingglass"
     }
 }
