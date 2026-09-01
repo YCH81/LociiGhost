@@ -66,6 +66,15 @@ struct MovementModesSection: View {
                                symbol: "sparkles",
                                title: LocalizedStringKey("Gold Ditto"))
                 }
+                // Flower gets its own row rather than a fifth button
+                // in the first: five in one row squeezes every label
+                // to two characters at the sidebar's narrowest.
+                HStack(spacing: 6) {
+                    modeButton(.flower,
+                               symbol: "camera.macro",
+                               title: LocalizedStringKey("Flower"))
+                    Spacer(minLength: 0)
+                }
 
                 if let mode = state.activeMovementMode {
                     Divider().padding(.vertical, 2)
@@ -75,6 +84,7 @@ struct MovementModesSection: View {
                         case .randomWalk: RandomWalkPanel()
                         case .multiStop:  MultiStopPanel()
                         case .goldDitto:  GoldDittoPanel()
+                        case .flower:     FlowerPanel()
                         }
                     }
                     .transition(.opacity.combined(with: .move(edge: .top)))
@@ -115,6 +125,9 @@ struct MovementModesSection: View {
                         }
                         if state.joystickActive {
                             await state.stopJoystick(udid: udid)
+                        }
+                        if state.flowerActive {
+                            await state.stopFlower(udid: udid)
                         }
                         await MainActor.run {
                             state.activeMovementMode = target

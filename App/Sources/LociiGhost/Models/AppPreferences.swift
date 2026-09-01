@@ -144,6 +144,12 @@ final class AppPreferences {
     /// turning it off for one run doesn't lose the user's selection.
     var groupSyncEnabled: Bool = false
 
+    // ── v1.17: Cooldown gate ────────────────────────────────────
+    /// `CooldownConfig` as JSON. nil means the defaults, which are
+    /// off — a gate that silently delays teleports has to be
+    /// something the user switched on knowingly.
+    var cooldownJSON: String? = nil
+
     init(
         travelProfileRaw: String = "driving"
     ) {

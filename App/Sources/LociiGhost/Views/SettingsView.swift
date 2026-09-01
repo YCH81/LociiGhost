@@ -70,6 +70,10 @@ struct SettingsView: View {
                     Divider()
                     routingEngineSection
                     Divider()
+                    cooldownSection
+                    Divider()
+                    groupSyncSection
+                    Divider()
                     logsSection
                     Divider()
                     geocodingSection
@@ -225,6 +229,138 @@ struct SettingsView: View {
                 Spacer()
             }
             .buttonStyle(.bordered)
+        }
+    }
+
+    // MARK: - Cooldown (v1.17)
+
+    private var cooldownSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader(symbol: "hourglass", titleKey: "Cooldown")
+            Text("Refuse a jump no physical body could have made. This is your own rule, not a model of any game's detection — you set what counts as too fast, and LociiGhost holds the next teleport until enough time has passed.",
+                 comment: "Settings — Cooldown section explanation")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Toggle(isOn: Binding(
+                get: { state.cooldownConfig.enabled },
+                set: { state.cooldownConfig.enabled = $0 },
+            )) {
+                Text("Hold jumps that would be too fast",
+                     comment: "Settings — cooldown enable toggle")
+            }
+            .toggleStyle(.switch)
+
+            HStack(spacing: 10) {
+                Text("Fastest plausible speed:",
+                     comment: "Settings — cooldown max speed label")
+                    .font(.caption)
+                Stepper(value: Binding(
+                    get: { state.cooldownConfig.maxSpeedKmh },
+                    set: { state.cooldownConfig.maxSpeedKmh = $0 },
+                ), in: 0...1_000, step: 10) {
+                    Text(state.cooldownConfig.maxSpeedKmh <= 0
+                         ? String(localized: "off",
+                                  comment: "Settings — cooldown speed rule disabled")
+                         : String(format: String(localized: "%lld km/h",
+                                                 comment: "Settings — cooldown speed value"),
+                                  Int(state.cooldownConfig.maxSpeedKmh)))
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                }
+                .controlSize(.small)
+                .disabled(!state.cooldownConfig.enabled)
+            }
+
+            HStack(spacing: 10) {
+                Text("Minimum gap between jumps:",
+                     comment: "Settings — cooldown floor label")
+                    .font(.caption)
+                Stepper(value: Binding(
+                    get: { state.cooldownConfig.minimumGapSeconds },
+                    set: { state.cooldownConfig.minimumGapSeconds = $0 },
+                ), in: 0...600, step: 1) {
+                    Text(String(format: String(localized: "%lld s",
+                                               comment: "Settings — cooldown gap value"),
+                                Int(state.cooldownConfig.minimumGapSeconds)))
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                }
+                .controlSize(.small)
+                .disabled(!state.cooldownConfig.enabled)
+            }
+
+            Text("The gap catches what the speed rule can't: two positions a metre apart, a hundred times a second. A run already under way is never interrupted — continuous movement is speed-limited already.",
+                 comment: "Settings — what the cooldown floor is for")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: - Group sync (v1.17)
+
+    private var groupSyncSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader(symbol: "iphone.gen3.radiowaves.left.and.right",
+                          titleKey: "Group sync")
+            Text("Move several iPhones together. Every mode — teleport, navigate, random walk, flower — sends the same position to each member.",
+                 comment: "Settings — Group sync section explanation")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Toggle(isOn: Binding(
+                get: { state.groupSyncEnabled },
+                set: { state.groupSyncEnabled = $0 },
+            )) {
+                Text("Move the selected iPhones together",
+                     comment: "Settings — group sync enable toggle")
+            }
+            .toggleStyle(.switch)
+
+            if state.devices.isEmpty {
+                Text("No devices yet — connect one first.",
+                     comment: "Settings — group sync with no devices")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(state.devices, id: \.udid) { device in
+                    let isLeader = device.udid == state.selectedUDID
+                    Toggle(isOn: Binding(
+                        get: { isLeader || state.groupUDIDs.contains(device.udid) },
+                        set: { _ in state.toggleGroupMember(device.udid) },
+                    )) {
+                        HStack(spacing: 6) {
+                            Text(device.name)
+                            if isLeader {
+                                Text("leads",
+                                     comment: "Settings — the selected device leads the group")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            if !device.connected {
+                                Text("not connected",
+                                     comment: "Settings — a group member that isn't connected")
+                                    .font(.caption2)
+                                    .foregroundStyle(.orange)
+                            }
+                        }
+                    }
+                    .toggleStyle(.checkbox)
+                    // The selected device always leads whatever run
+                    // starts, so it can't be unticked — storing it as a
+                    // member would change the list's meaning every time
+                    // the user switched phones.
+                    .disabled(isLeader || !state.groupSyncEnabled)
+                }
+                Text("A member that isn't connected when a run starts is skipped, and the others carry on.",
+                     comment: "Settings — what happens to a disconnected group member")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 

@@ -21,14 +21,30 @@ public struct FlowerConfig: Sendable, Equatable, Codable {
     public static let roundRange = 1...999
     public static let radiusRange = 1.0...2_000.0
 
-    public var radiusM: Double
-    public var segments: Int
-    public var laps: Double
-    public var rounds: Int
-    public var waitBeforeSeconds: Double
-    public var waitAfterSeconds: Double
-    public var dwellSeconds: Double
-    public var speedMps: Double
+    // Each observer clamps its own property. Assigning to a property
+    // inside its own `didSet` doesn't re-enter the observer, so this
+    // is the whole rule: the UI can write any value from any control
+    // and the struct is never out of range, including on the paths
+    // that don't go through `init` — which is most of them, since the
+    // panel binds straight to these.
+    public var radiusM: Double { didSet { radiusM = Self.clamp(radiusM, Self.radiusRange) } }
+    public var segments: Int {
+        didSet {
+            segments = min(max(segments, Self.segmentRange.lowerBound),
+                           Self.segmentRange.upperBound)
+        }
+    }
+    public var laps: Double { didSet { laps = Self.snapLaps(laps) } }
+    public var rounds: Int {
+        didSet {
+            rounds = min(max(rounds, Self.roundRange.lowerBound),
+                         Self.roundRange.upperBound)
+        }
+    }
+    public var waitBeforeSeconds: Double { didSet { waitBeforeSeconds = max(0, waitBeforeSeconds) } }
+    public var waitAfterSeconds: Double { didSet { waitAfterSeconds = max(0, waitAfterSeconds) } }
+    public var dwellSeconds: Double { didSet { dwellSeconds = max(0, dwellSeconds) } }
+    public var speedMps: Double { didSet { speedMps = max(0.1, speedMps) } }
     public var teleportBetween: Bool
 
     public static let standard = FlowerConfig()

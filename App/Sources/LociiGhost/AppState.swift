@@ -496,7 +496,10 @@ final class AppState {
         guard mapAutoRecenter else { return false }
         if navigation != nil { return true }
         switch activeMovementMode {
-        case .joystick, .randomWalk: return true
+        // Flower rings are metres across: following them keeps the
+        // phone's dot in view, which is the whole thing the user is
+        // watching in that mode.
+        case .joystick, .randomWalk, .flower: return true
         case .multiStop, .goldDitto, .none: return false
         }
     }
@@ -717,7 +720,9 @@ final class AppState {
 
     /// Convenience: any session is running. Reads only the three cheap
     /// booleans above, not the full VMs.
-    var anySessionActive: Bool { navigationActive || randomWalkActive || joystickActive }
+    var anySessionActive: Bool {
+        navigationActive || randomWalkActive || joystickActive || flowerActive
+    }
 
     /// True when a left-click (or right-click "Add as stop") on the map
     /// should append a coordinate to the pending-stops queue.
@@ -842,6 +847,24 @@ final class AppState {
         } else {
             categoryColorOverrides.removeValue(forKey: key)
         }
+    }
+
+    private func persistCooldownConfig() {
+        guard let prefs = preferences else { return }
+        guard let data = try? JSONEncoder().encode(cooldownConfig),
+              let json = String(data: data, encoding: .utf8) else {
+            NSLog("LociiGhost: could not encode the cooldown settings; keeping the stored value")
+            return
+        }
+        prefs.cooldownJSON = json
+    }
+
+    private func loadCooldownConfig() {
+        guard let json = preferences?.cooldownJSON,
+              let data = json.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode(CooldownConfig.self, from: data)
+        else { return }
+        cooldownConfig = decoded
     }
 
     private func persistGroupUDIDs() {
@@ -1230,6 +1253,16 @@ final class AppState {
     /// can draw the rings before anything starts.
     var flowerPreviewCenters: [Coordinate] = []
 
+    /// The user's cooldown gate. The daemon enforces it; this is where
+    /// the numbers live and where they are persisted.
+    var cooldownConfig: CooldownConfig = .standard {
+        didSet {
+            guard !isHydratingPreferences, cooldownConfig != oldValue else { return }
+            persistCooldownConfig()
+            Task { @MainActor in await pushCooldownPolicy() }
+        }
+    }
+
     // ── v1.17: group sync ───────────────────────────────────────
     /// Other iPhones that should mirror whatever the selected one is
     /// doing. Empty — the default — means every mode behaves exactly
@@ -1475,6 +1508,7 @@ final class AppState {
         geocodeProvider = GeocodeProvider(rawValue: prefs.geocodeProviderRaw) ?? .apple
         loadFlowerConfig()
         loadGroup()
+        loadCooldownConfig()
         appearanceMode = AppearanceMode(rawValue: prefs.appearanceModeRaw) ?? .brand
         isHydratingPreferences = false
         // NOTE: We deliberately do NOT restore simulatedLocation
@@ -2257,6 +2291,10 @@ final class AppState {
             // user-mode bootstrap and made the banner re-show forever.)
             needsAdminElevation = false
             daemonIsRoot = true
+            // The daemon holds the cooldown policy in memory only, so a
+            // daemon that restarted (or one this app never told) starts
+            // with the gate off. Re-send on every connect.
+            await pushCooldownPolicy()
         } catch {
             lastError = String(describing: error)
             // -32004 == TUNNEL_FAILED. On Apple Silicon the only thing
@@ -2329,7 +2367,10 @@ final class AppState {
             // overwrite this default with a friendlier one.
             recordRecentPlace(label: "", lat: lat, lng: lng, kind: .teleport)
         } catch {
-            lastError = String(describing: error)
+            // A cooldown refusal is the user's own setting doing its
+            // job, so it reads as a countdown rather than as a raw
+            // RPC error they'd have to decode.
+            lastError = Self.cooldownToast(for: error) ?? String(describing: error)
         }
     }
 
@@ -2707,6 +2748,7 @@ final class AppState {
         if navigationActive { await stopNavigation(udid: udid) }
         if randomWalkActive  { await stopRandomWalk(udid: udid) }
         if joystickActive    { await stopJoystick(udid: udid) }
+        if flowerActive      { await stopFlower(udid: udid) }
         pendingStops = []
         activeMovementMode = nil
         schedulePreviewRefresh()
@@ -4149,6 +4191,8 @@ enum MovementMode: String, Hashable, Sendable {
     case randomWalk
     case multiStop
     case goldDitto
+    /// v1.17: orbit each staged waypoint, lap after lap.
+    case flower
 }
 
 /// Carrier for "we just parsed a GPX file, now ask the user what to

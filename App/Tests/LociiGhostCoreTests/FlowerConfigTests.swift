@@ -14,6 +14,22 @@ final class FlowerConfigTests: XCTestCase {
         XCTAssertEqual(FlowerConfig(segments: 1).segments, 3)
     }
 
+    /// The panel binds straight to these properties, so most writes
+    /// never go through `init`.
+    func testMutatingAPropertyClampsToo() {
+        var config = FlowerConfig.standard
+        config.segments = 200
+        config.laps = 0.1
+        config.radiusM = -20
+        config.rounds = 0
+        config.dwellSeconds = -3
+        XCTAssertEqual(config.segments, 20)
+        XCTAssertEqual(config.laps, 0.5)
+        XCTAssertEqual(config.radiusM, 1)
+        XCTAssertEqual(config.rounds, 1)
+        XCTAssertEqual(config.dwellSeconds, 0)
+    }
+
     func testNegativeWaitsBecomeZero() {
         let config = FlowerConfig(waitBeforeSeconds: -5, waitAfterSeconds: -1,
                                   dwellSeconds: -9)
