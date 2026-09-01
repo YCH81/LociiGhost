@@ -15,6 +15,7 @@ import asyncio
 import json
 import os
 import tempfile
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -60,9 +61,18 @@ async def _call(sock: str, method: str, **params):
         payload["params"] = params
     writer.write((json.dumps(payload) + "\n").encode())
     await writer.drain()
-    line = await reader.readline()
-    writer.close()
-    return json.loads(line)
+    # The connection also carries broadcast events, and a handler that
+    # emits one before replying would otherwise have its event read as
+    # the reply. Skip anything without our id.
+    while True:
+        line = await reader.readline()
+        if not line:
+            writer.close()
+            raise AssertionError(f"connection closed before {method} replied")
+        message = json.loads(line)
+        if message.get("id") is not None:
+            writer.close()
+            return message
 
 
 @pytest.mark.asyncio
@@ -221,3 +231,85 @@ async def test_flower_on_a_disconnected_device_is_an_error_not_a_crash():
                                 udid="nope",
                                 points=[{"lat": 25.0, "lng": 121.0}])
     assert "error" in reply
+
+
+# ── The cooldown gate (v1.17) ───────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_cooldown_is_off_until_it_is_set():
+    with patch("lociighostd.device_manager.list_devices", AsyncMock(return_value=[])):
+        async with serving_with_handlers() as (sock, _manager, _server):
+            reply = await _call(sock, "settings.cooldown")
+    assert reply["result"]["enabled"] is False
+
+
+@pytest.mark.asyncio
+async def test_setting_the_cooldown_reads_back():
+    with patch("lociighostd.device_manager.list_devices", AsyncMock(return_value=[])):
+        async with serving_with_handlers() as (sock, _manager, _server):
+            await _call(sock, "settings.cooldown", policy={
+                "enabled": True,
+                "max_speed_kmh": 80,
+                "minimum_gap_s": 3,
+                "steps": [{"distance_km": 10, "wait_minutes": 5}],
+            })
+            reply = await _call(sock, "settings.cooldown")
+    result = reply["result"]
+    assert result["enabled"] is True
+    assert result["max_speed_kmh"] == 80
+    assert result["steps"] == [{"distance_km": 10.0, "wait_minutes": 5.0}]
+
+
+@pytest.mark.asyncio
+async def test_the_gate_refuses_a_jump_and_says_how_long_is_left():
+    """The reply carries the numbers, not only a sentence: the app
+    shows a countdown, and parsing seconds out of a message string is
+    a client that breaks when the wording changes."""
+    from lociighostd.location_service import LocationService
+
+    fake = MagicMock(spec=LocationService)
+    fake.last_lat_lng = (25.0339, 121.5645)
+    # The service stamps this from the monotonic clock, so the test has
+    # to as well — against `0.0`, "elapsed" is the machine's uptime and
+    # every jump looks long overdue.
+    fake._last_set_at = time.monotonic()
+    fake.set = AsyncMock()
+
+    with patch("lociighostd.device_manager.list_devices", AsyncMock(return_value=[])):
+        async with serving_with_handlers() as (sock, manager, _server):
+            manager.location_for = AsyncMock(return_value=fake)
+            await _call(sock, "settings.cooldown",
+                        policy={"enabled": True, "max_speed_kmh": 5})
+            # 133 km at 5 km/h is more than a day; nothing has elapsed.
+            reply = await _call(sock, "location.teleport",
+                                udid="whatever", lat=24.1477, lng=120.6736)
+
+    assert reply["error"]["code"] == -32007
+    data = reply["error"]["data"]
+    assert data["remaining_s"] > 3600
+    assert data["distance_m"] > 100_000
+    fake.set.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_gate_lets_the_first_position_of_a_session_through():
+    """Nothing to be implausible relative to, and a blocked first
+    teleport is indistinguishable from a broken app."""
+    from lociighostd.location_service import LocationService
+
+    fake = MagicMock(spec=LocationService)
+    fake.last_lat_lng = None
+    fake._last_set_at = 0.0
+    fake.set = AsyncMock()
+
+    with patch("lociighostd.device_manager.list_devices", AsyncMock(return_value=[])):
+        async with serving_with_handlers() as (sock, manager, _server):
+            manager.location_for = AsyncMock(return_value=fake)
+            await _call(sock, "settings.cooldown",
+                        policy={"enabled": True, "max_speed_kmh": 1})
+            reply = await _call(sock, "location.teleport",
+                                udid="whatever", lat=24.1477, lng=120.6736)
+
+    assert reply["result"]["ok"] is True
+    fake.set.assert_awaited()

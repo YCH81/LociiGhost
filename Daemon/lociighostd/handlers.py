@@ -8,15 +8,17 @@ service / navigator; this layer just translates between RPC and Python.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
+from . import cooldown as cooldown_mod
 from . import errors
 from .device_manager import DeviceManager
+from .flower_plan import FlowerSettings, summarise, with_defaults
+from .flower_runner import FlowerRunner
 from .interpolator import route_length_m
 from .joystick import JoystickController
 from .navigator import Navigator
-from .flower_plan import FlowerSettings, summarise, with_defaults
-from .flower_runner import FlowerRunner
 from .random_walker import RandomWalker
 from .routing import GoogleDirectionsClient, NoRouteError, OsrmClient, Route, RoutingError
 from .rpc import RpcServer
@@ -183,9 +185,68 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
     # location.*
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # Cooldown — the user's own plausibility gate (v1.17)
+    # ------------------------------------------------------------------
+    #
+    # One policy for the whole daemon, not one per device: it is a user
+    # preference about how they want to move, and a phone that gated
+    # differently from the one beside it would be indistinguishable
+    # from a bug.
+    policy_holder: dict[str, cooldown_mod.CooldownPolicy] = {
+        "policy": cooldown_mod.CooldownPolicy(),
+    }
+
+    @server.method("settings.cooldown")
+    async def settings_cooldown(policy: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Set the gate, or read it back when called with nothing.
+
+        Held in memory only. The Mac owns the user's settings and
+        re-sends this on connect; a second copy in the daemon is a
+        second thing to keep in step, and the two disagreeing is worse
+        than re-sending three numbers.
+        """
+        if policy is not None:
+            policy_holder["policy"] = cooldown_mod.from_params(policy)
+        current = policy_holder["policy"]
+        return {
+            "enabled": current.enabled,
+            "max_speed_kmh": current.max_speed_kmh,
+            "minimum_gap_s": current.minimum_gap_s,
+            "steps": [
+                {"distance_km": step.distance_km, "wait_minutes": step.wait_minutes}
+                for step in current.steps
+            ],
+        }
+
+    async def _gate_jump(udid: str, lat: float, lng: float) -> None:
+        """Refuse a jump the user's own settings call implausible.
+
+        Applies to explicit teleports and to the hop that *starts* a
+        movement mode — the jumps. It deliberately does not interrupt a
+        run already in progress: continuous movement is speed-limited
+        by construction, and a gate that stalled a route halfway would
+        look like the app hanging.
+        """
+        policy = policy_holder["policy"]
+        if not policy.enabled:
+            return
+        loc = await manager.location_for(udid)
+        verdict = cooldown_mod.check(
+            policy,
+            getattr(loc, "last_lat_lng", None),
+            getattr(loc, "_last_set_at", None),
+            (float(lat), float(lng)),
+            time.monotonic(),
+        )
+        if not verdict.allowed:
+            raise errors.cooldown_active(
+                verdict.remaining_s, verdict.required_s, verdict.distance_m)
+
     @server.method("location.teleport")
     async def location_teleport(udid: str, lat: float, lng: float) -> dict[str, Any]:
         _validate_coord(lat, lng)
+        await _gate_jump(udid, lat, lng)
         # Stop any active mover so it doesn't fight the teleport.
         await _stop_all_movement(manager, udid, server)
 
@@ -583,6 +644,7 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
                 message=f"dwell_seconds_max ({hi}) must be >= dwell_seconds_min ({lo})",
             )
 
+        await _gate_jump(udid, center_lat, center_lng)
         loc = await manager.location_for(udid)
 
         async def emit(method: str, status) -> None:
@@ -662,6 +724,7 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
         centers = _flower_centers(points)
         config: FlowerSettings = with_defaults(settings)
 
+        await _gate_jump(udid, centers[0][0], centers[0][1])
         loc = await manager.location_for(udid)
 
         async def emit(method: str, status) -> None:
