@@ -437,26 +437,11 @@ struct DwellModeRow: View {
 
     var body: some View {
         @Bindable var state = state
-        HStack(spacing: 8) {
-            Toggle(isOn: $state.dwellEnabled) {
-                Text("Dwell at each stop",
-                     comment: "Toggle that makes Navigate pause N seconds at every stop")
-                    .font(.caption)
-            }
-            .toggleStyle(.switch)
-            Spacer(minLength: 6)
-            if state.dwellEnabled {
-                Stepper(
-                    value: $state.dwellSeconds,
-                    in: 1...3600,
-                    step: 5,
-                ) {
-                    Text("\(state.dwellSeconds) s",
-                         comment: "Dwell duration stepper label, in seconds")
-                        .font(.caption.monospacedDigit())
-                        .frame(minWidth: 40, alignment: .trailing)
-                }
-            }
-        }
+        DwellRangeControl(
+            enabled: $state.dwellEnabled,
+            minSeconds: $state.dwellMinSeconds,
+            maxSeconds: $state.dwellMaxSeconds,
+            title: "Dwell at each stop",
+        )
     }
 }

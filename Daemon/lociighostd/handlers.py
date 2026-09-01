@@ -546,6 +546,8 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
         routing_engine: str = "straight",
         profile: str = "walking",
         dwell_seconds: float | None = None,
+        dwell_seconds_min: float | None = None,
+        dwell_seconds_max: float | None = None,
     ) -> dict[str, Any]:
         _validate_coord(center_lat, center_lng)
         if radius_m <= 0 or radius_m > 50_000:
@@ -563,10 +565,20 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
                 code=errors.PYMD3_ERROR,
                 message=f"routing_engine must be 'straight' or 'map' (got {routing_engine!r})",
             )
-        if dwell_seconds is not None and dwell_seconds <= 0:
+        # v1.17 sends a range; older Mac builds send the single
+        # `dwell_seconds`. Fold both into one pair so the walker only
+        # ever sees min/max.
+        lo = dwell_seconds_min if dwell_seconds_min is not None else dwell_seconds
+        hi = dwell_seconds_max if dwell_seconds_max is not None else lo
+        if lo is not None and lo <= 0:
             raise errors.RpcError(
                 code=errors.PYMD3_ERROR,
-                message=f"dwell_seconds must be > 0 when set (got {dwell_seconds})",
+                message=f"dwell seconds must be > 0 when set (got {lo})",
+            )
+        if lo is not None and hi is not None and hi < lo:
+            raise errors.RpcError(
+                code=errors.PYMD3_ERROR,
+                message=f"dwell_seconds_max ({hi}) must be >= dwell_seconds_min ({lo})",
             )
 
         loc = await manager.location_for(udid)
@@ -584,7 +596,8 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
             osrm=osrm,
             routing_engine=routing_engine,
             profile=profile,
-            dwell_seconds_override=dwell_seconds,
+            dwell_seconds_override=lo,
+            dwell_seconds_max=hi,
         )
         await manager.attach_runner(udid, "walker", walker)
         await server.broadcast_event("event.state_changed", {

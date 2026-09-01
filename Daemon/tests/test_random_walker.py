@@ -230,3 +230,43 @@ async def test_a_well_behaved_route_is_still_followed():
 
     assert osrm.calls > 0, "map mode stopped calling the router"
     assert max(haversine_m(p, CENTER) for p in loc.calls) <= RADIUS + 1.0
+
+
+# ── dwell range (v1.17) ──────────────────────────────────────────────
+
+def _walker(**kw):
+    base = dict(location=FakeLocation(), center=CENTER, radius_m=RADIUS,
+                min_speed_mps=1.0, max_speed_mps=2.0)
+    base.update(kw)
+    return RandomWalker(**base)
+
+
+def test_a_single_dwell_value_still_works():
+    """An older Mac build sends only `dwell_seconds_override`. It has to
+    keep meaning "pause exactly this long", not become a degenerate
+    range that raises."""
+    w = _walker(dwell_seconds_override=8.0)
+    assert w._dwell_min == 8.0
+    assert w._dwell_max == 8.0
+
+
+def test_a_range_is_kept_as_given():
+    w = _walker(dwell_seconds_override=5.0, dwell_seconds_max=20.0)
+    assert (w._dwell_min, w._dwell_max) == (5.0, 20.0)
+
+
+def test_a_max_without_a_min_is_rejected():
+    # Silently inventing a lower bound would make the walker pause for
+    # something the user never asked for.
+    with pytest.raises(ValueError):
+        _walker(dwell_seconds_max=20.0)
+
+
+def test_a_reversed_range_is_rejected():
+    with pytest.raises(ValueError):
+        _walker(dwell_seconds_override=20.0, dwell_seconds_max=5.0)
+
+
+def test_a_non_positive_dwell_is_still_rejected():
+    with pytest.raises(ValueError):
+        _walker(dwell_seconds_override=0.0)

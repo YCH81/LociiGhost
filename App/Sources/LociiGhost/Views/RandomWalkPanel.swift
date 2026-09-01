@@ -28,7 +28,8 @@ struct RandomWalkPanel: View {
         enum Target {
             case routingEngine(String)
             case dwellEnabled(Bool)
-            case dwellSeconds(Int)
+            case dwellMinSeconds(Int)
+            case dwellMaxSeconds(Int)
         }
     }
 
@@ -85,32 +86,16 @@ struct RandomWalkPanel: View {
                 SpeedPicker()
             }
 
-            // Per-target dwell — v1.11.2 inline (instead of
-            // DwellModeRow) because both bindings are gated when a
-            // walk is active, mirroring the path-style gating above.
-            // The walker snapshots dwell at start, so changing it
-            // live requires a stop+restart to take effect.
-            HStack(spacing: 8) {
-                Toggle(isOn: gatedDwellEnabled) {
-                    Text("Dwell at each stop",
-                         comment: "RandomWalkPanel — toggle pausing N seconds at each random walk target")
-                        .font(.caption)
-                }
-                .toggleStyle(.switch)
-                Spacer(minLength: 6)
-                if state.dwellEnabled {
-                    Stepper(
-                        value: gatedDwellSeconds,
-                        in: 1...3600,
-                        step: 5,
-                    ) {
-                        Text("\(state.dwellSeconds) s",
-                             comment: "Random walk dwell duration stepper label, in seconds")
-                            .font(.caption.monospacedDigit())
-                            .frame(minWidth: 40, alignment: .trailing)
-                    }
-                }
-            }
+            // Per-target dwell. Every binding here is gated: the
+            // walker snapshots its dwell settings at start, so an edit
+            // mid-walk has to stop, apply and restart to take effect —
+            // which is what `gated*` and `pendingChange` arrange.
+            DwellRangeControl(
+                enabled: gatedDwellEnabled,
+                minSeconds: gatedDwellMin,
+                maxSeconds: gatedDwellMax,
+                title: "Dwell at each target",
+            )
 
             // Action ——————————————————————————————————————————
             actionRow
@@ -292,14 +277,27 @@ struct RandomWalkPanel: View {
         )
     }
 
-    private var gatedDwellSeconds: Binding<Int> {
+    private var gatedDwellMin: Binding<Int> {
         Binding(
-            get: { state.dwellSeconds },
+            get: { state.dwellMinSeconds },
             set: { new in
-                if state.randomWalkActive && new != state.dwellSeconds {
-                    pendingChange = PendingChange(target: .dwellSeconds(new))
+                if state.randomWalkActive && new != state.dwellMinSeconds {
+                    pendingChange = PendingChange(target: .dwellMinSeconds(new))
                 } else {
-                    state.dwellSeconds = new
+                    state.dwellMinSeconds = new
+                }
+            }
+        )
+    }
+
+    private var gatedDwellMax: Binding<Int> {
+        Binding(
+            get: { state.dwellMaxSeconds },
+            set: { new in
+                if state.randomWalkActive && new != state.dwellMaxSeconds {
+                    pendingChange = PendingChange(target: .dwellMaxSeconds(new))
+                } else {
+                    state.dwellMaxSeconds = new
                 }
             }
         )
@@ -318,7 +316,8 @@ struct RandomWalkPanel: View {
                 switch target {
                 case .routingEngine(let v): routingEngine = v
                 case .dwellEnabled(let v): state.dwellEnabled = v
-                case .dwellSeconds(let v): state.dwellSeconds = v
+                case .dwellMinSeconds(let v): state.dwellMinSeconds = v
+                case .dwellMaxSeconds(let v): state.dwellMaxSeconds = v
                 }
             }
             await start()

@@ -164,6 +164,7 @@ class RandomWalker:
         routing_engine: str = "straight",
         profile: str = "walking",
         dwell_seconds_override: float | None = None,
+        dwell_seconds_max: float | None = None,
     ) -> None:
         if radius_m <= 0:
             raise ValueError("radius_m must be > 0")
@@ -173,6 +174,11 @@ class RandomWalker:
             raise ValueError(f"routing_engine must be 'straight' or 'map', got {routing_engine!r}")
         if dwell_seconds_override is not None and dwell_seconds_override <= 0:
             raise ValueError("dwell_seconds_override must be > 0 when set")
+        if dwell_seconds_max is not None:
+            if dwell_seconds_override is None:
+                raise ValueError("dwell_seconds_max needs dwell_seconds_override as its lower bound")
+            if dwell_seconds_max < dwell_seconds_override:
+                raise ValueError("dwell_seconds_max must be >= dwell_seconds_override")
 
         self._location = location
         self._center = center
@@ -183,12 +189,19 @@ class RandomWalker:
         self._osrm = osrm
         self._routing_engine = routing_engine if osrm is not None else "straight"
         self._profile = profile
-        # Optional fixed dwell time between targets. When None we use
-        # the random 1.5-4 s range that gives the meander an organic
-        # feel; the user can override with a fixed N seconds via the
-        # multi-stop dwell control to make the walker pause longer at
-        # every target (useful for location-based event captures).
-        self._dwell_seconds_override = dwell_seconds_override
+        # Optional user dwell between targets. When None we use the
+        # random 1.5-4 s range that gives the meander an organic feel.
+        #
+        # v1.17: the override became a range. A fixed pause at every
+        # target is the tell -- nothing pauses for exactly eight
+        # seconds twelve times running -- so the user's setting is now
+        # a min/max drawn per target. `dwell_seconds_max` None means
+        # the two bounds are equal, which is the pre-v1.17 behaviour
+        # and what an older Mac build sends.
+        self._dwell_min = dwell_seconds_override
+        self._dwell_max = (
+            dwell_seconds_max if dwell_seconds_max is not None else dwell_seconds_override
+        )
 
         self._current = center
         self._current_speed = 0.0
@@ -289,8 +302,9 @@ class RandomWalker:
                 # next one — fixed-N seconds if the user enabled the
                 # dwell control, otherwise a random 1.5–4 s for the
                 # organic-meander feel.
-                if self._dwell_seconds_override is not None:
-                    dwell = self._dwell_seconds_override
+                if self._dwell_min is not None:
+                    lo, hi = self._dwell_min, self._dwell_max or self._dwell_min
+                    dwell = lo if hi <= lo else random.uniform(lo, hi)
                 else:
                     dwell = random.uniform(*self.DWELL_RANGE_S)
                 self._current_speed = 0.0

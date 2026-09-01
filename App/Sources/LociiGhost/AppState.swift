@@ -775,11 +775,44 @@ final class AppState {
     var dwellEnabled: Bool = UserDefaults.standard.bool(forKey: "dwell.enabled") {
         didSet { UserDefaults.standard.set(dwellEnabled, forKey: "dwell.enabled") }
     }
-    /// Seconds to dwell at each stop when `dwellEnabled` is true.
-    /// Clamped to a minimum of 1 because zero defeats the purpose
-    /// (it's equivalent to dwellEnabled = false).
-    var dwellSeconds: Int = max(1, UserDefaults.standard.integer(forKey: "dwell.seconds")) {
-        didSet { UserDefaults.standard.set(max(1, dwellSeconds), forKey: "dwell.seconds") }
+    /// Shortest pause at a stop, in seconds.
+    ///
+    /// v1.17: this used to be a single `dwellSeconds`. A fixed pause is
+    /// the tell — nobody stands still for exactly eight seconds twelve
+    /// times in a row — so the dwell is now drawn per stop from
+    /// `dwellRange`. Stored as two plain `Int`s because the panels bind
+    /// Steppers straight to them; `DwellRange` does the normalising.
+    var dwellMinSeconds: Int = AppState.migratedDwellBound(
+        key: "dwell.minSeconds", fallback: 5,
+    ) {
+        didSet { UserDefaults.standard.set(max(1, dwellMinSeconds), forKey: "dwell.minSeconds") }
+    }
+    /// Longest pause at a stop, in seconds.
+    var dwellMaxSeconds: Int = AppState.migratedDwellBound(
+        key: "dwell.maxSeconds", fallback: 20,
+    ) {
+        didSet { UserDefaults.standard.set(max(1, dwellMaxSeconds), forKey: "dwell.maxSeconds") }
+    }
+
+    /// The two bounds as the value type that owns the semantics: it
+    /// normalises reversed or zero bounds, draws a dwell, and answers
+    /// what a trip's pauses add up to. Both the actual wait and the ETA
+    /// go through it, so they cannot drift apart.
+    var dwellRange: DwellRange {
+        DwellRange(min: dwellMinSeconds, max: dwellMaxSeconds)
+    }
+
+    /// Reads a v1.17 bound, falling back to the pre-v1.17 fixed
+    /// `dwell.seconds` so an upgrading user keeps the pause they had
+    /// (as a fixed range) instead of being silently switched to 5-20.
+    /// Only the absence of BOTH keys lands on the new default.
+    private static func migratedDwellBound(key: String, fallback: Int) -> Int {
+        let d = UserDefaults.standard
+        if d.object(forKey: key) != nil {
+            return max(1, d.integer(forKey: key))
+        }
+        let legacy = d.integer(forKey: "dwell.seconds")
+        return legacy > 0 ? legacy : fallback
     }
     /// Bookmark sidebar sort order ("date" / "alpha" / "manual").
     /// Kept in AppState rather than @AppStorage to avoid the macOS
@@ -2281,7 +2314,7 @@ final class AppState {
             // pass explicit overrides so the global toggle / seconds don't
             // bleed into saved-route playback.
             let effectiveDwellEnabled = dwellOverride ?? dwellEnabled
-            let effectiveDwellSeconds = dwellSecondsOverride ?? dwellSeconds
+            let effectiveDwellRange = dwellSecondsOverride.map { DwellRange(fixed: $0) } ?? dwellRange
             if allowDwell, effectiveDwellEnabled, stops.count > 1 {
                 // Route-snapped trigger coords: for each intermediate stop,
                 // find the nearest point in the daemon's actual route
@@ -2295,7 +2328,7 @@ final class AppState {
                         StopOrdering.haversineMeters($0, stop) < StopOrdering.haversineMeters($1, stop)
                     }) ?? stop
                 }
-                dwellLog("[DwellMonitor] setup: coordsCount=\(coords.count) stopsCount=\(stops.count) intermediateCount=\(triggerCoords.count) dwellSeconds=\(effectiveDwellSeconds)")
+                dwellLog("[DwellMonitor] setup: coordsCount=\(coords.count) stopsCount=\(stops.count) intermediateCount=\(triggerCoords.count) dwell=\(effectiveDwellRange.minSeconds)-\(effectiveDwellRange.maxSeconds)s")
                 for (i, tc) in triggerCoords.enumerated() {
                     let snapDist = StopOrdering.haversineMeters(tc, stops[i])
                     dwellLog("[DwellMonitor]   stop[\(i)] raw=(\(String(format:"%.5f",stops[i].lat)),\(String(format:"%.5f",stops[i].lng))) snap=(\(String(format:"%.5f",tc.lat)),\(String(format:"%.5f",tc.lng))) snapDist=\(String(format:"%.1f",snapDist))m")
@@ -2303,7 +2336,7 @@ final class AppState {
                 dwellMonitor = DwellMonitor(
                     udid: udid,
                     stops: triggerCoords,
-                    dwellSeconds: max(1, effectiveDwellSeconds),
+                    dwellRange: effectiveDwellRange,
                     thresholdM: 30.0
                 )
                 // suppressDwellContext == true: saved-route playback. loopContext
@@ -2322,7 +2355,7 @@ final class AppState {
                             udid: udid,
                             profile: profile,
                             speed: speed,
-                            dwellSeconds: max(1, effectiveDwellSeconds),
+                            dwellRange: effectiveDwellRange,
                             useStraightLine: useStraightLine,
                             allStops: prior.allStops,  // full list, not the dropFirst() stops
                             totalLaps: prior.totalLaps,
@@ -2334,7 +2367,7 @@ final class AppState {
                             udid: udid,
                             profile: profile,
                             speed: speed,
-                            dwellSeconds: max(1, effectiveDwellSeconds),
+                            dwellRange: effectiveDwellRange,
                             useStraightLine: useStraightLine,
                             allStops: stops,
                             totalLaps: max(1, routeLaps),
@@ -2522,7 +2555,9 @@ final class AppState {
                 "routing_engine": AnyCodable(routingEngine),
             ]
             if dwellEnabled {
-                params["dwell_seconds"] = AnyCodable(Double(max(1, dwellSeconds)))
+                let range = dwellRange
+                params["dwell_seconds_min"] = AnyCodable(Double(range.minSeconds))
+                params["dwell_seconds_max"] = AnyCodable(Double(range.maxSeconds))
             }
             let reply: StartReply = try await client.call("location.random_walk", params: params)
             randomWalk = RandomWalkVM(
@@ -3296,7 +3331,8 @@ final class AppState {
                         Task { @MainActor [weak self] in
                             guard let self else { return }
                             await self.pauseNavigation(udid: snap.udid)
-                            try? await Task.sleep(for: .seconds(snap.dwellSeconds))
+                            // Fresh draw for THIS stop -- that is the feature.
+                            try? await Task.sleep(for: .seconds(snap.dwellRange.pick()))
                             // L9: same monitor we started on, or nothing.
                             guard self.dwellMonitor?.generation == snap.generation
                             else { return }
@@ -3535,7 +3571,7 @@ final class AppState {
             let startCoord = dctx.allStops[0]
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                try? await Task.sleep(for: .seconds(snap.dwellSeconds))  // dwell at last stop
+                try? await Task.sleep(for: .seconds(snap.dwellRange.pick()))  // dwell at last stop
                 guard self.dwellContext != nil else { return }
                 if snap.remainingDwellLaps > 0 {
                     var nextDctx = snap
@@ -3554,7 +3590,7 @@ final class AppState {
                                                    lat: startCoord.lat,
                                                    lng: startCoord.lng)
                     guard self.dwellContext != nil else { return }
-                    try? await Task.sleep(for: .seconds(snap.dwellSeconds))  // dwell at stop1
+                    try? await Task.sleep(for: .seconds(snap.dwellRange.pick()))  // dwell at stop1
                     guard self.dwellContext != nil else { return }
                     let savedStraight = self.useStraightLine
                     self.useStraightLine = snap.useStraightLine
@@ -3690,7 +3726,7 @@ final class AppState {
         // + 1 for the final stop (handled by idle event).
         let pendingIntermediate = dwellMonitor.map { $0.stops.count - $0.nextIndex } ?? 0
         let pendingPauses = pendingIntermediate + 1
-        return currentLegEta + Double(pendingPauses * dctx.dwellSeconds)
+        return currentLegEta + Double(pendingPauses) * dctx.dwellRange.expectedSeconds
     }
 
     private func doubleValue(_ wrapped: AnyCodable?) -> Double? {
@@ -4087,7 +4123,8 @@ struct DwellContext: Sendable, Equatable {
     let udid: String
     let profile: TravelProfile
     let speed: Double
-    let dwellSeconds: Int
+    /// Drawn fresh at each stop — see `DwellRange`.
+    let dwellRange: DwellRange
     /// Snapshot of `useStraightLine` at dwell start so every lap's
     /// navigate() call uses the same routing mode the user chose.
     var useStraightLine: Bool = false
@@ -4123,7 +4160,8 @@ struct DwellMonitor: Sendable {
     /// True while a pause+sleep+resume Task is in flight — prevents
     /// a second trigger on the same stop from consecutive 1 Hz events.
     var isDwelling: Bool = false
-    let dwellSeconds: Int
+    /// Drawn fresh at each stop — see `DwellRange`.
+    let dwellRange: DwellRange
     /// Proximity radius in metres. 35 m gives enough margin for the
     /// gap between a user's off-road drop and the OSRM road-snap.
     let thresholdM: Double

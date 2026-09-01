@@ -320,9 +320,12 @@ struct StartRouteSheet: View {
         .padding(24)
         .frame(minWidth: 460)
         .onAppear {
-            // Pre-fill dwell seconds from global setting so user doesn't need
-            // to re-enter if they already tuned it in the Multi-Stop panel.
-            routeDwellText = "\(state.dwellSeconds)"
+            // Pre-fill from the global setting so the user doesn't have to
+            // re-enter what they already tuned in the Multi-Stop panel.
+            // Saved-route playback still takes ONE number rather than a
+            // range, so a range collapses to its midpoint here -- the
+            // same number the ETA would have used anyway.
+            routeDwellText = "\(Int(state.dwellRange.expectedSeconds.rounded()))"
         }
     }
 }
