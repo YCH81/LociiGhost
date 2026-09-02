@@ -114,11 +114,26 @@ struct FlowerPanel: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             } else {
-                Text(String(format: String(localized: "%lld staged · same list as Multi-stop",
-                                           comment: "FlowerPanel — waypoint count"),
-                            waypoints.count))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Text(String(format: String(localized: "%lld staged · same list as Multi-stop",
+                                               comment: "FlowerPanel — waypoint count"),
+                                waypoints.count))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    // Points accumulate as you click, and without this
+                    // the only way to start over is to open another
+                    // panel — which is where they came from, but not
+                    // where you are.
+                    Button {
+                        state.pendingStops = []
+                    } label: {
+                        Text("Clear", comment: "FlowerPanel — clear the staged waypoints")
+                            .font(.caption2)
+                    }
+                    .buttonStyle(.link)
+                    .disabled(state.flowerRun != nil)
+                }
             }
         }
     }

@@ -2,508 +2,476 @@
    only when the user's locale is en-* (or .environment(\.locale, en)).
    Keep keys exactly matching the literals passed to Text(...) in code. */
 
+" by keezxc1223 (MIT). LociiGhost is a complete native-Swift rewrite." = " by keezxc1223 (MIT). LociiGhost is a complete native-Swift rewrite.";
+"%lld km/h" = "%lld km/h";
+"%lld min %lld s" = "%lld min %lld s";
+"%lld points" = "%lld points";
+"%lld s" = "%lld s";
+"%lld staged · same list as Multi-stop" = "%lld staged · same list as Multi-stop";
+"%lld stops" = "%lld stops";
+"%lld stops each · about %@ in total" = "%lld stops each · about %@ in total";
+"%lld stops — show controls" = "%lld stops — show controls";
+"%lld valid stops detected." = "%lld valid stops detected.";
+"%lld× looped" = "%lld× looped";
+"(custom)" = "(custom)";
+"(leave blank for until Stop)" = "(leave blank for until Stop)";
+"A coordinate (your real location)" = "A coordinate (your real location)";
+"A member that isn't connected when a run starts is skipped, and the others carry on." = "A member that isn't connected when a run starts is skipped, and the others carry on.";
+"A phone is currently signed in via Phone Control. The Mac is paused while the phone is driving. Sign out from the phone, or press the button below to take control back." = "A phone is currently signed in via Phone Control. The Mac is paused while the phone is driving. Sign out from the phone, or press the button below to take control back.";
+"About" = "About";
+"Add %lld" = "Add %lld";
+"Add as stop" = "Add as stop";
+"Add at least one waypoint before starting flower mode." = "Add at least one waypoint before starting flower mode.";
+"Add waypoint" = "Add waypoint";
+"Add your Google API key in Settings to search with Google." = "Add your Google API key in Settings to search with Google.";
+"Added %lld stops from paste." = "Added %lld stops from paste.";
+"Address search failed (HTTP %lld)." = "Address search failed (HTTP %lld).";
 "Admin authentication needed" = "Admin authentication needed";
+"Advanced" = "Advanced";
+"After reaching the last point, teleport back to the start and walk the route again." = "After reaching the last point, teleport back to the start and walk the route again.";
+"Alerts" = "Alerts";
+"All staged stops, routes, and movement state will be removed. The iPhone stays at its current simulated position." = "All staged stops, routes, and movement state will be removed. The iPhone stays at its current simulated position.";
 "Already paired · Re-pair…" = "Already paired · Re-pair…";
 "Appearance" = "Appearance";
+"Apple Maps" = "Apple Maps";
+"Apple Maps couldn't plan this route — its data may not cover this area. Try switching the routing engine to OSRM in Settings. (%@)" = "Apple Maps couldn't plan this route — its data may not cover this area. Try switching the routing engine to OSRM in Settings. (%@)";
+"Apple Satellite" = "Apple Satellite";
+"Apply this custom speed — works in every mode" = "Apply this custom speed — works in every mode";
 "Authenticate" = "Authenticate";
 "Authenticating…" = "Authenticating…";
+"Auto-center" = "Auto-center";
+"Backed up %lld bookmarks · %lld routes · %lld presets." = "Backed up %lld bookmarks · %lld routes · %lld presets.";
+"Backup all data" = "Backup all data";
+"Beginning" = "Beginning";
+"Bookmarks" = "Bookmarks";
+"Browse-only" = "Browse-only";
+"Bulk paste…" = "Bulk paste…";
+"Bulk-add bookmarks" = "Bulk-add bookmarks";
+"Bulk-add coordinates…" = "Bulk-add coordinates…";
+"Bulk-add stops" = "Bulk-add stops";
+"Buy me a bubble tea" = "Buy me a bubble tea";
+"By date added" = "By date added";
+"By name (A–Z)" = "By name (A–Z)";
 "Cancel" = "Cancel";
+"Cancelled." = "Cancelled.";
+"Carto Voyager" = "Carto Voyager";
+"Categories" = "Categories";
+"Category" = "Category";
+"Category colour" = "Category colour";
+"Cell level" = "Cell level";
 "Center" = "Center";
+"Change travel mode mid-route. Speed updates immediately; route stays the same." = "Change travel mode mid-route. Speed updates immediately; route stays the same.";
+"Changing this setting needs the current walk to stop. We'll restart it immediately with the new value." = "Changing this setting needs the current walk to stop. We'll restart it immediately with the new value.";
+"Choose base map layer" = "Choose base map layer";
+"Clear" = "Clear";
+"Clear all" = "Clear all";
 "Clear all stops" = "Clear all stops";
+"Clear all stops and movement state?" = "Clear all stops and movement state?";
+"Clear staged stops?" = "Clear staged stops?";
 "Click anywhere on the map to drop **Stop 1**, **Stop 2**, … in the order you want to visit them. Right-click also offers an Add-as-stop option." = "Click anywhere on the map to drop **Stop 1**, **Stop 2**, … in the order you want to visit them. Right-click also offers an Add-as-stop option.";
+"Click the map to add the points to orbit." = "Click the map to add the points to orbit.";
+"Click to authenticate and restart the daemon — opens the macOS password prompt" = "Click to authenticate and restart the daemon — opens the macOS password prompt";
 "Close" = "Close";
+"Collapse" = "Collapse";
 "Connect" = "Connect";
 "Connect a device first." = "Connect a device first.";
 "Connect via USB" = "Connect via USB";
+"Connect via USB cable" = "Connect via USB cable";
 "Connect via WiFi" = "Connect via WiFi";
+"Connect via WiFi…" = "Connect via WiFi…";
 "Connected" = "Connected";
+"Cooldown" = "Cooldown";
+"Cooldown: wait %@ before a jump of %.1f km." = "Cooldown: wait %@ before a jump of %.1f km.";
+"Coordinates of the simulated location" = "Coordinates of the simulated location";
+"Copy" = "Copy";
+"Copy all stops" = "Copy all stops";
+"Copy coordinates" = "Copy coordinates";
+"Copy every staged stop as lat,lng per line — paste back into Bulk-add or share elsewhere" = "Copy every staged stop as lat,lng per line — paste back into Bulk-add or share elsewhere";
+"Copyright © 2026 YCH81 (Jeff Hu). Licensed under the MIT License." = "Copyright © 2026 YCH81 (Jeff Hu). Licensed under the MIT License.";
+"Couldn't resolve that suggestion." = "Couldn't resolve that suggestion.";
+"Countdown (2 s)" = "Countdown (2 s)";
+"Countdown gives you a visible 2-second timer with beeps before fire. Instant fires set+clear the moment you click, matching the original LocWarp behaviour exactly." = "Countdown gives you a visible 2-second timer with beeps before fire. Instant fires set+clear the moment you click, matching the original LocWarp behaviour exactly.";
+"Countdown mode: press the button to start a 2-second countdown, then the Mac will pull the gold pot (swap GPS to A and back)." = "Countdown mode: press the button to start a 2-second countdown, then the gold pot is pulled on the iPhone (GPS swaps to A and back).";
+"Counting down…" = "Counting down…";
+"Country of the simulated location" = "Country of the simulated location";
 "Custom" = "Custom";
+"Custom route (%lld stops)" = "Custom route (%lld stops)";
+"Custom speed" = "Custom speed";
+"Cycling" = "Cycling";
+"Daemon failed to start: %@. Click to authenticate and restart." = "Daemon failed to start: %@. Click to authenticate and restart.";
 "Daemon needs to restart to pick up updated code. Click to re-authenticate." = "Daemon needs to restart to pick up updated code. Click to re-authenticate.";
-"Dev Mode: ON" = "Dev Mode: ON";
+"Database not ready yet — try again in a second." = "Database not ready yet — try again in a second.";
+"Default appearance uses the sage palette from the LociiGhost icon. System appearance reverts every tinted element to macOS's accent colour. Switching is live — no restart needed." = "Default appearance uses the sage palette from the LociiGhost icon. System appearance reverts every tinted element to macOS's accent colour. Switching is live — no restart needed.";
+"Default category:" = "Default category:";
+"Default travel mode for the next Navigate." = "Default travel mode for the next Navigate.";
+"Delete" = "Delete";
+"Delete this waypoint" = "Delete this waypoint";
 "Dev Mode: OFF" = "Dev Mode: OFF";
+"Dev Mode: ON" = "Dev Mode: ON";
 "Dev Mode: unknown" = "Dev Mode: unknown";
 "Developer Mode is off" = "Developer Mode is off";
 "Devices" = "Devices";
 "Disconnect" = "Disconnect";
+"Disconnected" = "Disconnected";
+"Display only" = "Display only";
+"Don't connect" = "Don't connect";
+"Drag a row's handle to reorder stops." = "Drag a row's handle to reorder stops.";
+"Drag to reorder" = "Drag to reorder";
+"Drive LociiGhost from your phone over WiFi." = "Drive LociiGhost from your phone over WiFi.";
+"Driving" = "Driving";
+"Drop the custom speed and use the picker's preset" = "Drop the custom speed and use the picker's preset";
+"Drop the custom speed and use the travel-mode preset" = "Drop the custom speed and use the travel-mode preset";
+"Dwell at each stop" = "Dwell at each stop";
+"ESRI Satellite" = "ESRI Satellite";
+"Edit bookmark" = "Edit bookmark";
+"Edit info…" = "Edit info…";
+"Edit name, category, icon" = "Edit name, category, icon";
+"Edit route" = "Edit route";
+"Edit waypoints" = "Edit waypoints";
+"Edit waypoints (add / delete / reorder / change coords)" = "Edit waypoints (add / delete / reorder / change coords)";
+"Edit waypoints…" = "Edit waypoints…";
+"Edit…" = "Edit…";
+"Enable" = "Enable";
 "Enable Developer Mode" = "Enable Developer Mode";
 "Enable Developer Mode…" = "Enable Developer Mode…";
 "Enable…" = "Enable…";
+"Engine:" = "Engine:";
+"Exit sync" = "Exit sync";
+"Expand" = "Expand";
+"Export JSON…" = "Export JSON…";
+"Export all data (full backup)" = "Export all data (full backup)";
+"Export all…" = "Export all…";
+"Export bookmarks to GPX" = "Export bookmarks to GPX";
+"Export current route as GPX…" = "Export current route as GPX…";
+"Export everything — bookmarks, routes, stop presets — to a single JSON file you can restore on another Mac or after a reinstall." = "Export everything — bookmarks, routes, stop presets — to a single JSON file you can restore on another Mac or after a reinstall.";
+"Export failed: could not encode the file as UTF-8." = "Export failed: could not encode the file as UTF-8.";
+"Export to GPX…" = "Export to GPX…";
+"Export to JSON…" = "Export to JSON…";
+"Exported %lld bookmarks." = "Exported %lld bookmarks.";
+"Fastest plausible speed:" = "Fastest plausible speed:";
+"Fire set + clear immediately (LocWarp-style)" = "Fire set + clear immediately (LocWarp-style)";
+"Flower" = "Flower";
 "Follow System" = "Follow System";
+"Follows" = "Follows";
+"Force re-authorize" = "Force re-authorize";
+"Force-kill & restart daemon" = "Force-kill & restart daemon";
+"Force-kill the daemon, prompt for your macOS password, and bring up a fresh privileged daemon" = "Force-kill the daemon, prompt for your macOS password, and bring up a fresh privileged daemon";
+"GPS was swapped to A and back" = "GPS was swapped to A and back";
+"GPX file is malformed: %@" = "GPX file is malformed: %@";
+"GPX opens in other map apps. Categories, icons and any colour you picked come along." = "GPX opens in other map apps. Categories, icons and any colour you picked come along.";
+"GPX parsed, but it has no waypoints. Tracks import as routes, not bookmarks — use File ▸ Import GPX for those." = "GPX parsed, but it has no waypoints. Tracks import as routes, not bookmarks — use File ▸ Import GPX for those.";
 "General" = "General";
+"Generate a fresh PIN + token. Any phone tab still using the old PIN gets logged out." = "Generate a fresh PIN + token. Any phone tab still using the old PIN gets logged out.";
+"Geocoding" = "Geocoding";
+"Gold Ditto" = "Gold Ditto";
+"Gold Ditto needs a real iPhone connection." = "Gold Ditto needs a real iPhone connection.";
+"Gold pot pulled" = "Gold pot pulled";
+"Google API key:" = "Google API key:";
+"Google Directions needs an API key — paste one into the Geocoding section above." = "Google Directions needs an API key — paste one into the Geocoding section above.";
+"Google search needs an API key — paste one in below." = "Google search needs an API key — paste one in below.";
+"Group sync" = "Group sync";
+"Group sync: %@ isn't moving with the others." = "Group sync: %@ isn't moving with the others.";
+"Group sync: moving %lld iPhones together." = "Group sync: moving %lld iPhones together.";
+"Hide A coordinate" = "Hide A coordinate";
+"Hide this panel — stops stay in the sidebar; click the floating chip on the map to bring it back" = "Hide this panel — stops stay in the sidebar; click the floating chip on the map to bring it back";
+"Hold jumps that would be too fast" = "Hold jumps that would be too fast";
+"How to get a Google Geocoding API key" = "How to get a Google Geocoding API key";
+"Icon" = "Icon";
+"If LociiGhost stops responding (the daemon hangs, devices won't appear, navigation freezes), use this button to kill the daemon with admin privileges and start a clean one — no Terminal required." = "If LociiGhost stops responding (the daemon hangs, devices won't appear, navigation freezes), use this button to kill the daemon with admin privileges and start a clean one — no Terminal required.";
+"If the system password dialog stopped appearing, or the daemon is stuck in a half-authorized state, force a clean re-authorization here. This will end the running daemon, prompt for your macOS password, and bring up a fresh privileged daemon." = "If the system password dialog stopped appearing, or the daemon is stuck in a half-authorized state, force a clean re-authorization here. This will end the running daemon, prompt for your macOS password, and bring up a fresh privileged daemon.";
+"Import GPX" = "Import GPX";
+"Import GPX…" = "Import GPX…";
+"Import JSON…" = "Import JSON…";
+"Import bookmarks from GPX" = "Import bookmarks from GPX";
+"Import bookmarks from JSON" = "Import bookmarks from JSON";
+"Import bookmarks from JSON (export + bulk paste live in Settings — Cmd-,)" = "Import bookmarks from JSON (export + bulk paste live in Settings — Cmd-,)";
+"Import from GPX…" = "Import from GPX…";
+"Import from JSON…" = "Import from JSON…";
+"Imported %lld bookmarks." = "Imported %lld bookmarks.";
+"Imported route" = "Imported route";
+"Inspired by " = "Inspired by ";
+"Instant" = "Instant";
+"Instant mode: press the button to pull the gold pot immediately (swap GPS to A and back, no countdown)." = "Instant mode: press the button to pull the gold pot on the iPhone immediately (GPS swaps to A and back, no countdown).";
+"JSON parsed, but no bookmarks were found." = "JSON parsed, but no bookmarks were found.";
+"Join LINE community" = "Join LINE community";
 "Joystick" = "Joystick";
+"Keep going" = "Keep going";
+"Keep walking" = "Keep walking";
+"Key configured — Google is used as a fallback when MapKit returns no matches." = "Key configured — Google is used as a fallback when MapKit returns no matches.";
+"Kicks every paired phone and rotates the PIN." = "Kicks every paired phone and rotates the PIN.";
+"L17 ≈ 76 m matches Pikmin Bloom's decor-pikmin cells. Coarser levels are useful for stop / gym uniqueness checks." = "L17 ≈ 76 m matches Pikmin Bloom's decor-pikmin cells. Coarser levels are useful for stop / gym uniqueness checks.";
+"LINE Official Account @382ydavk" = "LINE Official Account @382ydavk";
 "Language" = "Language";
+"Language:" = "Language:";
+"Lap %lld / %lld" = "Lap %1$lld / %2$lld";
 "Laps" = "Laps";
+"Laps per point" = "Laps per point";
+"Leads" = "Leads";
+"Load these stops into the Multi-Stop panel. Choose whether to also teleport the iPhone to the first stop — Display Only just stages and re-centres the map, while Teleport to First moves the iPhone there immediately so Navigate starts cleanly." = "Load these stops into the Multi-Stop panel. Choose whether to also teleport the iPhone to the first stop — Display Only just stages and re-centres the map, while Teleport to First moves the iPhone there immediately so Navigate starts cleanly.";
+"Loading…" = "Loading…";
+"LocWarp" = "LocWarp";
+"LociiGhost" = "LociiGhost";
 "Locked while navigating. Stop first to switch." = "Locked while navigating. Stop first to switch.";
+"Logs" = "Logs";
+"Look up locations without a connected iPhone." = "Look up locations without a connected iPhone.";
+"Loop the route" = "Loop the route";
+"Mac and phone can both drive at the same time. If their actions clash and the iPhone's position gets out of sync, press Restore on BOTH sides and start over." = "Mac and phone can both drive at the same time. If their actions clash and the iPhone's position gets out of sync, press Restore on BOTH sides and start over.";
+"Mac time / Time at the simulated location" = "Mac time / Time at the simulated location";
+"Make sure the daemon is running (Authenticate above if the banner is showing) and try again." = "Make sure the daemon is running (Authenticate above if the banner is showing) and try again.";
 "Manual IP entry" = "Manual IP entry";
+"Manual order" = "Manual order";
+"Map" = "Map";
+"Map Layer" = "Map Layer";
+"Map Layer · %@" = "Map Layer · %@";
+"Map path (OSRM)" = "Map path (OSRM)";
+"Max" = "Max";
+"Merge" = "Merge";
+"Min" = "Min";
+"Minimum gap between jumps:" = "Minimum gap between jumps:";
+"Move" = "Move";
+"Move bookmarks between machines or paste many at once." = "Move bookmarks between machines or paste many at once.";
+"Move several iPhones together. Every mode — teleport, navigate, random walk, flower — sends the same position to each member." = "Move several iPhones together. Every mode — teleport, navigate, random walk, flower — sends the same position to each member.";
+"Move the selected iPhones together" = "Move the selected iPhones together";
 "Movement Modes" = "Movement Modes";
+"Multi-point tracks (GPX recordings or LociiGhost JSON exports). Use Import → GPX for trip files from other apps; JSON for round-tripping between LociiGhost machines." = "Multi-point tracks (GPX recordings or LociiGhost JSON exports). Use Import → GPX for trip files from other apps; JSON for round-tripping between LociiGhost machines.";
 "Multi-stop" = "Multi-stop";
+"Name" = "Name";
 "Navigate" = "Navigate";
+"Navigate to this location with current settings" = "Navigate to this location with current settings";
+"Navigation stopped. Do you also want to remove the %lld staged stops from the map?" = "Navigation stopped. Do you also want to remove the %lld staged stops from the map?";
+"New v%@" = "New v%@";
 "No active connection" = "Not connected";
+"No bookmarks to export." = "No bookmarks to export.";
+"No bookmarks yet." = "No bookmarks yet.";
 "No device selected" = "No device selected";
+"No devices yet — connect one first." = "No devices yet — connect one first.";
+"No history yet" = "No history yet";
 "No iPhone connected" = "No iPhone connected";
-"No iPhones found on the LAN. Make sure the iPhone is on the same Wi-Fi and you've run **Pair for WiFi** once. You can also enter an IP manually below." = "No iPhones found on the LAN. Make sure the iPhone is on the same Wi-Fi and you've run **Pair for WiFi** once. You can also enter an IP manually below.";
 "No iPhones found on the LAN." = "No iPhones found on the LAN.";
+"No iPhones found on the LAN. Make sure the iPhone is on the same Wi-Fi and you've run **Pair for WiFi** once. You can also enter an IP manually below." = "No iPhones found on the LAN. Make sure the iPhone is on the same Wi-Fi and you've run **Pair for WiFi** once. You can also enter an IP manually below.";
+"No key configured — search uses Apple MapKit only." = "No key configured — search uses Apple MapKit only.";
+"No saved routes yet." = "No saved routes yet.";
 "No stops staged yet." = "No stops staged yet.";
+"No valid coordinates found in the pasted text." = "No valid coordinates found in the pasted text.";
+"No waypoints to run." = "No waypoints to run.";
+"No waypoints yet. Tap **Add waypoint** to begin." = "No waypoints yet. Tap **Add waypoint** to begin.";
+"Nothing to back up — no bookmarks, routes, or stop presets yet." = "Nothing to back up — no bookmarks, routes, or stop presets yet.";
+"Open a backup file; pick Merge or Overwrite when prompted" = "Open a backup file; pick Merge or Overwrite when prompted";
+"Open folder" = "Open folder";
+"Open the LociiGhost log folder in Finder. Attach these files when you report a problem." = "Open the LociiGhost log folder in Finder. Attach these files when you report a problem.";
+"Open the WiFi candidate picker" = "Open the WiFi candidate picker";
+"OpenStreetMap" = "OpenStreetMap";
+"OpenStreetMap data through komoot's search, built for typing. Free, faster to respond than Nominatim, occasionally looser matches." = "OpenStreetMap data through komoot's search, built for typing. Free, faster to respond than Nominatim, occasionally looser matches.";
+"OpenStreetMap's own search. Free, and strong on places Apple doesn't index — but it allows one search per second, so results appear a moment after you stop typing." = "OpenStreetMap's own search. Free, and strong on places Apple doesn't index — but it allows one search per second, so results appear a moment after you stop typing.";
+"Optional" = "Optional";
 "Or enter IP manually" = "Or enter IP manually";
+"Orbiting" = "Orbiting";
+"Overwrite" = "Overwrite";
+"PIN" = "PIN";
 "Pair for WiFi" = "Pair for WiFi";
 "Pair record on disk. Click only if WiFi connect stops working — generates a fresh record." = "Pair record on disk. Click only if WiFi connect stops working — generates a fresh record.";
 "Pairing…" = "Pairing…";
+"Paste" = "Paste";
+"Paste from clipboard" = "Paste from clipboard";
+"Paste many coordinates at once — each line becomes the next stop" = "Paste many coordinates at once — each line becomes the next stop";
+"Paste one bookmark per line. Each line can be `name, lat, lng` or `lat, lng, name`. Comma, tab, or semicolon all work. Lines starting with # are ignored." = "Paste one bookmark per line. Each line can be `name, lat, lng` or `lat, lng, name`. Comma, tab, or semicolon all work. Lines starting with # are ignored.";
+"Paste one coordinate per line — `lat, lng`. Comma, tab, or semicolon all work as separators; lines starting with # are ignored. The iPhone teleports to the first pasted coordinate so path-planning starts locally; any previously staged stops are cleared." = "Paste one coordinate per line — `lat, lng`. Comma, tab, or semicolon all work as separators; lines starting with # are ignored. The iPhone teleports to the first pasted coordinate so path-planning starts locally; any previously staged stops are cleared.";
+"Paste your key here" = "Paste your key here";
 "Path is a great-circle line, no street routing." = "Path is a great-circle line, no street routing.";
+"Path style" = "Path style";
 "Pause" = "Pause";
+"Pause at each stop" = "Pause at each stop";
+"Pause at each waypoint" = "Pause at each waypoint";
+"Pause seconds:" = "Pause seconds:";
+"Phone Control" = "Phone Control";
+"Phone Control…" = "Phone Control…";
+"Phone control HTTP server isn't reachable." = "Phone control HTTP server isn't reachable.";
+"Phone in control" = "Phone in control";
+"Phone must be on the same Wi-Fi as this Mac. The PIN regenerates each time the daemon restarts; tap Regenerate below to invalidate any phone that's currently paired." = "Phone must be on the same Wi-Fi as this Mac. The PIN regenerates each time the daemon restarts; tap Regenerate below to invalidate any phone that's currently paired.";
+"Play system sound on route complete" = "Play system sound on route complete";
+"Play the macOS system alert when a navigation, route loop, or random walk reaches its destination naturally. Explicit stops won't trigger the sound." = "Play the macOS system alert when a navigation, route loop, or random walk reaches its destination naturally. Explicit stops won't trigger the sound.";
 "Plug an iPhone into USB and tap **Trust this computer** when prompted." = "Plug an iPhone into USB and tap **Trust this computer** when prompted.";
 "Plug iPhone in once. Two Trust prompts will appear; after that, WiFi works without the cable." = "Plug iPhone in once. Two Trust prompts will appear; after that, WiFi works without the cable.";
+"Plug in the USB cable first" = "Plug in the USB cable first";
 "Press Start, then hold **W A S D** or arrow keys." = "Press Start, then hold **W A S D** or arrow keys.";
+"Preview" = "Preview";
+"Pull Gold Pot" = "Pull Gold Pot";
+"Pulling the gold pot in…" = "Pulling the gold pot in…";
 "Quit" = "Quit";
+"Quit LociiGhost. The privileged daemon stays running so the next launch doesn't need the password." = "Quit LociiGhost. The privileged daemon stays running so the next launch doesn't need the password.";
 "Radius" = "Radius";
 "Random" = "Random";
+"Re-authorizing…" = "Re-authorizing…";
+"Re-scan for connected devices" = "Re-scan for connected devices";
+"Real GPS may take 30 s to 2 min to re-acquire on iPhone. Toggle Airplane Mode on the iPhone for faster reacquisition." = "Real GPS may take 30 s to 2 min to re-acquire on iPhone. Toggle Airplane Mode on the iPhone for faster reacquisition.";
+"Recent" = "Recent";
+"Recent Places" = "Recent Places";
+"Recenter" = "Recenter";
+"Reconnected to the iPhone. Press Resume to pick the route back up." = "Reconnected to the iPhone. Press Resume to pick the route back up.";
+"Reconnected — picking the flower run back up." = "Reconnected — picking the flower run back up.";
 "Refresh" = "Refresh";
+"Refuse a jump no physical body could have made. This is your own rule, not a model of any game's detection — you set what counts as too fast, and LociiGhost holds the next teleport until enough time has passed." = "Refuse a jump no physical body could have made. This is your own rule, not a model of any game's detection — you set what counts as too fast, and LociiGhost holds the next teleport until enough time has passed.";
+"Regenerate PIN" = "Regenerate PIN";
+"Reopen the route controls" = "Reopen the route controls";
+"Reorder stops by minimum total path distance — Stop 1 stays the start" = "Reorder stops by minimum total path distance — Stop 1 stays the start";
+"Reorder stops by minimum total path distance — Stop 1 stays the start, the rest get sorted into an efficient visit order" = "Reorder stops by minimum total path distance — Stop 1 stays the start, the rest get sorted into an efficient visit order";
+"Restarting…" = "Restarting…";
+"Restore" = "Restore";
 "Restore Real GPS" = "Restore Real GPS";
+"Restore asks before doing anything: Merge keeps your current data, Overwrite replaces it." = "Restore asks before doing anything: Merge keeps your current data, Overwrite replaces it.";
+"Restore from backup JSON" = "Restore from backup JSON";
+"Restore from backup?" = "Restore from backup?";
+"Restore from backup…" = "Restore from backup…";
+"Restored: %lld bookmarks · %lld routes · %lld presets added." = "Restored: %lld bookmarks · %lld routes · %lld presets added.";
 "Resume" = "Resume";
-"S2 grid" = "S2 grid";
+"Resume from last (#%lld)" = "Resume from last (#%lld)";
+"Resume from last (no saved progress)" = "Resume from last (no saved progress)";
+"Retry" = "Retry";
+"Reveal in Finder" = "Reveal in Finder";
+"Right-click anywhere on the map and pick **Save as bookmark…** to add one." = "Right-click anywhere on the map and pick **Save as bookmark…** to add one.";
+"Ring radius" = "Ring radius";
+"Round %lld of %lld · point %lld of %lld · %@ left" = "Round %lld of %lld · point %lld of %lld · %@ left";
+"Rounds" = "Rounds";
+"Routes" = "Routes";
+"Routing engine" = "Routing engine";
+"Run **Pair for WiFi** once with the cable plugged in" = "Run **Pair for WiFi** once with the cable plugged in";
+"Run `cat LICENSE` from the project root for the full MIT text with both copyright notices." = "Run `cat LICENSE` from the project root for the full MIT text with both copyright notices.";
+"Run once (no save)" = "Run once (no save)";
+"Run this trip once without overwriting the saved route" = "Run this trip once without overwriting the saved route";
 "S2 Map Grid System" = "S2 Map Grid System";
 "S2 Map Grid System — visualise Pikmin Bloom decor cells (L17 ≈ 76 m) so you can plan routes that hit every cell." = "S2 Map Grid System — visualise Pikmin Bloom decor cells (L17 ≈ 76 m) so you can plan routes that hit every cell.";
-"Show grid on map" = "Show grid on map";
-"Cell level" = "Cell level";
-"Showing L%lld — zoom in to see L%lld cells." = "Showing L%lld — zoom in to see L%lld cells.";
-"L17 ≈ 76 m matches Pikmin Bloom's decor-pikmin cells. Coarser levels are useful for stop / gym uniqueness checks." = "L17 ≈ 76 m matches Pikmin Bloom's decor-pikmin cells. Coarser levels are useful for stop / gym uniqueness checks.";
+"S2 grid" = "S2 grid";
+"Save" = "Save";
+"Save a JSON file containing every bookmark, route, and stop preset" = "Save a JSON file containing every bookmark, route, and stop preset";
+"Save as bookmark…" = "Save as bookmark…";
+"Save as new route" = "Save as new route";
+"Save as preset" = "Save as preset";
+"Save bookmark" = "Save bookmark";
+"Save changes" = "Save changes";
+"Save route" = "Save route";
+"Save these stops as a Route so you can replay this trip later" = "Save these stops as a Route so you can replay this trip later";
+"Saved stop presets" = "Saved stop presets";
 "Scan LAN for paired iPhones" = "Scan LAN for paired iPhones";
 "Scanning LAN for paired iPhones…" = "Scanning LAN for paired iPhones…";
 "Search address or place" = "Search address, place, or coordinates";
+"Search provider:" = "Search provider:";
+"Select a device first." = "Select a device first.";
+"Set A coordinate and connect an iPhone first" = "Set A coordinate and connect an iPhone first";
+"Settings" = "Settings";
+"Show A coordinate" = "Show A coordinate";
+"Show grid on map" = "Show grid on map";
+"Show on map without moving the iPhone" = "Show on map without moving the iPhone";
+"Show route controls" = "Show route controls";
+"Showing L%lld — zoom in to see L%lld cells." = "Showing L%lld — zoom in to see L%lld cells.";
+"Sign every paired phone out and rotate the PIN." = "Sign every paired phone out and rotate the PIN.";
+"Sign out all phones" = "Sign out all phones";
+"Smart sort" = "Smart sort";
+"Snap to real" = "Snap to real";
+"Snap to real location" = "Snap to real location";
+"Sort order" = "Sort order";
+"Specific stop" = "Specific stop";
 "Speed" = "Speed";
+"Speed: %@ km/h" = "Speed: %@ km/h";
+"Start" = "Start";
+"Start Flower Mode" = "Start Flower Mode";
 "Start Joystick" = "Start Joystick";
 "Start Random Walk" = "Start Random Walk";
+"Start from" = "Start from";
+"Start route" = "Start route";
+"Start route?" = "Start route?";
+"Start the 2-second countdown then push GPS to A" = "Start the 2-second countdown then push GPS to A";
 "Stop" = "Stop";
+"Stop #" = "Stop #";
+"Stop & apply" = "Stop & apply";
+"Stop & start" = "Stop & start";
+"Stop & switch" = "Stop & switch";
 "Stop Joystick" = "Stop Joystick";
 "Stop Random Walk" = "Stop Random Walk";
+"Stop and wait at each point along the route before continuing." = "Stop and wait at each point along the route before continuing.";
+"Stop current route?" = "Stop current route?";
+"Stop current simulation?" = "Stop current simulation?";
+"Stop driving simultaneously with the phone — locks the Mac side back to phone control" = "Stop driving simultaneously with the phone — locks the Mac side back to phone control";
+"Stop phone control" = "Stop phone control";
+"Stop random walk to change this?" = "Stop random walk to change this?";
+"Stop simulating and let the device report its real location" = "Stop simulating and let the device report its real location";
+"Stops per lap" = "Stops per lap";
+"Straight line" = "Straight line";
+"Straight line (skip roads)" = "Straight line (skip roads)";
+"Straight line — ON" = "Straight line — ON";
+"Suggestions as you type, no key and no quota. Weakest on Chinese shop and landmark names." = "Suggestions as you type, no key and no quota. Weakest on Chinese shop and landmark names.";
+"Support YCH81 (aka Jeff Hu) on Ko-fi" = "Support YCH81 (aka Jeff Hu) on Ko-fi";
+"Support the developer" = "Support the developer";
+"Switch to Multi-stop mode first" = "Switch to Multi-stop mode first";
+"Switch to a connected iPhone to use movement modes." = "Switch to a connected iPhone to use movement modes.";
+"Switching modes ends the current navigation. The iPhone halts at its current simulated position." = "Switching modes ends the current navigation. The iPhone halts at its current simulated position.";
+"Switching modes ends the current simulation. The iPhone halts at its current simulated position." = "Switching modes ends the current simulation. The iPhone halts at its current simulated position.";
 "Switching takes effect immediately on the next view update — no restart needed. Daemon-side error messages remain in English regardless." = "Switching takes effect immediately on the next view update — no restart needed. Daemon-side error messages remain in English regardless.";
 "System Functions" = "System Functions";
 "Tap Trust on iPhone when prompted." = "Tap Trust on iPhone when prompted.";
-"Teleport" = "Teleport";
-"Tip: click the map again to add another stop." = "Tip: click the map again to add another stop.";
-"Travel mode" = "Travel mode";
-"Use" = "Use";
-"Use exact coordinates" = "Use exact coordinates";
-"Use when the iPhone isn't picked up by auto-discover (different subnet, VPN, etc.). Default port for RemotePairing is 49152." = "Use when the iPhone isn't picked up by auto-discover (different subnet, VPN, etc.). Default port for RemotePairing is 49152.";
-"Walking randomly" = "Walking randomly";
-"WiFi Devices" = "WiFi Devices";
-
-/* SpeedPicker */
-"Speed: %@ km/h" = "Speed: %@ km/h";
-"(custom)" = "(custom)";
-"Drop the custom speed and use the picker's preset" = "Drop the custom speed and use the picker's preset";
-
-/* TravelProfile labels */
-"Walking" = "Walking";
-"Cycling" = "Cycling";
-"Driving" = "Driving";
-
-/* MovementModesSection */
-"Select a device first." = "Select a device first.";
-
-/* BottomBar tooltips */
-"Stop simulating and let the device report its real location" = "Stop simulating and let the device report its real location";
-"Re-scan for connected devices" = "Re-scan for connected devices";
-"Quit LociiGhost. The privileged daemon stays running so the next launch doesn't need the password." = "Quit LociiGhost. The privileged daemon stays running so the next launch doesn't need the password.";
-
-/* Navigation status interpolations */
-"Lap %lld / %lld" = "Lap %1$lld / %2$lld";
-
-/* Bookmarks (Phase 5.3) */
-"Bookmarks" = "Bookmarks";
-"No bookmarks yet." = "No bookmarks yet.";
-"Right-click anywhere on the map and pick **Save as bookmark…** to add one." = "Right-click anywhere on the map and pick **Save as bookmark…** to add one.";
-"Uncategorized" = "Uncategorized";
-"Save bookmark" = "Save bookmark";
-"Edit bookmark" = "Edit bookmark";
-"Name" = "Name";
-"Category" = "Category";
-"Icon" = "Icon";
-"Save" = "Save";
-"Delete" = "Delete";
-"Edit…" = "Edit…";
-"Teleport here" = "Teleport here";
-"Add as stop" = "Add as stop";
-"Save as bookmark…" = "Save as bookmark…";
-
-/* GPX (Phase 5.4) */
-"Import GPX…" = "Import GPX…";
-"Import GPX" = "Import GPX";
-"Export current route as GPX…" = "Export current route as GPX…";
-
-/* Routes (Phase 5.4 — saved GPX tracks) */
-"Routes" = "Routes";
-"Save route" = "Save route";
-"Edit route" = "Edit route";
-"Imported route" = "Imported route";
-"%lld points" = "%lld points";
-"No saved routes yet." = "No saved routes yet.";
-"Use **File ▸ Import GPX…** (⌘O) to add a recorded track." = "Use **File ▸ Import GPX…** (⌘O) to add a recorded track.";
-"Start route" = "Start route";
-"Start route?" = "Start route?";
-"Start" = "Start";
-"Teleport to the start of \"%1$@\" and navigate %2$lld points?" = "Teleport to the start of \"%1$@\" and navigate %2$lld points?";
-
-/* UI Phase 1.4 — top status bar / header / sidebar / search */
-"Phone Control" = "Phone Control";
-"Weather at the simulated location" = "Weather at the simulated location";
-"Copy coordinates" = "Copy coordinates";
-"Paste from clipboard" = "Paste from clipboard";
-"Teleport iPhone to this location" = "Teleport iPhone to this location";
-"Show on map without moving the iPhone" = "Show on map without moving the iPhone";
-"Navigate to this location with current settings" = "Navigate to this location with current settings";
-"Type an address or lat,lng first." = "Type an address or lat,lng first.";
-"Expand" = "Expand";
-"Collapse" = "Collapse";
-"Choose base map layer" = "Choose base map layer";
-"Recenter" = "Recenter";
-
-/* Device-row Connect-via-WiFi pull-down menu */
-"Connect via WiFi…" = "Connect via WiFi…";
-"Don't connect" = "Don't connect";
-"Connect via USB cable" = "Connect via USB cable";
-"Plug in the USB cable first" = "Plug in the USB cable first";
-"Open the WiFi candidate picker" = "Open the WiFi candidate picker";
-"Run **Pair for WiFi** once with the cable plugged in" = "Run **Pair for WiFi** once with the cable plugged in";
-"You" = "You";
-
-/* Gold Ditto mode (Pikmin Bloom 拉金盆 exploit) */
-"Gold Ditto" = "Gold Ditto";
-"Pull Gold Pot" = "Pull Gold Pot";
-"Countdown mode: press the button to start a 2-second countdown, then the Mac will pull the gold pot (swap GPS to A and back)." = "Countdown mode: press the button to start a 2-second countdown, then the gold pot is pulled on the iPhone (GPS swaps to A and back).";
-"Instant mode: press the button to pull the gold pot immediately (swap GPS to A and back, no countdown)." = "Instant mode: press the button to pull the gold pot on the iPhone immediately (GPS swaps to A and back, no countdown).";
-"A coordinate (your real location)" = "A coordinate (your real location)";
-"Show A coordinate" = "Show A coordinate";
-"Hide A coordinate" = "Hide A coordinate";
-"Use current location" = "Use current location";
-"Pulling the gold pot in…" = "Pulling the gold pot in…";
-"Counting down…" = "Counting down…";
-"Cancelled." = "Cancelled.";
-"Start the 2-second countdown then push GPS to A" = "Start the 2-second countdown then push GPS to A";
-"Countdown (2 s)" = "Countdown (2 s)";
-"Instant" = "Instant";
-"Countdown gives you a visible 2-second timer with beeps before fire. Instant fires set+clear the moment you click, matching the original LocWarp behaviour exactly." = "Countdown gives you a visible 2-second timer with beeps before fire. Instant fires set+clear the moment you click, matching the original LocWarp behaviour exactly.";
-"Fire set + clear immediately (LocWarp-style)" = "Fire set + clear immediately (LocWarp-style)";
-"Set A coordinate and connect an iPhone first" = "Set A coordinate and connect an iPhone first";
-"Gold Ditto needs a real iPhone connection." = "Gold Ditto needs a real iPhone connection.";
-"Gold pot pulled" = "Gold pot pulled";
-"GPS was swapped to A and back" = "GPS was swapped to A and back";
-"Apple Maps" = "Apple Maps";
-"Apple Satellite" = "Apple Satellite";
-"OpenStreetMap" = "OpenStreetMap";
-"Carto Voyager" = "Carto Voyager";
-"ESRI Satellite" = "ESRI Satellite";
-
-/* Search bar action button labels */
-"Paste" = "Paste";
-"Teleport" = "Teleport";
-"Preview" = "Preview";
-"Navigate" = "Navigate";
-
-/* TopStatusBar (status bar A) — left buttons + chip help */
-"Restore" = "Restore";
-"Refresh" = "Refresh";
-"Map Layer" = "Map Layer";
-"Country of the simulated location" = "Country of the simulated location";
-"Coordinates of the simulated location" = "Coordinates of the simulated location";
-"Mac time / Time at the simulated location" = "Mac time / Time at the simulated location";
-
-/* Bookmarks JSON import (Phase 5.5) */
-"Import bookmarks from JSON" = "Import bookmarks from JSON";
-"JSON parsed, but no bookmarks were found." = "JSON parsed, but no bookmarks were found.";
-"Imported %lld bookmarks." = "Imported %lld bookmarks.";
-
-/* Multi-stop panel — reorder hint + Save-as-route */
-"Drag a row's handle to reorder stops." = "Drag a row's handle to reorder stops.";
-"Drag to reorder" = "Drag to reorder";
-"Save as new route" = "Save as new route";
-"Save these stops as a Route so you can replay this trip later" = "Save these stops as a Route so you can replay this trip later";
-"Custom route (%lld stops)" = "Custom route (%lld stops)";
-
-/* Virtual Map device + disconnected overlay (Phase 5.6) */
-"Map" = "Map";
-"Browse-only" = "Browse-only";
-"Look up locations without a connected iPhone." = "Look up locations without a connected iPhone.";
-"Disconnected" = "Disconnected";
-"This iPhone isn't currently reachable. Reconnect it, or pick the **Map** entry in the sidebar to browse the map without a device." = "This iPhone isn't currently reachable. Reconnect it, or pick the **Map** entry in the sidebar to browse the map without a device.";
-"Switch to a connected iPhone to use movement modes." = "Switch to a connected iPhone to use movement modes.";
-
-/* ControlPanel */
 "Target" = "Target";
-"%lld stops" = "%lld stops";
-"%lld× looped" = "%lld× looped";
-"single trip" = "single trip";
-"Straight line — ON" = "Straight line — ON";
-"Straight line (skip roads)" = "Straight line (skip roads)";
-
-/* PhoneControlSheet (Phase 5.2 — Mobile-Web Phone Control) */
-"Phone Control…" = "Phone Control…";
-"Drive LociiGhost from your phone over WiFi." = "Drive LociiGhost from your phone over WiFi.";
-"Phone Control" = "Phone Control";
-"Type the URL into your phone's browser, then enter the PIN." = "Type the URL into your phone's browser, then enter the PIN.";
-"Loading…" = "Loading…";
-"Phone control HTTP server isn't reachable." = "Phone control HTTP server isn't reachable.";
-"Make sure the daemon is running (Authenticate above if the banner is showing) and try again." = "Make sure the daemon is running (Authenticate above if the banner is showing) and try again.";
-"Retry" = "Retry";
-"Regenerate PIN" = "Regenerate PIN";
-"Generate a fresh PIN + token. Any phone tab still using the old PIN gets logged out." = "Generate a fresh PIN + token. Any phone tab still using the old PIN gets logged out.";
-"URL" = "URL";
-"PIN" = "PIN";
-"Copy" = "Copy";
-"Phone must be on the same Wi-Fi as this Mac. The PIN regenerates each time the daemon restarts; tap Regenerate below to invalidate any phone that's currently paired." = "Phone must be on the same Wi-Fi as this Mac. The PIN regenerates each time the daemon restarts; tap Regenerate below to invalidate any phone that's currently paired.";
-
-/* Update-available badge in AppHeaderBar */
-"New v%@" = "New v%@";
-"Update available — click to view release" = "Update available — click to view release";
-
-/* Mac phone-control lockout overlay */
-"Phone in control" = "Phone in control";
-"A phone is currently signed in via Phone Control. The Mac is paused while the phone is driving. Sign out from the phone, or press the button below to take control back." = "A phone is currently signed in via Phone Control. The Mac is paused while the phone is driving. Sign out from the phone, or press the button below to take control back.";
-"Stop phone control" = "Stop phone control";
-"Sign out all phones" = "Sign out all phones";
-"Sign every paired phone out and rotate the PIN." = "Sign every paired phone out and rotate the PIN.";
-"Kicks every paired phone and rotates the PIN." = "Kicks every paired phone and rotates the PIN.";
-"Use both at once" = "Use both at once";
-"Exit sync" = "Exit sync";
-"Stop driving simultaneously with the phone — locks the Mac side back to phone control" = "Stop driving simultaneously with the phone — locks the Mac side back to phone control";
-"Use both at the same time?" = "Use both at the same time?";
-"Enable" = "Enable";
-"Mac and phone can both drive at the same time. If their actions clash and the iPhone's position gets out of sync, press Restore on BOTH sides and start over." = "Mac and phone can both drive at the same time. If their actions clash and the iPhone's position gets out of sync, press Restore on BOTH sides and start over.";
-"Real GPS may take 30 s to 2 min to re-acquire on iPhone. Toggle Airplane Mode on the iPhone for faster reacquisition." = "Real GPS may take 30 s to 2 min to re-acquire on iPhone. Toggle Airplane Mode on the iPhone for faster reacquisition.";
-"Support YCH81 (aka Jeff Hu) on Ko-fi" = "Support YCH81 (aka Jeff Hu) on Ko-fi";
-"Support the developer" = "Support the developer";
-"LINE Official Account @382ydavk" = "LINE Official Account @382ydavk";
-"Buy me a bubble tea" = "Buy me a bubble tea";
-"Join LINE community" = "Join LINE community";
-
-// ── v1.10.7 ─────────────────────────────────────────────────
-
-// StartRouteSheet
-"Teleport to the start of \"%1$@\" and navigate %2$lld points?" = "Teleport to the start of \"%1$@\" and navigate %2$lld points?";
-"Loop the route" = "Loop the route";
-"After reaching the last point, teleport back to the start and walk the route again." = "After reaching the last point, teleport back to the start and walk the route again.";
-"Total laps:" = "Total laps:";
-"Until I press Stop" = "Until I press Stop";
-"(leave blank for until Stop)" = "(leave blank for until Stop)";
-
-// BulkPasteStopsSheet + MultiStopPanel
-"Bulk-add stops" = "Bulk-add stops";
-"Paste one coordinate per line — `lat, lng`. Comma, tab, or semicolon all work as separators; lines starting with # are ignored. The iPhone teleports to the first pasted coordinate so path-planning starts locally; any previously staged stops are cleared." = "Paste one coordinate per line — `lat, lng`. Comma, tab, or semicolon all work as separators; lines starting with # are ignored. The iPhone teleports to the first pasted coordinate so path-planning starts locally; any previously staged stops are cleared.";
-"Waiting for valid coordinates…" = "Waiting for valid coordinates…";
-"%lld valid stops detected." = "%lld valid stops detected.";
-"No valid coordinates found in the pasted text." = "No valid coordinates found in the pasted text.";
-"Added %lld stops from paste." = "Added %lld stops from paste.";
-"Bulk-add coordinates…" = "Bulk-add coordinates…";
-"Paste many coordinates at once — each line becomes the next stop" = "Paste many coordinates at once — each line becomes the next stop";
-
-// SettingsView — section headers
-"Logs" = "Logs";
-"Geocoding" = "Geocoding";
-"Alerts" = "Alerts";
-"Routing engine" = "Routing engine";
-"Troubleshooting" = "Troubleshooting";
-"About" = "About";
-
-// SettingsView — short labels / buttons
-"Language:" = "Language:";
-"Theme:" = "Theme:";
-"Google API key:" = "Google API key:";
-"Engine:" = "Engine:";
-"Reveal in Finder" = "Reveal in Finder";
-"Open folder" = "Open folder";
-"Force-kill & restart daemon" = "Force-kill & restart daemon";
-"Restarting…" = "Restarting…";
-"Import from JSON…" = "Import from JSON…";
-"Export to JSON…" = "Export to JSON…";
-"Bulk paste…" = "Bulk paste…";
-"Import GPX…" = "Import GPX…";
-"Import JSON…" = "Import JSON…";
-"Export JSON…" = "Export JSON…";
-"Play system sound on route complete" = "Play system sound on route complete";
-"How to get a Google Geocoding API key" = "How to get a Google Geocoding API key";
-"Test" = "Test";
-"Paste your key here" = "Paste your key here";
-
-// SettingsView — longer help text
-"Default appearance uses the sage palette from the LociiGhost icon. System appearance reverts every tinted element to macOS's accent colour. Switching is live — no restart needed." = "Default appearance uses the sage palette from the LociiGhost icon. System appearance reverts every tinted element to macOS's accent colour. Switching is live — no restart needed.";
-"Move bookmarks between machines or paste many at once." = "Move bookmarks between machines or paste many at once.";
-"Open the LociiGhost log folder in Finder. Attach these files when you report a problem." = "Open the LociiGhost log folder in Finder. Attach these files when you report a problem.";
-"When MapKit can't find a place (common for Chinese store / landmark names), LociiGhost can fall back to Google Geocoding using your own API key. Leave blank to disable." = "When MapKit can't find a place (common for Chinese store / landmark names), LociiGhost can fall back to Google Geocoding using your own API key. Leave blank to disable.";
-"No key configured — search uses Apple MapKit only." = "No key configured — search uses Apple MapKit only.";
-"Key configured — Google is used as a fallback when MapKit returns no matches." = "Key configured — Google is used as a fallback when MapKit returns no matches.";
-"Play the macOS system alert when a navigation, route loop, or random walk reaches its destination naturally. Explicit stops won't trigger the sound." = "Play the macOS system alert when a navigation, route loop, or random walk reaches its destination naturally. Explicit stops won't trigger the sound.";
-"Multi-point tracks (GPX recordings or LociiGhost JSON exports). Use Import → GPX for trip files from other apps; JSON for round-tripping between LociiGhost machines." = "Multi-point tracks (GPX recordings or LociiGhost JSON exports). Use Import → GPX for trip files from other apps; JSON for round-tripping between LociiGhost machines.";
-"Which service plans your navigation routes. Pick the OSRM Public Demo to revert to the default." = "Which service plans your navigation routes. Pick the OSRM Public Demo to revert to the default.";
-"If LociiGhost stops responding (the daemon hangs, devices won't appear, navigation freezes), use this button to kill the daemon with admin privileges and start a clean one — no Terminal required." = "If LociiGhost stops responding (the daemon hangs, devices won't appear, navigation freezes), use this button to kill the daemon with admin privileges and start a clean one — no Terminal required.";
-"You'll see a standard macOS authentication dialog. LociiGhost itself never reads your password." = "You'll see a standard macOS authentication dialog. LociiGhost itself never reads your password.";
-"Copyright © 2026 YCH81 (Jeff Hu). Licensed under the MIT License." = "Copyright © 2026 YCH81 (Jeff Hu). Licensed under the MIT License.";
-"Inspired by " = "Inspired by ";
-" by keezxc1223 (MIT). LociiGhost is a complete native-Swift rewrite." = " by keezxc1223 (MIT). LociiGhost is a complete native-Swift rewrite.";
-"Run `cat LICENSE` from the project root for the full MIT text with both copyright notices." = "Run `cat LICENSE` from the project root for the full MIT text with both copyright notices.";
-
-/* v1.11.0 additions */
-"Stop current route?" = "Stop current route?";
-"Stop current simulation?" = "Stop current simulation?";
-"Keep going" = "Keep going";
-"Stop & switch" = "Stop & switch";
-"Switching modes ends the current navigation. The iPhone halts at its current simulated position." = "Switching modes ends the current navigation. The iPhone halts at its current simulated position.";
-"Switching modes ends the current simulation. The iPhone halts at its current simulated position." = "Switching modes ends the current simulation. The iPhone halts at its current simulated position.";
-"Hide this panel — stops stay in the sidebar; click the floating chip on the map to bring it back" = "Hide this panel — stops stay in the sidebar; click the floating chip on the map to bring it back";
-"%lld stops — show controls" = "%lld stops — show controls";
-"Reopen the route controls" = "Reopen the route controls";
-"Apple Maps couldn't plan this route — its data may not cover this area. Try switching the routing engine to OSRM in Settings. (%@)" = "Apple Maps couldn't plan this route — its data may not cover this area. Try switching the routing engine to OSRM in Settings. (%@)";
-"Path style" = "Path style";
-"Straight line" = "Straight line";
-"Map path (OSRM)" = "Map path (OSRM)";
-"Dwell at each stop" = "Dwell at each stop";
-"%lld s" = "%lld s";
-"With dwell on, the iPhone pauses the chosen number of seconds at each stop before continuing to the next" = "With dwell on, the iPhone pauses the chosen number of seconds at each stop before continuing to the next";
-"Show route controls" = "Show route controls";
-"Auto-center" = "Auto-center";
-"Toggle map auto-recenter: when on, the map follows the simulated location during movement. When off, the map stays put — teleports and route starts still pan once, then you scroll the map manually." = "Toggle map auto-recenter: when on, the map follows the simulated location during movement. When off, the map stays put — teleports and route starts still pan once, then you scroll the map manually.";
-
-/* ─── v1.11.2 — joe bug fix (daemon failure UI) ───────────────────── */
-"Daemon failed to start: %@. Click to authenticate and restart." = "Daemon failed to start: %@. Click to authenticate and restart.";
-"Click to authenticate and restart the daemon — opens the macOS password prompt" = "Click to authenticate and restart the daemon — opens the macOS password prompt";
-
-/* ─── v1.11.2 — #1 BottomBar inline custom speed ──────────────────── */
-"km/h" = "km/h";
-"Apply this custom speed — works in every mode" = "Apply this custom speed — works in every mode";
-"Drop the custom speed and use the travel-mode preset" = "Drop the custom speed and use the travel-mode preset";
-
-/* ─── v1.11.2 — #2 RouteWaypointsEditSheet ────────────────────────── */
-"Edit waypoints" = "Edit waypoints";
-"Edit waypoints…" = "Edit waypoints…";
-"Edit info…" = "Edit info…";
-"Edit name, category, icon" = "Edit name, category, icon";
-"Edit waypoints (add / delete / reorder / change coords)" = "Edit waypoints (add / delete / reorder / change coords)";
-"Add waypoint" = "Add waypoint";
-"lat" = "lat";
-"lng" = "lng";
-"Run once (no save)" = "Run once (no save)";
-"Save changes" = "Save changes";
-"No waypoints yet. Tap **Add waypoint** to begin." = "No waypoints yet. Tap **Add waypoint** to begin.";
-"Run this trip once without overwriting the saved route" = "Run this trip once without overwriting the saved route";
-"Delete this waypoint" = "Delete this waypoint";
-"No waypoints to run." = "No waypoints to run.";
-
-/* ─── v1.11.2 — #3 RandomWalk mode-switch alert ───────────────────── */
-"Stop random walk to change this?" = "Stop random walk to change this?";
-"Keep walking" = "Keep walking";
-"Stop & apply" = "Stop & apply";
-"Changing this setting needs the current walk to stop. We'll restart it immediately with the new value." = "Changing this setting needs the current walk to stop. We'll restart it immediately with the new value.";
-
-/* ─── v1.11.2 — #4 full backup / restore ──────────────────────────── */
-"Backup all data" = "Backup all data";
-"Export everything — bookmarks, routes, stop presets — to a single JSON file you can restore on another Mac or after a reinstall." = "Export everything — bookmarks, routes, stop presets — to a single JSON file you can restore on another Mac or after a reinstall.";
-"Export all…" = "Export all…";
-"Save a JSON file containing every bookmark, route, and stop preset" = "Save a JSON file containing every bookmark, route, and stop preset";
-"Restore from backup…" = "Restore from backup…";
-"Open a backup file; pick Merge or Overwrite when prompted" = "Open a backup file; pick Merge or Overwrite when prompted";
-"Restore asks before doing anything: Merge keeps your current data, Overwrite replaces it." = "Restore asks before doing anything: Merge keeps your current data, Overwrite replaces it.";
-"Nothing to back up — no bookmarks, routes, or stop presets yet." = "Nothing to back up — no bookmarks, routes, or stop presets yet.";
-"Backed up %lld bookmarks · %lld routes · %lld presets." = "Backed up %lld bookmarks · %lld routes · %lld presets.";
-"Export all data (full backup)" = "Export all data (full backup)";
-"Restore from backup JSON" = "Restore from backup JSON";
-"This backup is from a newer LociiGhost version. Please update before restoring." = "This backup is from a newer LociiGhost version. Please update before restoring.";
-"Restore from backup?" = "Restore from backup?";
-"This backup contains %lld bookmarks · %lld routes · %lld presets.\n\nMerge keeps your existing data and adds new entries (skipping name+coords duplicates).\nOverwrite wipes everything currently in LociiGhost and replaces it with the backup." = "This backup contains %lld bookmarks · %lld routes · %lld presets.\n\nMerge keeps your existing data and adds new entries (skipping name+coords duplicates).\nOverwrite wipes everything currently in LociiGhost and replaces it with the backup.";
-"Merge" = "Merge";
-"Overwrite" = "Overwrite";
-"Restored: %lld bookmarks · %lld routes · %lld presets added." = "Restored: %lld bookmarks · %lld routes · %lld presets added.";
-
-/* ─── v1.11.2 — #5 Snap to real location ──────────────────────────── */
-"Snap to real" = "Snap to real";
-"Snap to real location" = "Snap to real location";
+"Teleport" = "Teleport";
+"Teleport between waypoints" = "Teleport between waypoints";
+"Teleport here" = "Teleport here";
+"Teleport iPhone to this location" = "Teleport iPhone to this location";
 "Teleport the simulated iPhone to your Mac's current real location — simulation stays active" = "Teleport the simulated iPhone to your Mac's current real location — simulation stays active";
-
-/* ─── v1.11.2 — #7 Copy all stops + #8 Smart sort ─────────────────── */
-"Copy all stops" = "Copy all stops";
-"Copy every staged stop as lat,lng per line — paste back into Bulk-add or share elsewhere" = "Copy every staged stop as lat,lng per line — paste back into Bulk-add or share elsewhere";
-"Smart sort" = "Smart sort";
-"Reorder stops by minimum total path distance — Stop 1 stays the start, the rest get sorted into an efficient visit order" = "Reorder stops by minimum total path distance — Stop 1 stays the start, the rest get sorted into an efficient visit order";
-"Reorder stops by minimum total path distance — Stop 1 stays the start" = "Reorder stops by minimum total path distance — Stop 1 stays the start";
-
-/* ─── v1.11.2 — #9 force re-authorize ─────────────────────────────── */
-"Advanced" = "Advanced";
-"If the system password dialog stopped appearing, or the daemon is stuck in a half-authorized state, force a clean re-authorization here. This will end the running daemon, prompt for your macOS password, and bring up a fresh privileged daemon." = "If the system password dialog stopped appearing, or the daemon is stuck in a half-authorized state, force a clean re-authorization here. This will end the running daemon, prompt for your macOS password, and bring up a fresh privileged daemon.";
-"Force re-authorize" = "Force re-authorize";
-"Force-kill the daemon, prompt for your macOS password, and bring up a fresh privileged daemon" = "Force-kill the daemon, prompt for your macOS password, and bring up a fresh privileged daemon";
-"Re-authorizing…" = "Re-authorizing…";
-"Use this when LociiGhost's automatic admin prompts aren't appearing on their own, or when you want to manually re-trigger the standard macOS authentication flow." = "Use this when LociiGhost's automatic admin prompts aren't appearing on their own, or when you want to manually re-trigger the standard macOS authentication flow.";
-
-/* ─── v1.11.2 bug-fix wave (T31/T32) ───────────────────────────────── */
-"Your current simulation will stop before this route starts." = "Your current simulation will stop before this route starts.";
-"Stop & start" = "Stop & start";
-"Switch to Multi-stop mode first" = "Switch to Multi-stop mode first";
-
-/* ─── v1.11.2 — missing strings catch-up ───────────────────────────── */
-// AppHeaderBar / SettingsView
-"Settings" = "Settings";
-
-// RecentPlacesButton
-"Recent" = "Recent";
-"Recent Places" = "Recent Places";
-"Clear" = "Clear";
-"No history yet" = "No history yet";
-"Teleports, searches, and navigations show up here so you can jump back with one tap." = "Teleports, searches, and navigations show up here so you can jump back with one tap.";
-
-// BottomBar — travel-mode picker
-"Custom speed" = "Custom speed";
-"Change travel mode mid-route. Speed updates immediately; route stays the same." = "Change travel mode mid-route. Speed updates immediately; route stays the same.";
-"Default travel mode for the next Navigate." = "Default travel mode for the next Navigate.";
-
-// BottomBar — stop + clear confirmations
-"Clear staged stops?" = "Clear staged stops?";
-"Navigation stopped. Do you also want to remove the %lld staged stops from the map?" = "Navigation stopped. Do you also want to remove the %lld staged stops from the map?";
-"Clear all stops and movement state?" = "Clear all stops and movement state?";
-"Clear all" = "Clear all";
-"All staged stops, routes, and movement state will be removed. The iPhone stays at its current simulated position." = "All staged stops, routes, and movement state will be removed. The iPhone stays at its current simulated position.";
-
-// BookmarksSection — sort menu
-"Sort order" = "Sort order";
-"By date added" = "By date added";
-"By name (A–Z)" = "By name (A–Z)";
-"Manual order" = "Manual order";
-"Import bookmarks from JSON (export + bulk paste live in Settings — Cmd-,)" = "Import bookmarks from JSON (export + bulk paste live in Settings — Cmd-,)";
-
-// BulkPasteBookmarksSheet
-"Bulk-add bookmarks" = "Bulk-add bookmarks";
-"Paste one bookmark per line. Each line can be `name, lat, lng` or `lat, lng, name`. Comma, tab, or semicolon all work. Lines starting with # are ignored." = "Paste one bookmark per line. Each line can be `name, lat, lng` or `lat, lng, name`. Comma, tab, or semicolon all work. Lines starting with # are ignored.";
-"Default category:" = "Default category:";
-"Optional" = "Optional";
-"Waiting for valid lines…" = "Waiting for valid lines…";
-"Add %lld" = "Add %lld";
-
-// SavePresetSheet
-"Save as preset" = "Save as preset";
-"e.g. Downtown Tokyo evening loop" = "e.g. Downtown Tokyo evening loop";
-
-// LoadStopPresetSheet
-"Load these stops into the Multi-Stop panel. Choose whether to also teleport the iPhone to the first stop — Display Only just stages and re-centres the map, while Teleport to First moves the iPhone there immediately so Navigate starts cleanly." = "Load these stops into the Multi-Stop panel. Choose whether to also teleport the iPhone to the first stop — Display Only just stages and re-centres the map, while Teleport to First moves the iPhone there immediately so Navigate starts cleanly.";
-"Display only" = "Display only";
 "Teleport to first" = "Teleport to first";
-
-// MultiStopPanel
-"Saved stop presets" = "Saved stop presets";
-
-// MapLayerPicker
-"Map Layer · %@" = "Map Layer · %@";
-
-// SettingsView
-"Google Directions needs an API key — paste one into the Geocoding section above." = "Google Directions needs an API key — paste one into the Geocoding section above.";
-"LocWarp" = "LocWarp";
-
-/* ─── v1.11.2 — route dwell per-execution (StartRouteSheet) ─────────── */
-"Pause at each waypoint" = "Pause at each waypoint";
-"Stop and wait at each point along the route before continuing." = "Stop and wait at each point along the route before continuing.";
-"Pause seconds:" = "Pause seconds:";
-"sec per waypoint" = "sec per waypoint";
-
-/* ─── Route playback start-point picker (StartRouteSheet) ──────────── */
-"Start from" = "Start from";
-"Beginning" = "Beginning";
-"Resume from last (#%lld)" = "Resume from last (#%lld)";
-"Resume from last (no saved progress)" = "Resume from last (no saved progress)";
-"Specific stop" = "Specific stop";
-"Stop #" = "Stop #";
+"Teleport to the start of \"%1$@\" and navigate %2$lld points?" = "Teleport to the start of \"%1$@\" and navigate %2$lld points?";
+"Teleports, searches, and navigations show up here so you can jump back with one tap." = "Teleports, searches, and navigations show up here so you can jump back with one tap.";
+"Test" = "Test";
+"That search text can't be sent to the address service." = "That search text can't be sent to the address service.";
+"The address service is rate-limiting us — wait a moment, or switch provider in Settings." = "The address service is rate-limiting us — wait a moment, or switch provider in Settings.";
+"The address service returned something unreadable." = "The address service returned something unreadable.";
+"The gap catches what the speed rule can't: two positions a metre apart, a hundred times a second. A run already under way is never interrupted — continuous movement is speed-limited already." = "The gap catches what the speed rule can't: two positions a metre apart, a hundred times a second. A run already under way is never interrupted — continuous movement is speed-limited already.";
+"The most accurate for Taiwanese addresses. Uses your own API key, and every search is billed to you." = "The most accurate for Taiwanese addresses. Uses your own API key, and every search is billed to you.";
+"The ring itself is always walked. A ring of teleports is the one thing that looks nothing like a person." = "The ring itself is always walked. A ring of teleports is the one thing that looks nothing like a person.";
+"Theme:" = "Theme:";
+"This backup contains %lld bookmarks · %lld routes · %lld presets.\n\nMerge keeps your existing data and adds new entries (skipping name+coords duplicates).\nOverwrite wipes everything currently in LociiGhost and replaces it with the backup." = "This backup contains %lld bookmarks · %lld routes · %lld presets.\n\nMerge keeps your existing data and adds new entries (skipping name+coords duplicates).\nOverwrite wipes everything currently in LociiGhost and replaces it with the backup.";
+"This backup is from a newer LociiGhost version. Please update before restoring." = "This backup is from a newer LociiGhost version. Please update before restoring.";
+"This iPhone isn't currently reachable. Reconnect it, or pick the **Map** entry in the sidebar to browse the map without a device." = "This iPhone isn't currently reachable. Reconnect it, or pick the **Map** entry in the sidebar to browse the map without a device.";
+"This iPhone leads — the run belongs to it" = "This iPhone leads — the run belongs to it";
+"Tip: click the map again to add another stop." = "Tip: click the map again to add another stop.";
+"Toggle map auto-recenter: when on, the map follows the simulated location during movement. When off, the map stays put — teleports and route starts still pan once, then you scroll the map manually." = "Toggle map auto-recenter: when on, the map follows the simulated location during movement. When off, the map stays put — teleports and route starts still pan once, then you scroll the map manually.";
+"Total laps:" = "Total laps:";
+"Travel mode" = "Travel mode";
+"Troubleshooting" = "Troubleshooting";
+"Type an address or lat,lng first." = "Type an address or lat,lng first.";
+"Type the URL into your phone's browser, then enter the PIN." = "Type the URL into your phone's browser, then enter the PIN.";
+"URL" = "URL";
+"Uncategorized" = "Uncategorized";
+"Until I press Stop" = "Until I press Stop";
+"Update available — click to view release" = "Update available — click to view release";
+"Use" = "Use";
+"Use **File ▸ Import GPX…** (⌘O) to add a recorded track." = "Use **File ▸ Import GPX…** (⌘O) to add a recorded track.";
+"Use both at once" = "Use both at once";
+"Use both at the same time?" = "Use both at the same time?";
+"Use current location" = "Use current location";
+"Use exact coordinates" = "Use exact coordinates";
+"Use the automatic colour" = "Use the automatic colour";
+"Use this when LociiGhost's automatic admin prompts aren't appearing on their own, or when you want to manually re-trigger the standard macOS authentication flow." = "Use this when LociiGhost's automatic admin prompts aren't appearing on their own, or when you want to manually re-trigger the standard macOS authentication flow.";
+"Use when the iPhone isn't picked up by auto-discover (different subnet, VPN, etc.). Default port for RemotePairing is 49152." = "Use when the iPhone isn't picked up by auto-discover (different subnet, VPN, etc.). Default port for RemotePairing is 49152.";
+"Wait before leaving" = "Wait before leaving";
+"Wait on arrival" = "Wait on arrival";
+"Waiting for valid coordinates…" = "Waiting for valid coordinates…";
+"Waiting for valid lines…" = "Waiting for valid lines…";
+"Walking" = "Walking";
+"Walking randomly" = "Walking randomly";
+"Waypoints" = "Waypoints";
+"Weather at the simulated location" = "Weather at the simulated location";
+"When MapKit can't find a place (common for Chinese store / landmark names), LociiGhost can fall back to Google Geocoding using your own API key. Leave blank to disable." = "When MapKit can't find a place (common for Chinese store / landmark names), LociiGhost can fall back to Google Geocoding using your own API key. Leave blank to disable.";
+"Which service plans your navigation routes. Pick the OSRM Public Demo to revert to the default." = "Which service plans your navigation routes. Pick the OSRM Public Demo to revert to the default.";
+"Which service the search bar asks for addresses. Whichever you pick, Google is still tried as a fallback when nothing is found and you have a key saved below." = "Which service the search bar asks for addresses. Whichever you pick, Google is still tried as a fallback when nothing is found and you have a key saved below.";
+"WiFi Devices" = "WiFi Devices";
+"With dwell on, the iPhone pauses the chosen number of seconds at each stop before continuing to the next" = "With dwell on, the iPhone pauses the chosen number of seconds at each stop before continuing to the next";
+"You" = "You";
+"You'll see a standard macOS authentication dialog. LociiGhost itself never reads your password." = "You'll see a standard macOS authentication dialog. LociiGhost itself never reads your password.";
+"Your current simulation will stop before this route starts." = "Your current simulation will stop before this route starts.";
+"e.g. Downtown Tokyo evening loop" = "e.g. Downtown Tokyo evening loop";
+"km/h" = "km/h";
+"lat" = "lat";
+"leads" = "leads";
+"lng" = "lng";
+"not connected" = "not connected";
 "of %lld" = "of %lld";
+"off" = "off";
+"sec per waypoint" = "sec per waypoint";
+"single trip" = "single trip";

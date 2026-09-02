@@ -740,6 +740,10 @@ final class AppState {
     /// and stays there for the next Navigate after the current trip ends.
     var canQueueStop: Bool {
         if activeMovementMode == .multiStop { return true }
+        // Flower mode orbits this same list — the panel says "click the
+        // map to add the points to orbit", and without this the clicks
+        // did nothing at all.
+        if activeMovementMode == .flower { return true }
         if navigationActive && !pendingStops.isEmpty { return true }
         return false
     }

@@ -1,0 +1,116 @@
+# Strings that still have no zh-Hant translation.
+#
+# Every line here is an English literal the app can show a user. They
+# pre-date the v1.17 pass and are listed rather than fixed in one go,
+# so that `test_localisation.py` can block NEW untranslated strings
+# without demanding the whole backlog be cleared first.
+#
+# To shrink it: translate a string in both .lproj/Localizable.strings
+# files and delete its line here. The test fails if a line here has
+# been translated, so the list can't quietly go stale.
+%lld stops will be stored under this name
+%lld valid bookmarks detected.
+Add prefix to names…
+Add suffix to names…
+Added %lld bookmarks from paste.
+Apple Maps (default)
+Apply
+Apply this custom speed
+Bulk actions
+Can't read Mac location. Open System Settings → Privacy & Security → Location Services and allow LociiGhost.
+Clear all recent places
+Clear all staged stops and movement state. iPhone stays at its current simulated position.
+Clear category
+Clear search
+Close Settings
+Connection to the iPhone is unstable — locations may not be getting through.
+Connection to the iPhone recovered.
+Couldn't change the PIN — the old one is still active.
+Couldn't load the photo.
+Couldn't save the API key to the Keychain.
+Daemon restarted successfully.
+Default appearance (matches icon)
+Delete all
+Delete category (keep bookmarks)
+Delete category and its bookmarks
+Delete preset
+Delete selected
+Dock iPhone screen
+Dock your iPhone's screen next to LociiGhost — play on the Mac while the fake location runs.
+Docked
+End navigation; iPhone stays at last simulated position.
+Export bookmarks to JSON
+Export routes to JSON
+Exported %lld routes.
+Free public OSRM server. True bike-network routes; may be slow when busy or temporarily down.
+GPX file has no waypoints or track points.
+Google Directions
+If LociiGhost is already listed there, switch it off and on again — the permission is tied to the exact app binary, so a fresh build needs re-approving.
+Import routes from JSON
+Imported %lld routes.
+JSON parsed, but no routes were found.
+Left
+Level
+Loading photo…
+LociiGhost can't start
+LociiGhost needs Accessibility permission to position the mirroring window. Nothing else uses it.
+Lost the iPhone and couldn't reconnect. Check Wi-Fi (or the USB cable), then connect again.
+Mac location unavailable — open System Settings → Privacy → Location and allow LociiGhost.
+Make sure the iPhone is on the same Wi-Fi and that you've already done **Pair for WiFi** for it once. If you know the IP, enter it below.
+Manage bookmarks
+Manage bookmarks — rename, batch delete, organize categories
+Merge into
+Mirror
+Move to category…
+Name…
+Native Apple Maps routing. No setup or API key needed. Cycling uses driving geometry — playback speed still follows the SpeedPicker.
+New category:
+New name
+No bookmarks match.
+No categories yet.
+No matches.
+No routes to export.
+No valid bookmark lines found in the pasted text.
+OSRM Public Demo
+Off
+Open Privacy Settings
+Open Settings — bookmarks tools, logs, Google API key, alert sound (Cmd-,)
+Prefix (e.g. [Tokyo] )
+Preview the system alert sound
+Prompts for your macOS password, then force-kills any running daemon and starts a fresh one
+Quit iPhone Mirroring
+Recent teleports / navigates / searches
+Remove from history
+Remove the saved Google API key
+Rename
+Rename category
+Rename…
+Right
+Save these stops as a named preset — click it later to reload the same staging
+Search bookmarks
+Search by name or category
+Select all
+Show bookmarks on map
+Show in Finder
+Show on map
+Side
+Skips routing. The iPhone moves in straight lines between waypoints.
+Stop the active route before switching to Multi-stop mode.
+Straight line (no routing)
+Suffix (e.g.  · favorite)
+System appearance
+The preferences database couldn't be opened. Move this file aside and reopen the app:
+The route stopped: 
+The route stopped: lost the connection to the iPhone.
+This can't be undone.
+This window plus the phone is wider than the display, so they overlap. Make the LociiGhost window narrower, or pick a smaller size in iPhone Mirroring's View menu.
+Try again
+Uncategorized can't be renamed or merged.
+Uses macOS's built-in iPhone Mirroring and glues its window to the side of LociiGhost. Taps go straight to Apple's mirroring — LociiGhost never sits in the input path, so there's no added lag.
+Uses your Google API key (Directions API must be enabled). Counts against quota.
+View photo
+Waiting for iPhone Mirroring — unlock your iPhone if it's asking.
+iOS 17+ requires Developer Mode for any tool that injects a simulated GPS coordinate over the RSD tunnel. The toggle is hidden by default; LociiGhost can ask iOS to surface it for you.
+iPhone Mirroring keeps its own window size — change it from that app's View menu (Actual Size / Larger / Smaller). LociiGhost lays out around whatever it picks.
+iPhone screen
+literal

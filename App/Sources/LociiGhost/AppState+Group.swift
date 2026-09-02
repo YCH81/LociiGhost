@@ -23,6 +23,15 @@ extension AppState {
             udids.append(udid)
         }
         guard udids.count > 1 else { return nil }
+        // Say it out loud. Group sync is invisible when it works and
+        // equally invisible when it doesn't — "I ticked the boxes and
+        // nothing synced" is unfalsifiable without this line, because
+        // the user cannot see whether the group was attached to the
+        // call or silently dropped on the way.
+        showInfo(String(
+            format: String(localized: "Group sync: moving %lld iPhones together.",
+                           comment: "Toast when a run goes out to a device group"),
+            udids.count))
         return ["udids": AnyCodable(udids.map { AnyCodable($0) })]
     }
 

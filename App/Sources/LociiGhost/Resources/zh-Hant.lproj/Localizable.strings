@@ -1,508 +1,476 @@
 /* 繁體中文 Localizable.strings — used when the user's locale is
    zh-Hant or .environment(\.locale, zh-Hant) is in scope. */
 
+" by keezxc1223 (MIT). LociiGhost is a complete native-Swift rewrite." = "（作者 keezxc1223，MIT 授權）。LociiGhost 為 native Swift 完整重寫版本。";
+"%lld km/h" = "%lld 公里/小時";
+"%lld min %lld s" = "%lld 分 %lld 秒";
+"%lld points" = "%lld 個點";
+"%lld s" = "%lld 秒";
+"%lld staged · same list as Multi-stop" = "已加入 %lld 個 · 跟多點模式同一份清單";
+"%lld stops" = "%lld 個停靠點";
+"%lld stops each · about %@ in total" = "每點 %lld 站 · 全程約 %@";
+"%lld stops — show controls" = "%lld 個停靠點 — 顯示控制";
+"%lld valid stops detected." = "已偵測到 %lld 個有效停靠點。";
+"%lld× looped" = "繞 %lld 圈";
+"(custom)" = "(自訂)";
+"(leave blank for until Stop)" = "（留空 = 我按停止前一直重複）";
+"A coordinate (your real location)" = "A 座標(您的真實位置)";
+"A member that isn't connected when a run starts is skipped, and the others carry on." = "開始時沒連上的成員會被跳過,其他支照常跑。";
+"A phone is currently signed in via Phone Control. The Mac is paused while the phone is driving. Sign out from the phone, or press the button below to take control back." = "已連線手機端,電腦端停止使用。請從手機登出,或按下方按鈕從電腦端強制停止手機控制。";
+"About" = "關於";
+"Add %lld" = "新增 %lld 個";
+"Add as stop" = "加為停靠點";
+"Add at least one waypoint before starting flower mode." = "花農模式至少要有一個點才能開始。";
+"Add waypoint" = "新增停靠點";
+"Add your Google API key in Settings to search with Google." = "要用 Google 搜尋,請先在設定裡填入你的 Google API 金鑰。";
+"Added %lld stops from paste." = "已從貼上文字加入 %lld 個停靠點。";
+"Address search failed (HTTP %lld)." = "地址搜尋失敗(HTTP %lld)。";
 "Admin authentication needed" = "需要管理者授權";
+"Advanced" = "進階";
+"After reaching the last point, teleport back to the start and walk the route again." = "跑到最後一個點後自動瞬移回起點，再走一次。";
+"Alerts" = "提示音";
+"All staged stops, routes, and movement state will be removed. The iPhone stays at its current simulated position." = "所有已暫存的停靠點、路線及移動狀態都將移除。iPhone 會停留在目前的模擬位置。";
 "Already paired · Re-pair…" = "已配對 · 重新配對…";
 "Appearance" = "外觀";
+"Apple Maps" = "Apple 地圖";
+"Apple Maps couldn't plan this route — its data may not cover this area. Try switching the routing engine to OSRM in Settings. (%@)" = "Apple Maps 無法規劃此路線 — 該地區的圖資可能不完整。請到設定切換路線引擎為 OSRM。(%@)";
+"Apple Satellite" = "Apple 衛星";
+"Apply this custom speed — works in every mode" = "套用自訂速度 — 所有模式皆適用";
 "Authenticate" = "授權";
 "Authenticating…" = "授權中…";
+"Auto-center" = "地圖置中";
+"Backed up %lld bookmarks · %lld routes · %lld presets." = "已備份 %lld 個書籤 · %lld 條路線 · %lld 個預設。";
+"Backup all data" = "全部資料備份";
+"Beginning" = "從頭開始";
+"Bookmarks" = "書籤";
+"Browse-only" = "僅瀏覽";
+"Bulk paste…" = "批次貼上…";
+"Bulk-add bookmarks" = "批次新增書籤";
+"Bulk-add coordinates…" = "批次加入座標…";
+"Bulk-add stops" = "批次加入停靠點";
+"Buy me a bubble tea" = "一杯珍珠奶茶支持作者";
+"By date added" = "按新增日期";
+"By name (A–Z)" = "按名稱 (A–Z)";
 "Cancel" = "取消";
+"Cancelled." = "已取消。";
+"Carto Voyager" = "Carto Voyager";
+"Categories" = "分類";
+"Category" = "分類";
+"Category colour" = "分類顏色";
+"Cell level" = "格子層級";
 "Center" = "中心";
+"Change travel mode mid-route. Speed updates immediately; route stays the same." = "可在路線途中更換交通方式，速度即時生效，路線維持不變。";
+"Changing this setting needs the current walk to stop. We'll restart it immediately with the new value." = "變更此設定需要先停止目前的漫步，會立刻用新值重新啟動。";
+"Choose base map layer" = "選擇地圖底圖";
+"Clear" = "清除";
+"Clear all" = "全部清除";
 "Clear all stops" = "清除全部停靠點";
+"Clear all stops and movement state?" = "清除所有停靠點與移動狀態？";
+"Clear staged stops?" = "清除已暫存的停靠點？";
 "Click anywhere on the map to drop **Stop 1**, **Stop 2**, … in the order you want to visit them. Right-click also offers an Add-as-stop option." = "在地圖任意位置點擊以加入 **停靠點 1**、**停靠點 2**…(依造訪順序)。對地圖按右鍵也有「加為停靠點」選項。";
+"Click the map to add the points to orbit." = "在地圖上點一下,加入要繞圈的點。";
+"Click to authenticate and restart the daemon — opens the macOS password prompt" = "點擊重新授權並重啟 daemon — 會跳出 macOS 密碼框";
 "Close" = "關閉";
+"Collapse" = "收合";
 "Connect" = "連線";
 "Connect a device first." = "請先連線一個裝置。";
 "Connect via USB" = "用 USB 連線";
+"Connect via USB cable" = "用 USB 線連接";
 "Connect via WiFi" = "用 WiFi 連線";
+"Connect via WiFi…" = "用 WiFi 連線…";
 "Connected" = "已連線";
+"Cooldown" = "冷卻時間";
+"Cooldown: wait %@ before a jump of %.1f km." = "冷卻中:要跳 %.1f 公里,還得等 %@。";
+"Coordinates of the simulated location" = "目前模擬地點的經緯度";
+"Copy" = "複製";
+"Copy all stops" = "停靠點全部複製";
+"Copy coordinates" = "複製座標";
+"Copy every staged stop as lat,lng per line — paste back into Bulk-add or share elsewhere" = "把全部停靠點複製成每行一個 lat,lng — 可貼回「貼上座標」或給其他工具";
+"Copyright © 2026 YCH81 (Jeff Hu). Licensed under the MIT License." = "Copyright © 2026 YCH81 (Jeff Hu)。授權於 MIT License。";
+"Couldn't resolve that suggestion." = "無法解析這個建議地點。";
+"Countdown (2 s)" = "倒數模式 (2 秒)";
+"Countdown gives you a visible 2-second timer with beeps before fire. Instant fires set+clear the moment you click, matching the original LocWarp behaviour exactly." = "倒數模式會跑 2 秒視覺倒數加 beep 提醒,歸零才 fire;立即模式按下去馬上 fire set+clear,完全等同 LocWarp 原版行為。";
+"Countdown mode: press the button to start a 2-second countdown, then the Mac will pull the gold pot (swap GPS to A and back)." = "倒數模式:按下按鈕開始 2 秒倒數,歸零後在手機才拉金盆(把 GPS 切到 A 再切回真實位置)。";
+"Counting down…" = "倒數中…";
+"Country of the simulated location" = "目前模擬地點的國家";
 "Custom" = "自訂";
+"Custom route (%lld stops)" = "自訂路線 (%lld 個停靠點)";
+"Custom speed" = "自訂速度";
+"Cycling" = "騎腳踏車";
+"Daemon failed to start: %@. Click to authenticate and restart." = "Daemon 啟動失敗：%@。點擊重新授權並重啟。";
 "Daemon needs to restart to pick up updated code. Click to re-authenticate." = "Daemon 需要重新啟動以載入新版程式碼,請點擊重新授權。";
-"Dev Mode: ON" = "Dev Mode: 開";
+"Database not ready yet — try again in a second." = "資料庫還沒準備好 — 過一秒再試。";
+"Default appearance uses the sage palette from the LociiGhost icon. System appearance reverts every tinted element to macOS's accent colour. Switching is live — no restart needed." = "預設外觀使用 LociiGhost icon 的鼠尾草綠配色。切換到「系統」會讓所有上色元素改用 macOS 系統強調色。即時切換，不需重啟。";
+"Default category:" = "預設分類：";
+"Default travel mode for the next Navigate." = "下一次導航使用的預設交通方式。";
+"Delete" = "刪除";
+"Delete this waypoint" = "刪除此停靠點";
 "Dev Mode: OFF" = "Dev Mode: 關";
+"Dev Mode: ON" = "Dev Mode: 開";
 "Dev Mode: unknown" = "Dev Mode: 未知";
 "Developer Mode is off" = "Developer Mode 未開啟";
 "Devices" = "裝置";
 "Disconnect" = "中斷連線";
+"Disconnected" = "已斷線";
+"Display only" = "僅顯示";
+"Don't connect" = "不連線";
+"Drag a row's handle to reorder stops." = "拖曳列首把手即可重新排序停靠點。";
+"Drag to reorder" = "拖曳以重新排序";
+"Drive LociiGhost from your phone over WiFi." = "用手機從 WiFi 操作 LociiGhost。";
+"Driving" = "開車";
+"Drop the custom speed and use the picker's preset" = "清除自訂速度,改用預設值";
+"Drop the custom speed and use the travel-mode preset" = "清除自訂速度，回到交通工具預設值";
+"Dwell at each stop" = "每站停留";
+"ESRI Satellite" = "ESRI 衛星";
+"Edit bookmark" = "編輯書籤";
+"Edit info…" = "編輯資訊…";
+"Edit name, category, icon" = "編輯名稱、分類、圖示";
+"Edit route" = "編輯路線";
+"Edit waypoints" = "編輯路線停靠點";
+"Edit waypoints (add / delete / reorder / change coords)" = "編輯路線停靠點（新增 / 刪除 / 重新排序 / 改座標）";
+"Edit waypoints…" = "編輯路線停靠點…";
+"Edit…" = "編輯…";
+"Enable" = "開啟";
 "Enable Developer Mode" = "開啟 Developer Mode";
 "Enable Developer Mode…" = "開啟 Developer Mode…";
 "Enable…" = "開啟…";
+"Engine:" = "引擎：";
+"Exit sync" = "退出同步手機端";
+"Expand" = "展開";
+"Export JSON…" = "匯出 JSON…";
+"Export all data (full backup)" = "全部資料匯出（完整備份）";
+"Export all…" = "全部匯出…";
+"Export bookmarks to GPX" = "匯出收藏為 GPX";
+"Export current route as GPX…" = "將目前路線匯出為 GPX…";
+"Export everything — bookmarks, routes, stop presets — to a single JSON file you can restore on another Mac or after a reinstall." = "把全部資料 — 書籤、路線、停靠點預設 — 匯出成一個 JSON 檔，可在其他 Mac 或重新安裝後還原。";
+"Export failed: could not encode the file as UTF-8." = "匯出失敗:無法以 UTF-8 編碼這個檔案。";
+"Export to GPX…" = "匯出成 GPX…";
+"Export to JSON…" = "匯出為 JSON…";
+"Exported %lld bookmarks." = "已匯出 %lld 筆收藏。";
+"Fastest plausible speed:" = "最快合理速度:";
+"Fire set + clear immediately (LocWarp-style)" = "立即 fire set+clear (LocWarp 原版行為)";
+"Flower" = "花農";
 "Follow System" = "跟隨系統";
+"Follows" = "跟隨";
+"Force re-authorize" = "強制重新授權";
+"Force-kill & restart daemon" = "強制終止並重啟 daemon";
+"Force-kill the daemon, prompt for your macOS password, and bring up a fresh privileged daemon" = "強制結束 daemon、跳出 macOS 密碼框、啟動有授權的新 daemon";
+"GPS was swapped to A and back" = "GPS 已切到 A 再切回真實位置";
+"GPX file is malformed: %@" = "GPX 檔案格式有問題:%@";
+"GPX opens in other map apps. Categories, icons and any colour you picked come along." = "GPX 在其他地圖 App 也打得開。分類、圖示,還有你自己選的顏色都會跟著走。";
+"GPX parsed, but it has no waypoints. Tracks import as routes, not bookmarks — use File ▸ Import GPX for those." = "GPX 讀得懂,但裡面沒有收藏點。軌跡要用「檔案 ▸ 匯入 GPX」當成路線匯入,不是收藏。";
 "General" = "一般";
+"Generate a fresh PIN + token. Any phone tab still using the old PIN gets logged out." = "產生新的 PIN 跟 token。之前用舊 PIN 配對過的手機會被登出。";
+"Geocoding" = "地理編碼";
+"Gold Ditto" = "拉金盆";
+"Gold Ditto needs a real iPhone connection." = "拉金盆需要連接真實 iPhone。";
+"Gold pot pulled" = "金盆已拉";
+"Google API key:" = "Google API 金鑰：";
+"Google Directions needs an API key — paste one into the Geocoding section above." = "Google Directions 需要 API 金鑰 — 請貼到上方地理編碼區域。";
+"Google search needs an API key — paste one in below." = "用 Google 搜尋需要 API 金鑰 — 在下面貼上一組。";
+"Group sync" = "群組同步";
+"Group sync: %@ isn't moving with the others." = "群組同步:%@ 沒有跟著一起移動。";
+"Group sync: moving %lld iPhones together." = "群組同步:%lld 支 iPhone 一起移動。";
+"Hide A coordinate" = "隱藏 A 座標";
+"Hide this panel — stops stay in the sidebar; click the floating chip on the map to bring it back" = "隱藏此面板 — 停靠點仍會留在側欄；點地圖上的浮動標籤即可重新叫回";
+"Hold jumps that would be too fast" = "擋下太快的跳躍";
+"How to get a Google Geocoding API key" = "如何取得 Google Geocoding API 金鑰";
+"Icon" = "圖示";
+"If LociiGhost stops responding (the daemon hangs, devices won't appear, navigation freezes), use this button to kill the daemon with admin privileges and start a clean one — no Terminal required." = "如果 LociiGhost 無回應（daemon hang、裝置不顯示、導航凍結），按這個按鈕用管理者權限砍掉 daemon 並重啟一個乾淨的 — 不用開終端機。";
+"If the system password dialog stopped appearing, or the daemon is stuck in a half-authorized state, force a clean re-authorization here. This will end the running daemon, prompt for your macOS password, and bring up a fresh privileged daemon." = "若系統密碼框沒有自動出現、或 daemon 卡在授權不完整的狀態，可在這裡強制重新授權。動作會結束目前 daemon、跳出 macOS 密碼框、再啟動一個新的有授權 daemon。";
+"Import GPX" = "匯入 GPX";
+"Import GPX…" = "匯入 GPX…";
+"Import JSON…" = "匯入 JSON…";
+"Import bookmarks from GPX" = "從 GPX 匯入收藏";
+"Import bookmarks from JSON" = "從 JSON 匯入書籤";
+"Import bookmarks from JSON (export + bulk paste live in Settings — Cmd-,)" = "從 JSON 匯入書籤（匯出與批次貼上在設定中 — Cmd-,）";
+"Import from GPX…" = "從 GPX 匯入…";
+"Import from JSON…" = "從 JSON 匯入…";
+"Imported %lld bookmarks." = "已匯入 %lld 個書籤。";
+"Imported route" = "匯入的路線";
+"Inspired by " = "致敬 ";
+"Instant" = "立即模式";
+"Instant mode: press the button to pull the gold pot immediately (swap GPS to A and back, no countdown)." = "立即模式:按下按鈕後在手機立刻拉金盆(把 GPS 切到 A 再切回真實位置,沒有倒數)。";
+"JSON parsed, but no bookmarks were found." = "JSON 已解析,但找不到任何書籤。";
+"Join LINE community" = "加入 LINE 社群";
 "Joystick" = "搖桿";
+"Keep going" = "繼續執行";
+"Keep walking" = "繼續漫步";
+"Key configured — Google is used as a fallback when MapKit returns no matches." = "已設定金鑰 — MapKit 找不到結果時會 fallback 到 Google。";
+"Kicks every paired phone and rotates the PIN." = "把所有已登入的手機端踢出並重新產生 PIN。";
+"L17 ≈ 76 m matches Pikmin Bloom's decor-pikmin cells. Coarser levels are useful for stop / gym uniqueness checks." = "L17 ≈ 76 公尺對應 Pikmin Bloom 的裝飾皮克敏格子；較粗的層級可拿來看 stop / gym 的唯一性。";
+"LINE Official Account @382ydavk" = "LINE 官方帳號 @382ydavk";
 "Language" = "語言";
+"Language:" = "語言：";
+"Lap %lld / %lld" = "第 %1$lld / %2$lld 圈";
 "Laps" = "圈數";
+"Laps per point" = "每點圈數";
+"Leads" = "帶領";
+"Load these stops into the Multi-Stop panel. Choose whether to also teleport the iPhone to the first stop — Display Only just stages and re-centres the map, while Teleport to First moves the iPhone there immediately so Navigate starts cleanly." = "將這些停靠點載入多點面板。選擇是否同時瞬移 iPhone 到第一個停靠點 — 「僅顯示」只暫存並重新置中地圖，「瞬移到第一個」則立即移動 iPhone，讓導航從起點整潔開始。";
+"Loading…" = "載入中…";
+"LocWarp" = "LocWarp";
+"LociiGhost" = "LociiGhost";
 "Locked while navigating. Stop first to switch." = "導航中無法切換,請先停止。";
+"Logs" = "紀錄";
+"Look up locations without a connected iPhone." = "不需要連線 iPhone 也能查地點。";
+"Loop the route" = "重複跑路線";
+"Mac and phone can both drive at the same time. If their actions clash and the iPhone's position gets out of sync, press Restore on BOTH sides and start over." = "開啟後 Mac 跟手機都可以同時操作。如果兩邊動作打架,造成 iPhone 定位或功能錯亂,請在兩端都按「還原」後重新開始。";
+"Mac time / Time at the simulated location" = "Mac 時間 / 模擬地點當地時間";
+"Make sure the daemon is running (Authenticate above if the banner is showing) and try again." = "確認 daemon 在執行(若有橘色 banner 請先按授權),然後重試。";
 "Manual IP entry" = "手動輸入 IP";
+"Manual order" = "手動排序";
+"Map" = "地圖";
+"Map Layer" = "地圖圖層";
+"Map Layer · %@" = "地圖圖層 · %@";
+"Map path (OSRM)" = "地圖路徑 (OSRM)";
+"Max" = "最長";
+"Merge" = "合併";
+"Min" = "最短";
+"Minimum gap between jumps:" = "兩次跳躍最短間隔:";
+"Move" = "移動";
+"Move bookmarks between machines or paste many at once." = "在不同 Mac 間搬移書籤，或一次貼上多筆。";
+"Move several iPhones together. Every mode — teleport, navigate, random walk, flower — sends the same position to each member." = "多支 iPhone 一起移動。瞬移、導航、隨機漫步、花農模式都會把同一個座標送給每一位成員。";
+"Move the selected iPhones together" = "讓勾選的 iPhone 一起移動";
 "Movement Modes" = "移動模式";
+"Multi-point tracks (GPX recordings or LociiGhost JSON exports). Use Import → GPX for trip files from other apps; JSON for round-tripping between LociiGhost machines." = "多點路線（GPX 紀錄檔或 LociiGhost JSON 匯出）。其他 app 的路線用「匯入 GPX」；LociiGhost 之間互傳用 JSON。";
 "Multi-stop" = "多點";
+"Name" = "名稱";
 "Navigate" = "導航";
+"Navigate to this location with current settings" = "用目前設定導航到此地點";
+"Navigation stopped. Do you also want to remove the %lld staged stops from the map?" = "導航已停止。是否也要從地圖移除 %lld 個已暫存的停靠點？";
+"New v%@" = "新版 v%@";
 "No active connection" = "未連線";
+"No bookmarks to export." = "沒有可匯出的收藏。";
+"No bookmarks yet." = "目前沒有書籤。";
 "No device selected" = "未選擇裝置";
+"No devices yet — connect one first." = "還沒有裝置 — 請先連一支。";
+"No history yet" = "尚無記錄";
 "No iPhone connected" = "尚未連接 iPhone";
-"No iPhones found on the LAN. Make sure the iPhone is on the same Wi-Fi and you've run **Pair for WiFi** once. You can also enter an IP manually below." = "區網內找不到 iPhone。請確認 iPhone 與 Mac 在同一個 Wi-Fi,並且至少跑過一次 **WiFi 配對**。也可以從下方手動輸入 IP。";
 "No iPhones found on the LAN." = "區網內找不到 iPhone。";
+"No iPhones found on the LAN. Make sure the iPhone is on the same Wi-Fi and you've run **Pair for WiFi** once. You can also enter an IP manually below." = "區網內找不到 iPhone。請確認 iPhone 與 Mac 在同一個 Wi-Fi,並且至少跑過一次 **WiFi 配對**。也可以從下方手動輸入 IP。";
+"No key configured — search uses Apple MapKit only." = "未設定金鑰 — 搜尋只走 Apple MapKit。";
+"No saved routes yet." = "目前沒有儲存的路線。";
 "No stops staged yet." = "尚未加入任何停靠點。";
+"No valid coordinates found in the pasted text." = "貼上的文字裡找不到有效座標。";
+"No waypoints to run." = "沒有可執行的停靠點。";
+"No waypoints yet. Tap **Add waypoint** to begin." = "目前沒有停靠點。請按 **新增停靠點** 開始。";
+"Nothing to back up — no bookmarks, routes, or stop presets yet." = "沒有可備份的內容 — 還沒有書籤、路線或停靠點預設。";
+"Open a backup file; pick Merge or Overwrite when prompted" = "開啟備份檔；出現提示時選擇合併或覆蓋";
+"Open folder" = "開啟資料夾";
+"Open the LociiGhost log folder in Finder. Attach these files when you report a problem." = "在 Finder 中開啟 LociiGhost 的紀錄資料夾。回報問題時請附上這些檔案。";
+"Open the WiFi candidate picker" = "開啟 WiFi 連線挑選視窗";
+"OpenStreetMap" = "OpenStreetMap";
+"OpenStreetMap data through komoot's search, built for typing. Free, faster to respond than Nominatim, occasionally looser matches." = "OpenStreetMap 的資料,走 komoot 的搜尋,本來就是為了邊打邊查設計的。免費、比 Nominatim 快,偶爾比對得比較寬鬆。";
+"OpenStreetMap's own search. Free, and strong on places Apple doesn't index — but it allows one search per second, so results appear a moment after you stop typing." = "OpenStreetMap 自己的搜尋。免費,而且找得到 Apple 沒收錄的地方 — 但它限制每秒一次查詢,所以要停下打字才會出結果。";
+"Optional" = "選填";
 "Or enter IP manually" = "或手動輸入 IP";
+"Orbiting" = "繞圈中";
+"Overwrite" = "覆蓋";
+"PIN" = "PIN";
 "Pair for WiFi" = "WiFi 配對";
 "Pair record on disk. Click only if WiFi connect stops working — generates a fresh record." = "已有配對記錄。只在 WiFi 連線壞掉時才需要點 — 會重新產生一份新的記錄。";
 "Pairing…" = "配對中…";
+"Paste" = "貼上";
+"Paste from clipboard" = "從剪貼簿貼上";
+"Paste many coordinates at once — each line becomes the next stop" = "一次貼上多個座標，每一行依序成為下一個停靠點";
+"Paste one bookmark per line. Each line can be `name, lat, lng` or `lat, lng, name`. Comma, tab, or semicolon all work. Lines starting with # are ignored." = "每行貼上一個書籤。格式可為 `名稱, lat, lng` 或 `lat, lng, 名稱`，逗號、Tab 或分號皆可作分隔符，# 開頭的行視為注釋。";
+"Paste one coordinate per line — `lat, lng`. Comma, tab, or semicolon all work as separators; lines starting with # are ignored. The iPhone teleports to the first pasted coordinate so path-planning starts locally; any previously staged stops are cleared." = "每行一組座標 `lat, lng`。逗號、tab、分號皆可作分隔；`#` 開頭視為註解。iPhone 會先瞬移到第一個座標，讓後續路徑規劃在當地進行；原本已堆疊的停靠點會被清除。";
+"Paste your key here" = "貼上你的金鑰";
 "Path is a great-circle line, no street routing." = "路徑為大圓直線,不沿街道。";
+"Path style" = "路徑樣式";
 "Pause" = "暫停";
+"Pause at each stop" = "每站停留";
+"Pause at each waypoint" = "在每個停靠點暫停";
+"Pause seconds:" = "停留秒數：";
+"Phone Control" = "手機操控";
+"Phone Control…" = "手機操控…";
+"Phone control HTTP server isn't reachable." = "無法連到手機操控的 HTTP server。";
+"Phone in control" = "手機端使用中";
+"Phone must be on the same Wi-Fi as this Mac. The PIN regenerates each time the daemon restarts; tap Regenerate below to invalidate any phone that's currently paired." = "手機必須跟這台 Mac 在同一個 Wi-Fi。每次 daemon 重啟 PIN 都會重新產生; 按下方「重新產生」可以讓現在配對中的手機立刻失效。";
+"Play system sound on route complete" = "路線跑完時播放系統提示音";
+"Play the macOS system alert when a navigation, route loop, or random walk reaches its destination naturally. Explicit stops won't trigger the sound." = "導航、路線循環、隨機漫步自然抵達終點時播放 macOS 系統提示音。使用者主動按停止不會觸發。";
 "Plug an iPhone into USB and tap **Trust this computer** when prompted." = "用 USB 線連接 iPhone,出現「信任這部電腦」時請點信任。";
 "Plug iPhone in once. Two Trust prompts will appear; after that, WiFi works without the cable." = "插一次 USB 線即可。會跳兩次信任對話框,完成後 WiFi 就不需要線了。";
+"Plug in the USB cable first" = "請先插上 USB 線";
 "Press Start, then hold **W A S D** or arrow keys." = "按 Start 後,按住 **W A S D** 或方向鍵。";
+"Preview" = "預覽";
+"Pull Gold Pot" = "拉金盆";
+"Pulling the gold pot in…" = "即將拉金盆…";
 "Quit" = "退出";
+"Quit LociiGhost. The privileged daemon stays running so the next launch doesn't need the password." = "離開 LociiGhost。 daemon 仍會在背景執行,下次啟動不必再次輸入密碼。";
 "Radius" = "半徑";
 "Random" = "隨機";
+"Re-authorizing…" = "重新授權中…";
+"Re-scan for connected devices" = "重新掃描已連接裝置";
+"Real GPS may take 30 s to 2 min to re-acquire on iPhone. Toggle Airplane Mode on the iPhone for faster reacquisition." = "iPhone 重新取得真實 GPS 可能需要 30 秒到 2 分鐘。在 iPhone 上開關一次飛航模式可以明顯加速。";
+"Recent" = "最近";
+"Recent Places" = "最近位置";
+"Recenter" = "回到目前位置";
+"Reconnected to the iPhone. Press Resume to pick the route back up." = "已重新連上 iPhone。按「繼續」接回原本的路線。";
+"Reconnected — picking the flower run back up." = "已重新連線 — 接回花農模式繼續跑。";
 "Refresh" = "重新整理";
+"Refuse a jump no physical body could have made. This is your own rule, not a model of any game's detection — you set what counts as too fast, and LociiGhost holds the next teleport until enough time has passed." = "擋掉任何真人做不到的跳躍。這是你自己訂的規則,不是在猜某個遊戲怎麼偵測 — 多快算太快由你決定,LociiGhost 會把下一次瞬移壓著,直到時間夠了為止。";
+"Regenerate PIN" = "重新產生 PIN";
+"Reopen the route controls" = "重新開啟路線控制";
+"Reorder stops by minimum total path distance — Stop 1 stays the start" = "依最短總距離重新排序 — 停靠點 1 仍為起點";
+"Reorder stops by minimum total path distance — Stop 1 stays the start, the rest get sorted into an efficient visit order" = "依最短總距離重新排序 — 停靠點 1 仍為起點，其餘依路順最佳化";
+"Restarting…" = "重啟中…";
+"Restore" = "還原";
 "Restore Real GPS" = "還原真實 GPS";
+"Restore asks before doing anything: Merge keeps your current data, Overwrite replaces it." = "還原前會先問你：合併保留現有資料，覆蓋會替換全部。";
+"Restore from backup JSON" = "從備份 JSON 還原";
+"Restore from backup?" = "從備份還原?";
+"Restore from backup…" = "從備份還原…";
+"Restored: %lld bookmarks · %lld routes · %lld presets added." = "已還原：新增 %lld 個書籤 · %lld 條路線 · %lld 個預設。";
 "Resume" = "繼續";
-"S2 grid" = "S2 網格";
+"Resume from last (#%lld)" = "從上次中斷處繼續（第 %lld 點）";
+"Resume from last (no saved progress)" = "從上次中斷處繼續（沒有儲存的進度）";
+"Retry" = "重試";
+"Reveal in Finder" = "在 Finder 顯示";
+"Right-click anywhere on the map and pick **Save as bookmark…** to add one." = "在地圖上任意位置按右鍵,選 **儲存為書籤…** 即可新增。";
+"Ring radius" = "繞圈半徑";
+"Round %lld of %lld · point %lld of %lld · %@ left" = "第 %lld/%lld 輪 · 第 %lld/%lld 點 · 還要 %@";
+"Rounds" = "總輪數";
+"Routes" = "路線";
+"Routing engine" = "路線引擎";
+"Run **Pair for WiFi** once with the cable plugged in" = "請先用 USB 線跑一次 **WiFi 配對**";
+"Run `cat LICENSE` from the project root for the full MIT text with both copyright notices." = "在專案根目錄執行 `cat LICENSE` 可看到完整 MIT 授權文與兩段 copyright 標示。";
+"Run once (no save)" = "執行一次（不儲存）";
+"Run this trip once without overwriting the saved route" = "執行一次但不覆蓋原本儲存的路線";
 "S2 Map Grid System" = "S2 地圖網格系統";
 "S2 Map Grid System — visualise Pikmin Bloom decor cells (L17 ≈ 76 m) so you can plan routes that hit every cell." = "S2 地圖網格系統 — 視覺化 Pikmin Bloom 裝飾皮克敏所屬格（L17 ≈ 76 公尺），方便規劃覆蓋每個格子的路線。";
-"Show grid on map" = "在地圖上顯示網格";
-"Cell level" = "格子層級";
-"Showing L%lld — zoom in to see L%lld cells." = "目前顯示 L%lld — 放大才能看到 L%lld 格子。";
-"L17 ≈ 76 m matches Pikmin Bloom's decor-pikmin cells. Coarser levels are useful for stop / gym uniqueness checks." = "L17 ≈ 76 公尺對應 Pikmin Bloom 的裝飾皮克敏格子；較粗的層級可拿來看 stop / gym 的唯一性。";
+"S2 grid" = "S2 網格";
+"Save" = "儲存";
+"Save a JSON file containing every bookmark, route, and stop preset" = "儲存一個包含全部書籤、路線、停靠點預設的 JSON 檔";
+"Save as bookmark…" = "儲存為書籤…";
+"Save as new route" = "加入新路線";
+"Save as preset" = "儲存為預設";
+"Save bookmark" = "儲存書籤";
+"Save changes" = "儲存變更";
+"Save route" = "儲存路線";
+"Save these stops as a Route so you can replay this trip later" = "把這些停靠點儲存為路線,日後可以直接重播這趟行程";
+"Saved stop presets" = "已儲存的停靠點預設";
 "Scan LAN for paired iPhones" = "掃描區網上已配對的 iPhone";
 "Scanning LAN for paired iPhones…" = "掃描區網上已配對的 iPhone…";
 "Search address or place" = "搜尋地址、地點、經緯度";
+"Search provider:" = "搜尋來源:";
+"Select a device first." = "請先選一個裝置。";
+"Set A coordinate and connect an iPhone first" = "請先設定 A 座標並連接 iPhone";
+"Settings" = "設定";
+"Show A coordinate" = "顯示 A 座標";
+"Show grid on map" = "在地圖上顯示網格";
+"Show on map without moving the iPhone" = "在地圖預覽,不移動 iPhone";
+"Show route controls" = "顯示路線控制";
+"Showing L%lld — zoom in to see L%lld cells." = "目前顯示 L%lld — 放大才能看到 L%lld 格子。";
+"Sign every paired phone out and rotate the PIN." = "把所有已登入的手機端踢出並重新產生 PIN。";
+"Sign out all phones" = "登出所有手機端";
+"Smart sort" = "AI 路順排序";
+"Snap to real" = "瞬移真實位置";
+"Snap to real location" = "瞬移到 Mac 真實位置";
+"Sort order" = "排序方式";
+"Specific stop" = "指定停靠點";
 "Speed" = "速度";
+"Speed: %@ km/h" = "時速: %@ km/h";
+"Start" = "開始";
+"Start Flower Mode" = "開始花農模式";
 "Start Joystick" = "啟動搖桿";
 "Start Random Walk" = "開始隨機漫步";
+"Start from" = "從哪裡開始";
+"Start route" = "開始路線";
+"Start route?" = "開始這條路線?";
+"Start the 2-second countdown then push GPS to A" = "啟動 2 秒倒數後把 GPS 推到 A 點";
 "Stop" = "停止";
+"Stop #" = "第 # 點";
+"Stop & apply" = "停止並套用";
+"Stop & start" = "停止並開始";
+"Stop & switch" = "停止並切換";
 "Stop Joystick" = "停止搖桿";
 "Stop Random Walk" = "停止隨機漫步";
+"Stop and wait at each point along the route before continuing." = "在路線上的每個停靠點等待指定秒數後再繼續。";
+"Stop current route?" = "要停止目前的路線嗎？";
+"Stop current simulation?" = "要停止目前的模擬嗎？";
+"Stop driving simultaneously with the phone — locks the Mac side back to phone control" = "退出同步狀態 — 電腦端回到鎖定,讓手機獨自操作";
+"Stop phone control" = "停止手機端";
+"Stop random walk to change this?" = "要先停止隨機漫步才能變更此設定?";
+"Stop simulating and let the device report its real location" = "停止模擬,讓裝置回報真實位置";
+"Stops per lap" = "每圈站數";
+"Straight line" = "直線";
+"Straight line (skip roads)" = "直線模式 (不沿街道)";
+"Straight line — ON" = "直線模式 — 開";
+"Suggestions as you type, no key and no quota. Weakest on Chinese shop and landmark names." = "邊打邊出建議,不用金鑰也沒有額度限制。中文店名和地標是它最弱的地方。";
+"Support YCH81 (aka Jeff Hu) on Ko-fi" = "在 Ko-fi 上支持 YCH81 aka Jeff Hu";
+"Support the developer" = "支持作者";
+"Switch to Multi-stop mode first" = "請先切到多點模式";
+"Switch to a connected iPhone to use movement modes." = "請切換到已連線的 iPhone 才能使用移動模式。";
+"Switching modes ends the current navigation. The iPhone halts at its current simulated position." = "切換模式會結束目前的導航，iPhone 會停留在當下的模擬位置。";
+"Switching modes ends the current simulation. The iPhone halts at its current simulated position." = "切換模式會結束目前的模擬，iPhone 會停留在當下的模擬位置。";
 "Switching takes effect immediately on the next view update — no restart needed. Daemon-side error messages remain in English regardless." = "切換後下一次畫面更新就會生效,不需要重啟 app。Daemon 端的錯誤訊息維持英文。";
 "System Functions" = "系統功能";
 "Tap Trust on iPhone when prompted." = "出現信任對話框時請在 iPhone 上點「信任」。";
-"Teleport" = "瞬間移動";
-"Tip: click the map again to add another stop." = "提示:再次點擊地圖可加入下一個停靠點。";
-"Travel mode" = "移動方式";
-"Use" = "使用";
-"Use exact coordinates" = "使用精確座標";
-"Use when the iPhone isn't picked up by auto-discover (different subnet, VPN, etc.). Default port for RemotePairing is 49152." = "若 iPhone 沒被自動掃到(不同網段、走 VPN 等)就用這個。RemotePairing 的預設 port 是 49152。";
-"Walking randomly" = "隨機漫步中";
-"WiFi Devices" = "WiFi 裝置";
-
-/* SpeedPicker */
-"Speed: %@ km/h" = "時速: %@ km/h";
-"(custom)" = "(自訂)";
-"Drop the custom speed and use the picker's preset" = "清除自訂速度,改用預設值";
-
-/* TravelProfile labels */
-"Walking" = "走路";
-"Cycling" = "騎腳踏車";
-"Driving" = "開車";
-
-/* MovementModesSection */
-"Select a device first." = "請先選一個裝置。";
-
-/* BottomBar tooltips */
-"Stop simulating and let the device report its real location" = "停止模擬,讓裝置回報真實位置";
-"Re-scan for connected devices" = "重新掃描已連接裝置";
-"Quit LociiGhost. The privileged daemon stays running so the next launch doesn't need the password." = "離開 LociiGhost。 daemon 仍會在背景執行,下次啟動不必再次輸入密碼。";
-
-/* Navigation status interpolations */
-"Lap %lld / %lld" = "第 %1$lld / %2$lld 圈";
-
-/* Bookmarks (Phase 5.3) */
-"Bookmarks" = "書籤";
-"No bookmarks yet." = "目前沒有書籤。";
-"Right-click anywhere on the map and pick **Save as bookmark…** to add one." = "在地圖上任意位置按右鍵,選 **儲存為書籤…** 即可新增。";
-"Uncategorized" = "未分類";
-"Save bookmark" = "儲存書籤";
-"Edit bookmark" = "編輯書籤";
-"Name" = "名稱";
-"Category" = "分類";
-"Icon" = "圖示";
-"Save" = "儲存";
-"Delete" = "刪除";
-"Edit…" = "編輯…";
-"Teleport here" = "瞬移到這裡";
-"Add as stop" = "加為停靠點";
-"Save as bookmark…" = "儲存為書籤…";
-
-/* GPX (Phase 5.4) */
-"Import GPX…" = "匯入 GPX…";
-"Import GPX" = "匯入 GPX";
-"Export current route as GPX…" = "將目前路線匯出為 GPX…";
-
-/* Routes (Phase 5.4 — saved GPX tracks) */
-"Routes" = "路線";
-"Save route" = "儲存路線";
-"Edit route" = "編輯路線";
-"Imported route" = "匯入的路線";
-"%lld points" = "%lld 個點";
-"No saved routes yet." = "目前沒有儲存的路線。";
-"Use **File ▸ Import GPX…** (⌘O) to add a recorded track." = "使用 **檔案 ▸ 匯入 GPX…** (⌘O) 加入錄製的軌跡。";
-"Start route" = "開始路線";
-"Start route?" = "開始這條路線?";
-"Start" = "開始";
-"Teleport to the start of \"%1$@\" and navigate %2$lld points?" = "瞬移到「%1$@」的起點,並依序走完 %2$lld 個點?";
-
-/* UI Phase 1.4 — top status bar / header / sidebar / search */
-"Phone Control" = "手機操控";
-"Weather at the simulated location" = "目前模擬地點的天氣";
-"Copy coordinates" = "複製座標";
-"Paste from clipboard" = "從剪貼簿貼上";
-"Teleport iPhone to this location" = "瞬移 iPhone 到此地點";
-"Show on map without moving the iPhone" = "在地圖預覽,不移動 iPhone";
-"Navigate to this location with current settings" = "用目前設定導航到此地點";
-"Type an address or lat,lng first." = "請先輸入地址或 lat,lng。";
-"Expand" = "展開";
-"Collapse" = "收合";
-"Choose base map layer" = "選擇地圖底圖";
-"Recenter" = "回到目前位置";
-
-/* Device-row Connect-via-WiFi pull-down menu */
-"Connect via WiFi…" = "用 WiFi 連線…";
-"Don't connect" = "不連線";
-"Connect via USB cable" = "用 USB 線連接";
-"Plug in the USB cable first" = "請先插上 USB 線";
-"Open the WiFi candidate picker" = "開啟 WiFi 連線挑選視窗";
-"Run **Pair for WiFi** once with the cable plugged in" = "請先用 USB 線跑一次 **WiFi 配對**";
-"You" = "您的位置";
-
-/* Gold Ditto mode (Pikmin Bloom 拉金盆 exploit) */
-"Gold Ditto" = "拉金盆";
-"Pull Gold Pot" = "拉金盆";
-"Countdown mode: press the button to start a 2-second countdown, then the Mac will pull the gold pot (swap GPS to A and back)." = "倒數模式:按下按鈕開始 2 秒倒數,歸零後在手機才拉金盆(把 GPS 切到 A 再切回真實位置)。";
-"Instant mode: press the button to pull the gold pot immediately (swap GPS to A and back, no countdown)." = "立即模式:按下按鈕後在手機立刻拉金盆(把 GPS 切到 A 再切回真實位置,沒有倒數)。";
-"A coordinate (your real location)" = "A 座標(您的真實位置)";
-"Show A coordinate" = "顯示 A 座標";
-"Hide A coordinate" = "隱藏 A 座標";
-"Use current location" = "使用目前位置";
-"Pulling the gold pot in…" = "即將拉金盆…";
-"Counting down…" = "倒數中…";
-"Cancelled." = "已取消。";
-"Start the 2-second countdown then push GPS to A" = "啟動 2 秒倒數後把 GPS 推到 A 點";
-"Countdown (2 s)" = "倒數模式 (2 秒)";
-"Instant" = "立即模式";
-"Countdown gives you a visible 2-second timer with beeps before fire. Instant fires set+clear the moment you click, matching the original LocWarp behaviour exactly." = "倒數模式會跑 2 秒視覺倒數加 beep 提醒,歸零才 fire;立即模式按下去馬上 fire set+clear,完全等同 LocWarp 原版行為。";
-"Fire set + clear immediately (LocWarp-style)" = "立即 fire set+clear (LocWarp 原版行為)";
-"Set A coordinate and connect an iPhone first" = "請先設定 A 座標並連接 iPhone";
-"Gold Ditto needs a real iPhone connection." = "拉金盆需要連接真實 iPhone。";
-"Gold pot pulled" = "金盆已拉";
-"GPS was swapped to A and back" = "GPS 已切到 A 再切回真實位置";
-"Apple Maps" = "Apple 地圖";
-"Apple Satellite" = "Apple 衛星";
-"OpenStreetMap" = "OpenStreetMap";
-"Carto Voyager" = "Carto Voyager";
-"ESRI Satellite" = "ESRI 衛星";
-
-/* Search bar action button labels */
-"Paste" = "貼上";
-"Teleport" = "瞬移";
-"Preview" = "預覽";
-"Navigate" = "導航";
-
-/* TopStatusBar (status bar A) — left buttons + chip help */
-"Restore" = "還原";
-"Refresh" = "重新整理";
-"Map Layer" = "地圖圖層";
-"Country of the simulated location" = "目前模擬地點的國家";
-"Coordinates of the simulated location" = "目前模擬地點的經緯度";
-"Mac time / Time at the simulated location" = "Mac 時間 / 模擬地點當地時間";
-
-/* Bookmarks JSON import (Phase 5.5) */
-"Import bookmarks from JSON" = "從 JSON 匯入書籤";
-"JSON parsed, but no bookmarks were found." = "JSON 已解析,但找不到任何書籤。";
-"Imported %lld bookmarks." = "已匯入 %lld 個書籤。";
-
-/* Multi-stop panel — reorder hint + Save-as-route */
-"Drag a row's handle to reorder stops." = "拖曳列首把手即可重新排序停靠點。";
-"Drag to reorder" = "拖曳以重新排序";
-"Save as new route" = "加入新路線";
-"Save these stops as a Route so you can replay this trip later" = "把這些停靠點儲存為路線,日後可以直接重播這趟行程";
-"Custom route (%lld stops)" = "自訂路線 (%lld 個停靠點)";
-
-/* Virtual Map device + disconnected overlay (Phase 5.6) */
-"Map" = "地圖";
-"Browse-only" = "僅瀏覽";
-"Look up locations without a connected iPhone." = "不需要連線 iPhone 也能查地點。";
-"Disconnected" = "已斷線";
-"This iPhone isn't currently reachable. Reconnect it, or pick the **Map** entry in the sidebar to browse the map without a device." = "目前無法連到這台 iPhone。請重新連線,或選擇側欄的「**地圖**」項目以無裝置模式瀏覽地圖。";
-"Switch to a connected iPhone to use movement modes." = "請切換到已連線的 iPhone 才能使用移動模式。";
-
-/* ControlPanel */
 "Target" = "目的地";
-"%lld stops" = "%lld 個停靠點";
-"%lld× looped" = "繞 %lld 圈";
-"single trip" = "單次";
-"Straight line — ON" = "直線模式 — 開";
-"Straight line (skip roads)" = "直線模式 (不沿街道)";
-
-/* PhoneControlSheet (Phase 5.2 — Mobile-Web Phone Control) */
-"Phone Control…" = "手機操控…";
-"Drive LociiGhost from your phone over WiFi." = "用手機從 WiFi 操作 LociiGhost。";
-"Phone Control" = "手機操控";
-"Type the URL into your phone's browser, then enter the PIN." = "把網址打到手機瀏覽器,輸入 PIN 即可開始操作。";
-"Loading…" = "載入中…";
-"Phone control HTTP server isn't reachable." = "無法連到手機操控的 HTTP server。";
-"Make sure the daemon is running (Authenticate above if the banner is showing) and try again." = "確認 daemon 在執行(若有橘色 banner 請先按授權),然後重試。";
-"Retry" = "重試";
-"Regenerate PIN" = "重新產生 PIN";
-"Generate a fresh PIN + token. Any phone tab still using the old PIN gets logged out." = "產生新的 PIN 跟 token。之前用舊 PIN 配對過的手機會被登出。";
-"URL" = "網址";
-"PIN" = "PIN";
-"Copy" = "複製";
-"Phone must be on the same Wi-Fi as this Mac. The PIN regenerates each time the daemon restarts; tap Regenerate below to invalidate any phone that's currently paired." = "手機必須跟這台 Mac 在同一個 Wi-Fi。每次 daemon 重啟 PIN 都會重新產生; 按下方「重新產生」可以讓現在配對中的手機立刻失效。";
-
-/* Update-available badge in AppHeaderBar */
-"New v%@" = "新版 v%@";
-"Update available — click to view release" = "有新版本可用 — 點擊查看 Release";
-
-/* Mac phone-control lockout overlay */
-"Phone in control" = "手機端使用中";
-"A phone is currently signed in via Phone Control. The Mac is paused while the phone is driving. Sign out from the phone, or press the button below to take control back." = "已連線手機端,電腦端停止使用。請從手機登出,或按下方按鈕從電腦端強制停止手機控制。";
-"Stop phone control" = "停止手機端";
-"Sign out all phones" = "登出所有手機端";
-"Sign every paired phone out and rotate the PIN." = "把所有已登入的手機端踢出並重新產生 PIN。";
-"Kicks every paired phone and rotates the PIN." = "把所有已登入的手機端踢出並重新產生 PIN。";
-"Use both at once" = "同時使用兩端";
-"Exit sync" = "退出同步手機端";
-"Stop driving simultaneously with the phone — locks the Mac side back to phone control" = "退出同步狀態 — 電腦端回到鎖定,讓手機獨自操作";
-"Use both at the same time?" = "確定要同時開啟兩端?";
-"Enable" = "開啟";
-"Mac and phone can both drive at the same time. If their actions clash and the iPhone's position gets out of sync, press Restore on BOTH sides and start over." = "開啟後 Mac 跟手機都可以同時操作。如果兩邊動作打架,造成 iPhone 定位或功能錯亂,請在兩端都按「還原」後重新開始。";
-"Real GPS may take 30 s to 2 min to re-acquire on iPhone. Toggle Airplane Mode on the iPhone for faster reacquisition." = "iPhone 重新取得真實 GPS 可能需要 30 秒到 2 分鐘。在 iPhone 上開關一次飛航模式可以明顯加速。";
-"Support YCH81 (aka Jeff Hu) on Ko-fi" = "在 Ko-fi 上支持 YCH81 aka Jeff Hu";
-"Support the developer" = "支持作者";
-"LINE Official Account @382ydavk" = "LINE 官方帳號 @382ydavk";
-"Buy me a bubble tea" = "一杯珍珠奶茶支持作者";
-"Join LINE community" = "加入 LINE 社群";
-
-// ── v1.10.7 ─────────────────────────────────────────────────
-
-// StartRouteSheet
-"Teleport to the start of \"%1$@\" and navigate %2$lld points?" = "瞬移到「%1$@」的起點並導航 %2$lld 個點？";
-"Loop the route" = "重複跑路線";
-"After reaching the last point, teleport back to the start and walk the route again." = "跑到最後一個點後自動瞬移回起點，再走一次。";
-"Total laps:" = "總圈數：";
-"Until I press Stop" = "我按停止前一直重複";
-"(leave blank for until Stop)" = "（留空 = 我按停止前一直重複）";
-
-// BulkPasteStopsSheet + MultiStopPanel
-"Bulk-add stops" = "批次加入停靠點";
-"Paste one coordinate per line — `lat, lng`. Comma, tab, or semicolon all work as separators; lines starting with # are ignored. The iPhone teleports to the first pasted coordinate so path-planning starts locally; any previously staged stops are cleared." = "每行一組座標 `lat, lng`。逗號、tab、分號皆可作分隔；`#` 開頭視為註解。iPhone 會先瞬移到第一個座標，讓後續路徑規劃在當地進行；原本已堆疊的停靠點會被清除。";
-"Waiting for valid coordinates…" = "等待有效座標…";
-"%lld valid stops detected." = "已偵測到 %lld 個有效停靠點。";
-"No valid coordinates found in the pasted text." = "貼上的文字裡找不到有效座標。";
-"Added %lld stops from paste." = "已從貼上文字加入 %lld 個停靠點。";
-"Bulk-add coordinates…" = "批次加入座標…";
-"Paste many coordinates at once — each line becomes the next stop" = "一次貼上多個座標，每一行依序成為下一個停靠點";
-
-// SettingsView — section headers
-"Logs" = "紀錄";
-"Geocoding" = "地理編碼";
-"Alerts" = "提示音";
-"Routing engine" = "路線引擎";
-"Troubleshooting" = "疑難排解";
-"About" = "關於";
-
-// SettingsView — short labels / buttons
-"Language:" = "語言：";
-"Theme:" = "外觀模式：";
-"Google API key:" = "Google API 金鑰：";
-"Engine:" = "引擎：";
-"Reveal in Finder" = "在 Finder 顯示";
-"Open folder" = "開啟資料夾";
-"Force-kill & restart daemon" = "強制終止並重啟 daemon";
-"Restarting…" = "重啟中…";
-"Import from JSON…" = "從 JSON 匯入…";
-"Export to JSON…" = "匯出為 JSON…";
-"Bulk paste…" = "批次貼上…";
-"Import GPX…" = "匯入 GPX…";
-"Import JSON…" = "匯入 JSON…";
-"Export JSON…" = "匯出 JSON…";
-"Play system sound on route complete" = "路線跑完時播放系統提示音";
-"How to get a Google Geocoding API key" = "如何取得 Google Geocoding API 金鑰";
-"Test" = "測試";
-"Paste your key here" = "貼上你的金鑰";
-
-// SettingsView — longer help text
-"Default appearance uses the sage palette from the LociiGhost icon. System appearance reverts every tinted element to macOS's accent colour. Switching is live — no restart needed." = "預設外觀使用 LociiGhost icon 的鼠尾草綠配色。切換到「系統」會讓所有上色元素改用 macOS 系統強調色。即時切換，不需重啟。";
-"Move bookmarks between machines or paste many at once." = "在不同 Mac 間搬移書籤，或一次貼上多筆。";
-"Open the LociiGhost log folder in Finder. Attach these files when you report a problem." = "在 Finder 中開啟 LociiGhost 的紀錄資料夾。回報問題時請附上這些檔案。";
-"When MapKit can't find a place (common for Chinese store / landmark names), LociiGhost can fall back to Google Geocoding using your own API key. Leave blank to disable." = "當 MapKit 找不到地點時（中文店名、地標常見），LociiGhost 可以用你自己的 API 金鑰退而求其次走 Google Geocoding。留空即停用此 fallback。";
-"No key configured — search uses Apple MapKit only." = "未設定金鑰 — 搜尋只走 Apple MapKit。";
-"Key configured — Google is used as a fallback when MapKit returns no matches." = "已設定金鑰 — MapKit 找不到結果時會 fallback 到 Google。";
-"Play the macOS system alert when a navigation, route loop, or random walk reaches its destination naturally. Explicit stops won't trigger the sound." = "導航、路線循環、隨機漫步自然抵達終點時播放 macOS 系統提示音。使用者主動按停止不會觸發。";
-"Multi-point tracks (GPX recordings or LociiGhost JSON exports). Use Import → GPX for trip files from other apps; JSON for round-tripping between LociiGhost machines." = "多點路線（GPX 紀錄檔或 LociiGhost JSON 匯出）。其他 app 的路線用「匯入 GPX」；LociiGhost 之間互傳用 JSON。";
-"Which service plans your navigation routes. Pick the OSRM Public Demo to revert to the default." = "由哪個服務規劃導航路線。選「OSRM Public Demo」即回到預設。";
-"If LociiGhost stops responding (the daemon hangs, devices won't appear, navigation freezes), use this button to kill the daemon with admin privileges and start a clean one — no Terminal required." = "如果 LociiGhost 無回應（daemon hang、裝置不顯示、導航凍結），按這個按鈕用管理者權限砍掉 daemon 並重啟一個乾淨的 — 不用開終端機。";
-"You'll see a standard macOS authentication dialog. LociiGhost itself never reads your password." = "你會看到 macOS 標準的驗證對話框。LociiGhost 本身不會讀取你的密碼。";
-"Copyright © 2026 YCH81 (Jeff Hu). Licensed under the MIT License." = "Copyright © 2026 YCH81 (Jeff Hu)。授權於 MIT License。";
-"Inspired by " = "致敬 ";
-" by keezxc1223 (MIT). LociiGhost is a complete native-Swift rewrite." = "（作者 keezxc1223，MIT 授權）。LociiGhost 為 native Swift 完整重寫版本。";
-"Run `cat LICENSE` from the project root for the full MIT text with both copyright notices." = "在專案根目錄執行 `cat LICENSE` 可看到完整 MIT 授權文與兩段 copyright 標示。";
-
-/* v1.11.0 additions */
-"Stop current route?" = "要停止目前的路線嗎？";
-"Stop current simulation?" = "要停止目前的模擬嗎？";
-"Keep going" = "繼續執行";
-"Stop & switch" = "停止並切換";
-"Switching modes ends the current navigation. The iPhone halts at its current simulated position." = "切換模式會結束目前的導航，iPhone 會停留在當下的模擬位置。";
-"Switching modes ends the current simulation. The iPhone halts at its current simulated position." = "切換模式會結束目前的模擬，iPhone 會停留在當下的模擬位置。";
-"Hide this panel — stops stay in the sidebar; click the floating chip on the map to bring it back" = "隱藏此面板 — 停靠點仍會留在側欄；點地圖上的浮動標籤即可重新叫回";
-"%lld stops — show controls" = "%lld 個停靠點 — 顯示控制";
-"Reopen the route controls" = "重新開啟路線控制";
-"Apple Maps couldn't plan this route — its data may not cover this area. Try switching the routing engine to OSRM in Settings. (%@)" = "Apple Maps 無法規劃此路線 — 該地區的圖資可能不完整。請到設定切換路線引擎為 OSRM。(%@)";
-"Path style" = "路徑樣式";
-"Straight line" = "直線";
-"Map path (OSRM)" = "地圖路徑 (OSRM)";
-"Dwell at each stop" = "每站停留";
-"%lld s" = "%lld 秒";
-"With dwell on, the iPhone pauses the chosen number of seconds at each stop before continuing to the next" = "啟用停留後，iPhone 抵達每個停靠點會暫停指定秒數再繼續往下一站。";
-"Show route controls" = "顯示路線控制";
-"Auto-center" = "地圖置中";
-"Toggle map auto-recenter: when on, the map follows the simulated location during movement. When off, the map stays put — teleports and route starts still pan once, then you scroll the map manually." = "切換地圖自動置中：開啟時，模擬移動中地圖會跟著定位置中。關閉時地圖不再追蹤 — 瞬移與路線初始仍會帶地圖到起點一次，之後就要自己拖地圖。";
-
-/* ─── v1.11.2 — joe bug fix (daemon failure UI) ───────────────────── */
-"Daemon failed to start: %@. Click to authenticate and restart." = "Daemon 啟動失敗：%@。點擊重新授權並重啟。";
-"Click to authenticate and restart the daemon — opens the macOS password prompt" = "點擊重新授權並重啟 daemon — 會跳出 macOS 密碼框";
-
-/* ─── v1.11.2 — #1 BottomBar inline custom speed ──────────────────── */
-"km/h" = "km/h";
-"Apply this custom speed — works in every mode" = "套用自訂速度 — 所有模式皆適用";
-"Drop the custom speed and use the travel-mode preset" = "清除自訂速度，回到交通工具預設值";
-
-/* ─── v1.11.2 — #2 RouteWaypointsEditSheet ────────────────────────── */
-"Edit waypoints" = "編輯路線停靠點";
-"Edit waypoints…" = "編輯路線停靠點…";
-"Edit info…" = "編輯資訊…";
-"Edit name, category, icon" = "編輯名稱、分類、圖示";
-"Edit waypoints (add / delete / reorder / change coords)" = "編輯路線停靠點（新增 / 刪除 / 重新排序 / 改座標）";
-"Add waypoint" = "新增停靠點";
-"lat" = "緯度";
-"lng" = "經度";
-"Run once (no save)" = "執行一次（不儲存）";
-"Save changes" = "儲存變更";
-"No waypoints yet. Tap **Add waypoint** to begin." = "目前沒有停靠點。請按 **新增停靠點** 開始。";
-"Run this trip once without overwriting the saved route" = "執行一次但不覆蓋原本儲存的路線";
-"Delete this waypoint" = "刪除此停靠點";
-"No waypoints to run." = "沒有可執行的停靠點。";
-
-/* ─── v1.11.2 — #3 RandomWalk mode-switch alert ───────────────────── */
-"Stop random walk to change this?" = "要先停止隨機漫步才能變更此設定?";
-"Keep walking" = "繼續漫步";
-"Stop & apply" = "停止並套用";
-"Changing this setting needs the current walk to stop. We'll restart it immediately with the new value." = "變更此設定需要先停止目前的漫步，會立刻用新值重新啟動。";
-
-/* ─── v1.11.2 — #4 full backup / restore ──────────────────────────── */
-"Backup all data" = "全部資料備份";
-"Export everything — bookmarks, routes, stop presets — to a single JSON file you can restore on another Mac or after a reinstall." = "把全部資料 — 書籤、路線、停靠點預設 — 匯出成一個 JSON 檔，可在其他 Mac 或重新安裝後還原。";
-"Export all…" = "全部匯出…";
-"Save a JSON file containing every bookmark, route, and stop preset" = "儲存一個包含全部書籤、路線、停靠點預設的 JSON 檔";
-"Restore from backup…" = "從備份還原…";
-"Open a backup file; pick Merge or Overwrite when prompted" = "開啟備份檔；出現提示時選擇合併或覆蓋";
-"Restore asks before doing anything: Merge keeps your current data, Overwrite replaces it." = "還原前會先問你：合併保留現有資料，覆蓋會替換全部。";
-"Nothing to back up — no bookmarks, routes, or stop presets yet." = "沒有可備份的內容 — 還沒有書籤、路線或停靠點預設。";
-"Backed up %lld bookmarks · %lld routes · %lld presets." = "已備份 %lld 個書籤 · %lld 條路線 · %lld 個預設。";
-"Export all data (full backup)" = "全部資料匯出（完整備份）";
-"Restore from backup JSON" = "從備份 JSON 還原";
-"This backup is from a newer LociiGhost version. Please update before restoring." = "此備份來自較新版的 LociiGhost。請先升級再還原。";
-"Restore from backup?" = "從備份還原?";
-"This backup contains %lld bookmarks · %lld routes · %lld presets.\n\nMerge keeps your existing data and adds new entries (skipping name+coords duplicates).\nOverwrite wipes everything currently in LociiGhost and replaces it with the backup." = "此備份包含 %lld 個書籤 · %lld 條路線 · %lld 個預設。\n\n合併：保留現有資料，新增備份內非重複（name+座標）的項目。\n覆蓋：清除現有所有資料，全用備份內的取代。";
-"Merge" = "合併";
-"Overwrite" = "覆蓋";
-"Restored: %lld bookmarks · %lld routes · %lld presets added." = "已還原：新增 %lld 個書籤 · %lld 條路線 · %lld 個預設。";
-
-/* ─── v1.11.2 — #5 Snap to real location ──────────────────────────── */
-"Snap to real" = "瞬移真實位置";
-"Snap to real location" = "瞬移到 Mac 真實位置";
+"Teleport" = "瞬移";
+"Teleport between waypoints" = "點與點之間用瞬移";
+"Teleport here" = "瞬移到這裡";
+"Teleport iPhone to this location" = "瞬移 iPhone 到此地點";
 "Teleport the simulated iPhone to your Mac's current real location — simulation stays active" = "把模擬中的 iPhone 瞬移到 Mac 當下真實位置，模擬仍在進行";
-
-/* ─── v1.11.2 — #7 Copy all stops + #8 Smart sort ─────────────────── */
-"Copy all stops" = "停靠點全部複製";
-"Copy every staged stop as lat,lng per line — paste back into Bulk-add or share elsewhere" = "把全部停靠點複製成每行一個 lat,lng — 可貼回「貼上座標」或給其他工具";
-"Smart sort" = "AI 路順排序";
-"Reorder stops by minimum total path distance — Stop 1 stays the start, the rest get sorted into an efficient visit order" = "依最短總距離重新排序 — 停靠點 1 仍為起點，其餘依路順最佳化";
-"Reorder stops by minimum total path distance — Stop 1 stays the start" = "依最短總距離重新排序 — 停靠點 1 仍為起點";
-
-/* ─── v1.11.2 — #9 force re-authorize ─────────────────────────────── */
-"Advanced" = "進階";
-"If the system password dialog stopped appearing, or the daemon is stuck in a half-authorized state, force a clean re-authorization here. This will end the running daemon, prompt for your macOS password, and bring up a fresh privileged daemon." = "若系統密碼框沒有自動出現、或 daemon 卡在授權不完整的狀態，可在這裡強制重新授權。動作會結束目前 daemon、跳出 macOS 密碼框、再啟動一個新的有授權 daemon。";
-"Force re-authorize" = "強制重新授權";
-"Force-kill the daemon, prompt for your macOS password, and bring up a fresh privileged daemon" = "強制結束 daemon、跳出 macOS 密碼框、啟動有授權的新 daemon";
-"Re-authorizing…" = "重新授權中…";
-"Use this when LociiGhost's automatic admin prompts aren't appearing on their own, or when you want to manually re-trigger the standard macOS authentication flow." = "當 LociiGhost 自動授權框沒出現，或想手動重新觸發 macOS 標準授權流程時使用。";
-
-/* ─── v1.11.2 bug-fix wave (T31/T32) ───────────────────────────────── */
-"Your current simulation will stop before this route starts." = "目前的模擬會在這條路線開始前停止。";
-"Stop & start" = "停止並開始";
-"Switch to Multi-stop mode first" = "請先切到多點模式";
-
-/* ─── v1.11.2 — missing strings catch-up ───────────────────────────── */
-// AppHeaderBar / SettingsView
-"Settings" = "設定";
-
-// RecentPlacesButton
-"Recent" = "最近";
-"Recent Places" = "最近位置";
-"Clear" = "清除";
-"No history yet" = "尚無記錄";
-"Teleports, searches, and navigations show up here so you can jump back with one tap." = "瞬移、搜尋與導航記錄都會顯示在此，可一鍵跳回。";
-
-// BottomBar — travel-mode picker
-"Custom speed" = "自訂速度";
-"Change travel mode mid-route. Speed updates immediately; route stays the same." = "可在路線途中更換交通方式，速度即時生效，路線維持不變。";
-"Default travel mode for the next Navigate." = "下一次導航使用的預設交通方式。";
-
-// BottomBar — stop + clear confirmations
-"Clear staged stops?" = "清除已暫存的停靠點？";
-"Navigation stopped. Do you also want to remove the %lld staged stops from the map?" = "導航已停止。是否也要從地圖移除 %lld 個已暫存的停靠點？";
-"Clear all stops and movement state?" = "清除所有停靠點與移動狀態？";
-"Clear all" = "全部清除";
-"All staged stops, routes, and movement state will be removed. The iPhone stays at its current simulated position." = "所有已暫存的停靠點、路線及移動狀態都將移除。iPhone 會停留在目前的模擬位置。";
-
-// BookmarksSection — sort menu
-"Sort order" = "排序方式";
-"By date added" = "按新增日期";
-"By name (A–Z)" = "按名稱 (A–Z)";
-"Manual order" = "手動排序";
-"Import bookmarks from JSON (export + bulk paste live in Settings — Cmd-,)" = "從 JSON 匯入書籤（匯出與批次貼上在設定中 — Cmd-,）";
-
-// BulkPasteBookmarksSheet
-"Bulk-add bookmarks" = "批次新增書籤";
-"Paste one bookmark per line. Each line can be `name, lat, lng` or `lat, lng, name`. Comma, tab, or semicolon all work. Lines starting with # are ignored." = "每行貼上一個書籤。格式可為 `名稱, lat, lng` 或 `lat, lng, 名稱`，逗號、Tab 或分號皆可作分隔符，# 開頭的行視為注釋。";
-"Default category:" = "預設分類：";
-"Optional" = "選填";
-"Waiting for valid lines…" = "等待有效行…";
-"Add %lld" = "新增 %lld 個";
-
-// SavePresetSheet
-"Save as preset" = "儲存為預設";
-"e.g. Downtown Tokyo evening loop" = "例如：東京市中心傍晚散步";
-
-// LoadStopPresetSheet
-"Load these stops into the Multi-Stop panel. Choose whether to also teleport the iPhone to the first stop — Display Only just stages and re-centres the map, while Teleport to First moves the iPhone there immediately so Navigate starts cleanly." = "將這些停靠點載入多點面板。選擇是否同時瞬移 iPhone 到第一個停靠點 — 「僅顯示」只暫存並重新置中地圖，「瞬移到第一個」則立即移動 iPhone，讓導航從起點整潔開始。";
-"Display only" = "僅顯示";
 "Teleport to first" = "瞬移到第一個";
-
-// MultiStopPanel
-"Saved stop presets" = "已儲存的停靠點預設";
-
-// MapLayerPicker
-"Map Layer · %@" = "地圖圖層 · %@";
-
-// SettingsView
-"Google Directions needs an API key — paste one into the Geocoding section above." = "Google Directions 需要 API 金鑰 — 請貼到上方地理編碼區域。";
-"LocWarp" = "LocWarp";
-
-/* ─── v1.11.2 — route dwell per-execution (StartRouteSheet) ─────────── */
-"Pause at each waypoint" = "在每個停靠點暫停";
-"Stop and wait at each point along the route before continuing." = "在路線上的每個停靠點等待指定秒數後再繼續。";
-"Pause seconds:" = "停留秒數：";
-"sec per waypoint" = "秒/每停靠點";
-
-/* ─── Route playback start-point picker (StartRouteSheet) ──────────── */
-"Start from" = "從哪裡開始";
-"Beginning" = "從頭開始";
-"Resume from last (#%lld)" = "從上次中斷處繼續（第 %lld 點）";
-"Resume from last (no saved progress)" = "從上次中斷處繼續（沒有儲存的進度）";
-"Specific stop" = "指定停靠點";
-"Stop #" = "第 # 點";
+"Teleport to the start of \"%1$@\" and navigate %2$lld points?" = "瞬移到「%1$@」的起點並導航 %2$lld 個點？";
+"Teleports, searches, and navigations show up here so you can jump back with one tap." = "瞬移、搜尋與導航記錄都會顯示在此，可一鍵跳回。";
+"Test" = "測試";
+"That search text can't be sent to the address service." = "這段搜尋文字沒辦法送給地址服務。";
+"The address service is rate-limiting us — wait a moment, or switch provider in Settings." = "地址服務正在限制查詢速度 — 等一下,或到設定換一家。";
+"The address service returned something unreadable." = "地址服務回了一段讀不懂的內容。";
+"The gap catches what the speed rule can't: two positions a metre apart, a hundred times a second. A run already under way is never interrupted — continuous movement is speed-limited already." = "這個間隔擋的是速度規則擋不到的情況:兩個位置只差一公尺,但一秒送一百次。已經在跑的路線不會被打斷 — 連續移動本來就受速度限制。";
+"The most accurate for Taiwanese addresses. Uses your own API key, and every search is billed to you." = "台灣地址最準的一家。用你自己的 API 金鑰,每次搜尋都算你的錢。";
+"The ring itself is always walked. A ring of teleports is the one thing that looks nothing like a person." = "圈本身一定是用走的。一圈瞬移是最不像真人的東西。";
+"Theme:" = "外觀模式：";
+"This backup contains %lld bookmarks · %lld routes · %lld presets.\n\nMerge keeps your existing data and adds new entries (skipping name+coords duplicates).\nOverwrite wipes everything currently in LociiGhost and replaces it with the backup." = "此備份包含 %lld 個書籤 · %lld 條路線 · %lld 個預設。\n\n合併：保留現有資料，新增備份內非重複（name+座標）的項目。\n覆蓋：清除現有所有資料，全用備份內的取代。";
+"This backup is from a newer LociiGhost version. Please update before restoring." = "此備份來自較新版的 LociiGhost。請先升級再還原。";
+"This iPhone isn't currently reachable. Reconnect it, or pick the **Map** entry in the sidebar to browse the map without a device." = "目前無法連到這台 iPhone。請重新連線,或選擇側欄的「**地圖**」項目以無裝置模式瀏覽地圖。";
+"This iPhone leads — the run belongs to it" = "由這支 iPhone 帶領 — 這段模擬屬於它";
+"Tip: click the map again to add another stop." = "提示:再次點擊地圖可加入下一個停靠點。";
+"Toggle map auto-recenter: when on, the map follows the simulated location during movement. When off, the map stays put — teleports and route starts still pan once, then you scroll the map manually." = "切換地圖自動置中：開啟時，模擬移動中地圖會跟著定位置中。關閉時地圖不再追蹤 — 瞬移與路線初始仍會帶地圖到起點一次，之後就要自己拖地圖。";
+"Total laps:" = "總圈數：";
+"Travel mode" = "移動方式";
+"Troubleshooting" = "疑難排解";
+"Type an address or lat,lng first." = "請先輸入地址或 lat,lng。";
+"Type the URL into your phone's browser, then enter the PIN." = "把網址打到手機瀏覽器,輸入 PIN 即可開始操作。";
+"URL" = "網址";
+"Uncategorized" = "未分類";
+"Until I press Stop" = "我按停止前一直重複";
+"Update available — click to view release" = "有新版本可用 — 點擊查看 Release";
+"Use" = "使用";
+"Use **File ▸ Import GPX…** (⌘O) to add a recorded track." = "使用 **檔案 ▸ 匯入 GPX…** (⌘O) 加入錄製的軌跡。";
+"Use both at once" = "同時使用兩端";
+"Use both at the same time?" = "確定要同時開啟兩端?";
+"Use current location" = "使用目前位置";
+"Use exact coordinates" = "使用精確座標";
+"Use the automatic colour" = "使用自動配色";
+"Use this when LociiGhost's automatic admin prompts aren't appearing on their own, or when you want to manually re-trigger the standard macOS authentication flow." = "當 LociiGhost 自動授權框沒出現，或想手動重新觸發 macOS 標準授權流程時使用。";
+"Use when the iPhone isn't picked up by auto-discover (different subnet, VPN, etc.). Default port for RemotePairing is 49152." = "若 iPhone 沒被自動掃到(不同網段、走 VPN 等)就用這個。RemotePairing 的預設 port 是 49152。";
+"Wait before leaving" = "離開前等待";
+"Wait on arrival" = "抵達後等待";
+"Waiting for valid coordinates…" = "等待有效座標…";
+"Waiting for valid lines…" = "等待有效行…";
+"Walking" = "走路";
+"Walking randomly" = "隨機漫步中";
+"Waypoints" = "繞圈點";
+"Weather at the simulated location" = "目前模擬地點的天氣";
+"When MapKit can't find a place (common for Chinese store / landmark names), LociiGhost can fall back to Google Geocoding using your own API key. Leave blank to disable." = "當 MapKit 找不到地點時（中文店名、地標常見），LociiGhost 可以用你自己的 API 金鑰退而求其次走 Google Geocoding。留空即停用此 fallback。";
+"Which service plans your navigation routes. Pick the OSRM Public Demo to revert to the default." = "由哪個服務規劃導航路線。選「OSRM Public Demo」即回到預設。";
+"Which service the search bar asks for addresses. Whichever you pick, Google is still tried as a fallback when nothing is found and you have a key saved below." = "搜尋列要問哪一家。不管選哪一家,只要下面存了 Google 金鑰,找不到結果時還是會用 Google 再試一次。";
+"WiFi Devices" = "WiFi 裝置";
+"With dwell on, the iPhone pauses the chosen number of seconds at each stop before continuing to the next" = "啟用停留後，iPhone 抵達每個停靠點會暫停指定秒數再繼續往下一站。";
+"You" = "您的位置";
+"You'll see a standard macOS authentication dialog. LociiGhost itself never reads your password." = "你會看到 macOS 標準的驗證對話框。LociiGhost 本身不會讀取你的密碼。";
+"Your current simulation will stop before this route starts." = "目前的模擬會在這條路線開始前停止。";
+"e.g. Downtown Tokyo evening loop" = "例如：東京市中心傍晚散步";
+"km/h" = "km/h";
+"lat" = "緯度";
+"leads" = "主控";
+"lng" = "經度";
+"not connected" = "未連線";
 "of %lld" = "／共 %lld 點";
+"off" = "關閉";
+"sec per waypoint" = "秒/每停靠點";
+"single trip" = "單次";

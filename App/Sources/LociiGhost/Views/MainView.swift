@@ -508,6 +508,16 @@ private struct Sidebar: View {
                 }
                 .padding(.horizontal, 6)
 
+                // Group sync sits with the phones it is about: turning
+                // it on is a per-session choice, not a setting you
+                // visit once. (It is also in Settings, where the rest
+                // of the configuration lives.)
+                if state.devices.count > 1 {
+                    GroupSyncButton()
+                        .padding(.horizontal, 10)
+                        .padding(.bottom, 4)
+                }
+
                 if state.devices.isEmpty {
                     Text("Plug an iPhone into USB and tap **Trust this computer** when prompted.")
                         .font(.caption2)
