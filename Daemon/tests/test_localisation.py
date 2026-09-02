@@ -41,10 +41,18 @@ def _entries(locale: str) -> dict[str, str]:
     return dict(re.findall(ENTRY, path.read_text(encoding="utf-8"), re.M))
 
 
+def _strip_comments(body: str) -> str:
+    """Doc comments in this codebase quote `Text("literal")` when they
+    explain how localisation works, and a scanner that counts those
+    reports a string nobody can ever see."""
+    body = re.sub(r"/\*.*?\*/", "", body, flags=re.S)
+    return "\n".join(re.sub(r"//.*$", "", line) for line in body.splitlines())
+
+
 def _literals() -> set[str]:
     out: set[str] = set()
     for swift in SRC.rglob("*.swift"):
-        body = swift.read_text(encoding="utf-8")
+        body = _strip_comments(swift.read_text(encoding="utf-8"))
         for pattern in PATTERNS:
             for found in re.findall(pattern, body, re.S):
                 # An interpolated string isn't a lookup key, and a
