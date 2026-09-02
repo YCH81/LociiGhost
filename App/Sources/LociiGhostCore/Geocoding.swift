@@ -180,18 +180,23 @@ public enum OSMGeocoding {
         comps?.queryItems = [
             URLQueryItem(name: "q", value: trimmed),
             URLQueryItem(name: "limit", value: String(max(1, limit))),
-            // Photon only speaks a handful of languages and 400s on
-            // anything else, so a full locale identifier ("zh-Hant-TW")
-            // has to be cut down to the base tag before it goes out.
+            // A full locale identifier ("zh-Hant-TW") is not a value
+            // this parameter takes — see `photonLanguage`.
             URLQueryItem(name: "lang", value: photonLanguage(language)),
         ]
         return comps?.url
     }
 
-    /// Photon accepts de / en / fr / it; anything else is rejected, so
-    /// unknown languages fall back to English rather than failing the
-    /// whole request. The *results* are still local-language — the
-    /// parameter only picks which translated name is preferred.
+    /// Cut a locale identifier down to a base tag Photon will take.
+    ///
+    /// Photon's API doc says only that one language may be given and
+    /// suggests ISO codes; it does not publish the list its public
+    /// instance actually indexes, which has historically been de / en
+    /// / fr / it. Since an unlisted value risks a rejected request and
+    /// the parameter only picks which *translated* name is preferred —
+    /// a Chinese query still matches Chinese names in the OSM data
+    /// either way — anything outside that set falls back to English.
+    /// Worst case the row reads in English; it never fails to search.
     public static func photonLanguage(_ raw: String) -> String {
         let base = raw.split(whereSeparator: { $0 == "-" || $0 == "_" })
             .first.map(String.init)?.lowercased() ?? "en"
