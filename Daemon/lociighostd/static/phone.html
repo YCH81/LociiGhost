@@ -984,6 +984,9 @@
     <div class="btn" data-kind="random">
       <span class="ico">🌀</span><span class="lbl" data-i18n="random">Random</span>
     </div>
+    <div class="btn" data-kind="flower">
+      <span class="ico">🌸</span><span class="lbl" data-i18n="flower">Flower</span>
+    </div>
     <div class="btn" data-kind="stop">
       <span class="ico">⏹</span><span class="lbl" data-i18n="stop">Stop</span>
     </div>
@@ -1095,6 +1098,32 @@
     <button class="overlay-primary" id="random-go" data-i18n="random-start">Start</button>
   </div>
 
+  <!-- Flower bottom sheet — orbit one point, lap after lap -->
+  <div id="flower-overlay" class="overlay random">
+    <div class="overlay-header">
+      <span class="overlay-title" data-i18n="flower-title">Flower</span>
+      <button class="overlay-close" id="flower-close" aria-label="Close">×</button>
+    </div>
+    <p class="hint compact" data-i18n="flower-hint">Walks a small ring around the point, lap after lap.</p>
+    <div class="random-center" id="flower-center"></div>
+    <label class="random-label">
+      <span data-i18n="flower-radius">Ring radius</span>
+      <span class="random-value" id="flower-radius-value">40 m</span>
+    </label>
+    <input type="range" id="flower-radius" min="5" max="300" step="5" value="40">
+    <label class="random-label">
+      <span data-i18n="flower-laps">Laps</span>
+      <span class="random-value" id="flower-laps-value">1</span>
+    </label>
+    <input type="range" id="flower-laps" min="0.5" max="10" step="0.5" value="1">
+    <label class="random-label">
+      <span data-i18n="flower-rounds">Rounds</span>
+      <span class="random-value" id="flower-rounds-value">1</span>
+    </label>
+    <input type="range" id="flower-rounds" min="1" max="50" step="1" value="1">
+    <button class="overlay-primary" id="flower-go" data-i18n="flower-start">Start</button>
+  </div>
+
   <div id="toast"></div>
 </div>
 
@@ -1150,6 +1179,16 @@
       'random-start': '開始',
       'random-no-center': '尚未選擇中心點 — 請先點地圖',
       'random-started': '隨機漫步啟動',
+      'flower': '花農',
+      'flower-title': '花農模式',
+      'flower-hint': '繞著這個點走小圈,一圈接一圈。沒選點就繞現在的位置。',
+      'flower-radius': '繞圈半徑',
+      'flower-laps': '每點圈數',
+      'flower-rounds': '總輪數',
+      'flower-start': '開始',
+      'flower-started': '花農模式啟動',
+      'flower-no-center': '沒選點 — 會繞現在的位置',
+      'cooldown-blocked': '冷卻中 — 還要等 %s 秒',
       'nav-title': '導航前往',
       'nav-hint': '選交通方式。路線會走實際街道(透過 OpenStreetMap)。',
       'nav-start': '開始',
@@ -1237,6 +1276,16 @@
       'random-start': 'Start',
       'random-no-center': 'No centre picked — tap the map first',
       'random-started': 'Random walk started',
+      'flower': 'Flower',
+      'flower-title': 'Flower mode',
+      'flower-hint': 'Walks a small ring around the point, lap after lap. With no point picked it orbits where you are.',
+      'flower-radius': 'Ring radius',
+      'flower-laps': 'Laps per point',
+      'flower-rounds': 'Rounds',
+      'flower-start': 'Start',
+      'flower-started': 'Flower mode started',
+      'flower-no-center': 'No point picked — orbits where you are',
+      'cooldown-blocked': 'Cooldown — %s s left',
       'nav-title': 'Navigate to here',
       'nav-hint': 'Pick how to travel. Route follows real streets (via OpenStreetMap).',
       'nav-start': 'Start',
@@ -1693,10 +1742,13 @@
         setMultistopMode(false);
       } catch (e) {
         const detail = (e && e.detail) || '';
-        if (detail.startsWith('no_origin')) {
+        // `detail` is a string for our own guards and an object for a
+        // cooldown refusal, so the type check comes first — calling
+        // startsWith on the object throws inside the handler.
+        if (typeof detail === 'string' && detail.startsWith('no_origin')) {
           showToast(t('multistop.no_origin'));
         } else {
-          showToast(detail || t('request_failed'));
+          showToast(toastFromError(e));
         }
       }
     });
@@ -2066,8 +2118,7 @@
       if (typeof cb === 'function') {
         try { await cb(selectedSpeedMps); }
         catch (err) {
-          const detail = (err && err.detail) || '';
-          showToast(detail || t('request_failed'));
+          showToast(toastFromError(err));
         }
       }
     });
@@ -2204,6 +2255,21 @@
     }
     if (r.status === 204) return null;
     return r.json();
+  }
+
+  /// What to say when a request failed.
+  ///
+  /// The cooldown gate answers 429 with an object, not a string, and
+  /// FastAPI's `detail` is whatever the endpoint put there — so a
+  /// caller that does `showToast(detail)` prints "[object Object]" the
+  /// first time the user's own gate holds a jump back.
+  function toastFromError(e, fallbackKey) {
+    const detail = (e && e.detail) || '';
+    if (detail && detail.error === 'cooldown_active') {
+      return t('cooldown-blocked').replace('%s', Math.ceil(detail.remaining_s));
+    }
+    if (typeof detail === 'string' && detail) return detail;
+    return t(fallbackKey || 'request_failed');
   }
 
   async function pollState() {
@@ -2406,6 +2472,7 @@
       return;
     }
     if (kind === 'random')   return openRandom();
+    if (kind === 'flower')   return openFlower();
     if (kind === 'teleport' || kind === 'navigate') {
       if (!pendingLatLng) {
         showToast(t('tap_map'));
@@ -2451,7 +2518,7 @@
         body: JSON.stringify(withTarget({ lat, lng })),
       });
       showToast(t('teleport_ok'));
-    } catch (e) { showToast(t('request_failed')); }
+    } catch (e) { showToast(toastFromError(e)); }
   }
   async function doNavigate(lat, lng, profile) {
     try {
@@ -2654,8 +2721,7 @@
       joystickStarted = true;
       showToast(t('joystick-started'));
     } catch (e) {
-      const detail = (e && e.detail) || '';
-      showToast(detail || t('request_failed'));
+      showToast(toastFromError(e));
       joystickOverlay.classList.remove('open');
       document.body.classList.remove('joystick-busy');
     }
@@ -2829,8 +2895,114 @@
       showToast(t('random-started'));
       closeRandom();
     } catch (e) {
-      const detail = (e && e.detail) || '';
-      showToast(detail || t('request_failed'));
+      showToast(toastFromError(e));
+    }
+  });
+
+  // ── Flower sheet ─────────────────────────────────────────────
+  //
+  // Same shape as the random-walk sheet, and deliberately fewer knobs
+  // than the desktop panel: on a phone this feature is "I am standing
+  // here, start grinding", so the point is the pin (or wherever the
+  // iPhone already is) and the three sliders are the three settings
+  // that change what you get. Everything else keeps the daemon's
+  // defaults — `with_defaults` ignores what we don't send.
+  const flowerOverlay = document.getElementById('flower-overlay');
+  const flowerCenter  = document.getElementById('flower-center');
+  const flowerRadius  = document.getElementById('flower-radius');
+  const flowerRadiusValue = document.getElementById('flower-radius-value');
+  const flowerLaps    = document.getElementById('flower-laps');
+  const flowerLapsValue = document.getElementById('flower-laps-value');
+  const flowerRounds  = document.getElementById('flower-rounds');
+  const flowerRoundsValue = document.getElementById('flower-rounds-value');
+  let flowerRing = null;       // live Leaflet preview ring
+
+  function openFlower() {
+    if (!pendingLatLng && currentLatLng) {
+      pendingLatLng = currentLatLng;
+      if (selectedMarker) selectedMarker.setLatLng(currentLatLng);
+      else selectedMarker = L.marker(currentLatLng, {
+        icon: L.divIcon({ className: '', html: '<div class="selected-pin"></div>',
+                          iconSize: [22, 22], iconAnchor: [11, 11] }),
+      }).addTo(map);
+    }
+    flowerOverlay.classList.add('open');
+    refreshFlowerCenter();
+    drawFlowerRing();
+  }
+
+  function closeFlower() {
+    flowerOverlay.classList.remove('open');
+    if (flowerRing) { map.removeLayer(flowerRing); flowerRing = null; }
+  }
+  document.getElementById('flower-close').addEventListener('click', closeFlower);
+
+  function refreshFlowerCenter() {
+    if (pendingLatLng) {
+      flowerCenter.classList.remove('empty');
+      flowerCenter.textContent =
+        `${pendingLatLng.lat.toFixed(5)}, ${pendingLatLng.lng.toFixed(5)}`;
+    } else {
+      flowerCenter.classList.add('empty');
+      flowerCenter.textContent = t('flower-no-center');
+    }
+  }
+
+  function drawFlowerRing() {
+    if (!pendingLatLng) {
+      if (flowerRing) { map.removeLayer(flowerRing); flowerRing = null; }
+      return;
+    }
+    const radius = parseFloat(flowerRadius.value);
+    if (flowerRing) {
+      flowerRing.setLatLng([pendingLatLng.lat, pendingLatLng.lng]);
+      flowerRing.setRadius(radius);
+    } else {
+      // Outline only: a 40 m disc is a dot at the zoom a phone map
+      // sits at, and a filled dot tells you nothing about the ring.
+      flowerRing = L.circle([pendingLatLng.lat, pendingLatLng.lng], {
+        radius: radius,
+        color: '#7E9472',
+        weight: 2,
+        fill: false,
+      }).addTo(map);
+    }
+    map.fitBounds(flowerRing.getBounds(), { padding: [40, 40], maxZoom: 19 });
+  }
+
+  flowerRadius.addEventListener('input', () => {
+    flowerRadiusValue.textContent = `${flowerRadius.value} m`;
+    drawFlowerRing();
+  });
+  flowerLaps.addEventListener('input', () => {
+    flowerLapsValue.textContent = flowerLaps.value;
+  });
+  flowerRounds.addEventListener('input', () => {
+    flowerRoundsValue.textContent = flowerRounds.value;
+  });
+
+  document.getElementById('flower-go').addEventListener('click', async () => {
+    const body = {
+      settings: {
+        radius_m: parseFloat(flowerRadius.value),
+        laps: parseFloat(flowerLaps.value),
+        rounds: parseInt(flowerRounds.value, 10),
+      },
+    };
+    // No pin is not an error: the endpoint orbits the iPhone's last
+    // position, which is what "start where I am" means.
+    if (pendingLatLng) {
+      body.stops = [{ lat: pendingLatLng.lat, lng: pendingLatLng.lng }];
+    }
+    try {
+      await api('/api/phone/flower', {
+        method: 'POST',
+        body: JSON.stringify(withTarget(body)),
+      });
+      showToast(t('flower-started'));
+      closeFlower();
+    } catch (e) {
+      showToast(toastFromError(e));
     }
   });
 
