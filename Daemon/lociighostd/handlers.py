@@ -8,7 +8,6 @@ service / navigator; this layer just translates between RPC and Python.
 from __future__ import annotations
 
 import logging
-import time
 from typing import Any
 
 from . import cooldown as cooldown_mod
@@ -252,13 +251,12 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
     # Cooldown — the user's own plausibility gate (v1.17)
     # ------------------------------------------------------------------
     #
-    # One policy for the whole daemon, not one per device: it is a user
-    # preference about how they want to move, and a phone that gated
-    # differently from the one beside it would be indistinguishable
-    # from a bug.
-    policy_holder: dict[str, cooldown_mod.CooldownPolicy] = {
-        "policy": cooldown_mod.CooldownPolicy(),
-    }
+    # The policy lives on the DeviceManager, not in this closure: the
+    # phone remote starts the same jumps through the HTTP server, and a
+    # gate only this path consulted would be one the user could walk
+    # around from their phone without knowing it. One policy for the
+    # whole daemon, too — a phone that gated differently from the one
+    # beside it would be indistinguishable from a bug.
 
     @server.method("settings.cooldown")
     async def settings_cooldown(policy: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -270,8 +268,8 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
         than re-sending three numbers.
         """
         if policy is not None:
-            policy_holder["policy"] = cooldown_mod.from_params(policy)
-        current = policy_holder["policy"]
+            manager.cooldown_policy = cooldown_mod.from_params(policy)
+        current = manager.cooldown_policy
         return {
             "enabled": current.enabled,
             "max_speed_kmh": current.max_speed_kmh,
@@ -291,17 +289,7 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
         by construction, and a gate that stalled a route halfway would
         look like the app hanging.
         """
-        policy = policy_holder["policy"]
-        if not policy.enabled:
-            return
-        loc = await manager.location_for(udid)
-        verdict = cooldown_mod.check(
-            policy,
-            getattr(loc, "last_lat_lng", None),
-            getattr(loc, "_last_set_at", None),
-            (float(lat), float(lng)),
-            time.monotonic(),
-        )
+        verdict = await manager.cooldown_verdict(udid, (float(lat), float(lng)))
         if not verdict.allowed:
             raise errors.cooldown_active(
                 verdict.remaining_s, verdict.required_s, verdict.distance_m)

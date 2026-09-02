@@ -166,3 +166,101 @@ def test_teleport_without_a_mover_emits_nothing(rig):
     client, mgr, sess, loc, rpc = rig
     client.post("/api/phone/teleport", json={"lat": 25.0, "lng": 121.0})
     assert rpc.states() == []
+
+
+# ── Flower mode from the phone (v1.17) ──────────────────────────────
+
+
+def test_flower_orbits_the_last_position_when_no_stops_are_given(rig):
+    client, mgr, sess, loc, rpc = rig
+    resp = client.post("/api/phone/flower",
+                       json={"settings": {"segments": 4, "radius_m": 30}})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["points"] == 1
+    assert body["total_steps"] == 5          # 1 arrival + 4 vertices
+    assert sess.flower is not None
+
+
+def test_flower_takes_explicit_stops(rig):
+    client, mgr, sess, loc, rpc = rig
+    resp = client.post("/api/phone/flower", json={
+        "stops": [{"lat": 25.1, "lng": 121.5}, {"lat": 25.2, "lng": 121.6}],
+        "settings": {"segments": 3, "laps": 1, "rounds": 2},
+    })
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["points"] == 2
+    assert body["rounds"] == 2
+    assert body["total_steps"] == 2 * 2 * 4  # rounds x points x (1 + 3)
+    assert [m for m, p in rpc.events if m == "event.state_changed"]
+
+
+def test_flower_stops_a_running_walker(rig):
+    """Same contract as every other phone mode: one mover at a time."""
+    client, mgr, sess, loc, _ = rig
+    walker = FakeRunner("walker")
+    sess.walker = walker
+
+    resp = client.post("/api/phone/flower", json={})
+    assert resp.status_code == 200, resp.text
+    assert sess.walker is None and walker.stopped
+    assert sess.flower is not None
+
+
+def test_flower_without_an_origin_says_what_to_do(rig):
+    client, mgr, sess, loc, _ = rig
+    loc.last_lat_lng = None
+    resp = client.post("/api/phone/flower", json={})
+    assert resp.status_code == 400
+    assert "no_origin" in resp.json()["detail"]
+
+
+# ── The cooldown gate covers the phone too (v1.17) ──────────────────
+
+
+def test_the_cooldown_gate_applies_to_phone_teleports(rig):
+    """The gate used to live in the RPC handlers' closure, so a user
+    who had turned it on could still jump anywhere from their phone.
+    It lives on the DeviceManager now, which is what both entry points
+    read."""
+    import time as _time
+    from lociighostd.cooldown import CooldownPolicy
+
+    client, mgr, sess, loc, _ = rig
+    loc.last_lat_lng = (25.0, 121.0)
+    loc._last_set_at = _time.monotonic()
+    mgr.cooldown_policy = CooldownPolicy(enabled=True, max_speed_kmh=5)
+
+    resp = client.post("/api/phone/teleport", json={"lat": 24.1477, "lng": 120.6736})
+    assert resp.status_code == 429, resp.text
+    detail = resp.json()["detail"]
+    assert detail["error"] == "cooldown_active"
+    assert detail["remaining_s"] > 3600
+    assert detail["distance_m"] > 100_000
+    # …and the phone did not move the device.
+    assert loc.calls == []
+
+
+def test_a_disabled_cooldown_lets_the_phone_through(rig):
+    client, mgr, sess, loc, _ = rig
+    resp = client.post("/api/phone/teleport", json={"lat": 24.1477, "lng": 120.6736})
+    assert resp.status_code == 200, resp.text
+    assert loc.calls[-1] == (24.1477, 120.6736)
+
+
+def test_the_gate_also_covers_the_phones_random_walk(rig):
+    import time as _time
+    from lociighostd.cooldown import CooldownPolicy
+
+    client, mgr, sess, loc, _ = rig
+    loc.last_lat_lng = (25.0, 121.0)
+    loc._last_set_at = _time.monotonic()
+    mgr.cooldown_policy = CooldownPolicy(enabled=True, max_speed_kmh=5)
+
+    resp = client.post("/api/phone/random_walk", json={
+        "center_lat": 24.1477, "center_lng": 120.6736, "radius_m": 200,
+    })
+    assert resp.status_code == 429, resp.text
+    assert sess.walker is None

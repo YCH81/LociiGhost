@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any, Optional, TYPE_CHECKING
 
@@ -30,6 +31,8 @@ from pymobiledevice3.services.dvt.instruments.dvt_provider import DvtProvider
 from pymobiledevice3.usbmux import list_devices
 
 from . import errors
+from .cooldown import CooldownPolicy, CooldownVerdict
+from .cooldown import check as cooldown_check
 from .location_service import (
     DvtLocationService,
     LegacyLocationService,
@@ -189,11 +192,39 @@ class DeviceManager:
         # Strong references to in-flight auto-reconnect tasks; see
         # _health_check_once.
         self._reconnect_tasks: set[asyncio.Task] = set()
+        # v1.17: the user's plausibility gate. It lives here rather
+        # than in the RPC handlers because the phone remote starts the
+        # same jumps through the HTTP server — a gate only the desktop
+        # path consulted would be one the user could walk straight
+        # around from their phone without knowing it.
+        self.cooldown_policy = CooldownPolicy()
         self._load_device_cache()
 
     @property
     def wifi(self) -> WiFiDiscovery:
         return self._wifi
+
+    async def cooldown_verdict(
+        self, udid: str, target: tuple[float, float]
+    ) -> CooldownVerdict:
+        """Whether `udid` may be moved to `target` right now.
+
+        The session's own LocationService is the record of where the
+        device last went and when, so the answer comes from the same
+        place both callers already hold — no separate history to keep
+        in step with reality.
+        """
+        policy = self.cooldown_policy
+        if not policy.enabled:
+            return CooldownVerdict(True, 0.0, 0.0, 0.0)
+        loc = await self.location_for(udid)
+        return cooldown_check(
+            policy,
+            getattr(loc, "last_lat_lng", None),
+            getattr(loc, "_last_set_at", None),
+            target,
+            time.monotonic(),
+        )
 
     # ------------------------------------------------------------------
     # On-disk device cache

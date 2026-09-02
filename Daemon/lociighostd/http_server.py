@@ -431,6 +431,20 @@ class JoystickUpdateRequest(BaseModel):
     udid: Optional[str] = None
 
 
+class FlowerRequest(BaseModel):
+    model_config = _STRICT
+    # Empty means "orbit where the iPhone is standing", which is the
+    # phone-shaped version of this feature: the user is out, they are
+    # at the spot, they want it to start grinding. The desktop panel is
+    # where a twelve-waypoint circuit gets built.
+    stops: list[StopPoint] = Field(default_factory=list, max_length=100)
+    # Same field names the RPC takes; `flower_plan.with_defaults`
+    # ignores anything it doesn't know, so an older daemon and a newer
+    # phone page don't have to agree on the whole set.
+    settings: dict[str, Any] = Field(default_factory=dict)
+    udid: Optional[str] = None
+
+
 class RandomWalkRequest(BaseModel):
     model_config = _STRICT
     center_lat: Latitude
@@ -794,11 +808,34 @@ def create_http_app(
         except Exception:
             log.debug("broadcast_event failed", exc_info=True)
 
+    async def _gate_jump(udid: str, lat: float, lng: float) -> None:
+        """The same plausibility gate the desktop path uses.
+
+        It reads `manager.cooldown_policy`, which the Mac sets over
+        RPC — the policy deliberately lives on the manager so both
+        entry points consult one rule. Before that it lived in the RPC
+        handlers' closure, which meant a user who had turned the gate
+        on could still jump anywhere from their phone.
+        """
+        verdict = await manager.cooldown_verdict(udid, (float(lat), float(lng)))
+        if verdict.allowed:
+            return
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": "cooldown_active",
+                "remaining_s": round(verdict.remaining_s, 1),
+                "required_s": round(verdict.required_s, 1),
+                "distance_m": round(verdict.distance_m, 1),
+            },
+        )
+
     @app.post("/api/phone/teleport")
     async def phone_teleport(
         req: TeleportRequest, session: _PhoneSession = Depends(require_session),
     ) -> dict[str, Any]:
         udid = _resolve_udid(req.udid, session)
+        await _gate_jump(udid, req.lat, req.lng)
         loc = await manager.location_for(udid)
         # Cancel any in-flight mover before teleport — same semantics
         # as the desktop right-click "Teleport" path. v1.15.2 audit
@@ -1113,6 +1150,7 @@ def create_http_app(
                                 detail="invalid speed band")
 
         udid = _resolve_udid(req.udid, session)
+        await _gate_jump(udid, req.center_lat, req.center_lng)
         loc = await manager.location_for(udid)
         # Competing motion is stopped inside attach_runner, atomically
         # with the attach (v1.15.2 audit L4).
@@ -1136,6 +1174,59 @@ def create_http_app(
             **walker.status().to_json(),
         })
         return {"ok": True, "udid": udid, **walker.status().to_json()}
+
+    @app.post("/api/phone/flower")
+    async def phone_flower(
+        req: FlowerRequest, session: _PhoneSession = Depends(require_session),
+    ) -> dict[str, Any]:
+        """Start flower mode from the phone.
+
+        With no stops it orbits where the iPhone is standing — the
+        phone-shaped version of this feature is "I am at the spot,
+        start grinding", while a twelve-waypoint circuit is something
+        you build on the desktop panel.
+        """
+        from .flower_plan import with_defaults
+        from .flower_runner import FlowerRunner
+
+        udid = _resolve_udid(req.udid, session)
+        loc = await manager.location_for(udid)
+
+        if req.stops:
+            centers = [(s.lat, s.lng) for s in req.stops]
+        else:
+            here = getattr(loc, "last_lat_lng", None)
+            if here is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "no_origin: tap the map and Teleport once first, "
+                        "so there is a point to orbit."
+                    ),
+                )
+            centers = [here]
+
+        await _gate_jump(udid, centers[0][0], centers[0][1])
+        settings = with_defaults(req.settings)
+
+        async def _flower_emit(method: str, status) -> None:
+            payload = status.to_json() if hasattr(status, "to_json") else dict(status)
+            payload["udid"] = udid
+            await _emit(method, payload)
+
+        runner = FlowerRunner(
+            location=loc,
+            centers=centers,
+            settings=settings,
+            on_event=_flower_emit,
+            start_position=getattr(loc, "last_lat_lng", None) or centers[0],
+        )
+        await manager.attach_runner(udid, "flower", runner)
+        await _emit("event.state_changed", {
+            "udid": udid, "mode": "flower",
+            **runner.status().to_json(),
+        })
+        return {"ok": True, "udid": udid, **runner.status().to_json()}
 
     @app.get("/api/phone/geocode")
     async def phone_geocode(
