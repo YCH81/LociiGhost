@@ -325,29 +325,74 @@ struct NativeMapView: View {
         //     so a tap drives `selectedBookmarkID` → photo sheet
         //     without a separate gesture stack.
         if state.showBookmarksOnMap {
-            ForEach(bookmarks) { bm in
-                Marker(
-                    bm.name,
-                    systemImage: "bookmark.fill",
-                    coordinate: CLLocationCoordinate2D(latitude: bm.lat, longitude: bm.lng),
-                )
-                // v1.17: was a flat indigo for every bookmark. Tinting
-                // by category is what makes 3 000 pins readable — the
-                // colour is the only thing distinguishing them at a
-                // zoom level where the labels have collapsed.
-                //
-                // The flower glyphs are on the MKMapView path only, for
-                // now. `Marker` takes a systemImage or an asset-catalogue
-                // resource name, not a Shape, and the alternative —
-                // `Annotation` with a custom view — gives up the
-                // automatic clustering this overlay depends on with
-                // 3 000+ entries. Getting flowers here means rendering
-                // the six designs to bundled images at build time, the
-                // way Scripts/generate-icon.swift already does for the
-                // app icon. Deliberately a separate step, not a silent
-                // switch that costs clustering.
-                .tint(CategorySwatch.color(state.categoryColorHex(bm.category)))
-                .tag(bm.persistentModelID)
+            // Two paths, and the pin count decides which.
+            //
+            // `Marker` is what clusters, and clustering is what keeps a
+            // 3 000-bookmark import from painting the whole map solid.
+            // But `Marker` takes a systemImage or an asset-catalogue
+            // name — never a Shape — so the six flowers cannot appear
+            // on it, and this is the map layer the app opens on: by
+            // default the flowers were invisible to everyone.
+            //
+            // `Annotation` draws any SwiftUI view, flowers included,
+            // and rasterises one per pin. Below the limit that cost is
+            // nothing and there is nothing to cluster; above it,
+            // clustering matters more than the shape of a dot that is
+            // three pixels wide at that zoom.
+            if bookmarks.count <= Self.flowerPinLimit {
+                ForEach(bookmarks) { bm in
+                    Annotation(
+                        bm.name,
+                        coordinate: CLLocationCoordinate2D(latitude: bm.lat, longitude: bm.lng),
+                    ) {
+                        bookmarkPin(for: bm)
+                    }
+                    .tag(bm.persistentModelID)
+                }
+            } else {
+                ForEach(bookmarks) { bm in
+                    Marker(
+                        bm.name,
+                        systemImage: "bookmark.fill",
+                        coordinate: CLLocationCoordinate2D(latitude: bm.lat, longitude: bm.lng),
+                    )
+                    // v1.17: was a flat indigo for every bookmark.
+                    // Tinting by category is what makes 3 000 pins
+                    // readable — at a zoom where the labels have
+                    // collapsed, the colour is all that is left.
+                    .tint(CategorySwatch.color(state.categoryColorHex(bm.category)))
+                    .tag(bm.persistentModelID)
+                }
+            }
+        }
+    }
+
+    /// Above this many bookmarks the overlay goes back to clustered
+    /// `Marker`s. Chosen as the point where the map is dense enough
+    /// that clustering is the feature and the pin's shape is not: a
+    /// few hundred pins still read individually, a few thousand do not.
+    static let flowerPinLimit = 250
+
+    /// One bookmark pin: its flower if it has one, its SF Symbol
+    /// otherwise, in its category's colour.
+    ///
+    /// Same two inputs the MKMapView path feeds `FlowerGlyph` — one
+    /// catalogue of designs, one palette, two renderers.
+    @ViewBuilder
+    private func bookmarkPin(for bm: Bookmark) -> some View {
+        let hex = state.categoryColorHex(bm.category)
+        ZStack {
+            Circle()
+                .fill(.white.opacity(0.92))
+                .frame(width: 26, height: 26)
+                .overlay(Circle().strokeBorder(CategorySwatch.color(hex), lineWidth: 2))
+                .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
+            if let design = FlowerPin.design(forStoredSymbol: bm.iconSymbol) {
+                FlowerPinView(design: design, colorHex: hex, size: 17)
+            } else {
+                Image(systemName: bm.iconSymbol)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(CategorySwatch.color(hex))
             }
         }
     }
