@@ -1868,7 +1868,8 @@ final class AppState {
     /// the teleport / navigate plumbing has one entry point. Values
     /// past `route.points.count - 1` are clamped to the last stop.
     func runRoute(_ route: Route, udid: String, lapCount: Int = 1,
-                  allowDwell: Bool = false, dwellSecondsForRoute: Int = 5,
+                  allowDwell: Bool = false,
+                  dwellRangeForRoute: DwellRange = .standard,
                   startFromIndex: Int = 0) async {
         let allCoords = route.points
         guard !allCoords.isEmpty else {
@@ -1950,14 +1951,14 @@ final class AppState {
                 routePoints: coords, udid: udid, profile: travelProfile, speed: speed,
                 remainingLaps: Int.max,
                 allowDwell: allowDwell,
-                dwellSecondsForRoute: dwellSecondsForRoute,
+                dwellRangeForRoute: dwellRangeForRoute,
             )
         } else if lapCount >= 2 {
             loopContext = LoopContext(
                 routePoints: coords, udid: udid, profile: travelProfile, speed: speed,
                 remainingLaps: lapCount - 1,
                 allowDwell: allowDwell,
-                dwellSecondsForRoute: dwellSecondsForRoute,
+                dwellRangeForRoute: dwellRangeForRoute,
             )
         } else {
             loopContext = nil
@@ -2009,7 +2010,7 @@ final class AppState {
                        speed: speed,
                        allowDwell: allowDwell,
                        dwellOverride: allowDwell ? true : nil,
-                       dwellSecondsOverride: allowDwell ? dwellSecondsForRoute : nil,
+                       dwellRangeOverride: allowDwell ? dwellRangeForRoute : nil,
                        suppressDwellContext: true)
     }
 
@@ -2406,8 +2407,8 @@ final class AppState {
                   /// When non-nil, overrides `self.dwellEnabled` for this call only.
                   /// Lets runRoute force-enable dwell without mutating global state.
                   dwellOverride: Bool? = nil,
-                  /// When non-nil, overrides `self.dwellSeconds` for this call only.
-                  dwellSecondsOverride: Int? = nil,
+                  /// When non-nil, overrides `self.dwellRange` for this call only.
+                  dwellRangeOverride: DwellRange? = nil,
                   /// When true, set up DwellMonitor (in-route pause) but skip DwellContext
                   /// (end-of-route lap management). Used for saved-route playback where
                   /// loopContext already handles lap repetition.
@@ -2544,7 +2545,7 @@ final class AppState {
             // pass explicit overrides so the global toggle / seconds don't
             // bleed into saved-route playback.
             let effectiveDwellEnabled = dwellOverride ?? dwellEnabled
-            let effectiveDwellRange = dwellSecondsOverride.map { DwellRange(fixed: $0) } ?? dwellRange
+            let effectiveDwellRange = dwellRangeOverride ?? dwellRange
             if allowDwell, effectiveDwellEnabled, stops.count > 1 {
                 // Route-snapped trigger coords: for each intermediate stop,
                 // find the nearest point in the daemon's actual route
@@ -3802,7 +3803,7 @@ final class AppState {
                     // to the start. Only applies when the user enabled dwell for
                     // this route run (opt-in from StartRouteSheet).
                     if snap.allowDwell {
-                        try? await Task.sleep(for: .seconds(Double(snap.dwellSecondsForRoute)))
+                        try? await Task.sleep(for: .seconds(snap.dwellRangeForRoute.pick()))
                         guard self.loopContext != nil else { return }
                     }
                     await self.teleport(udid: snap.udid,
@@ -3824,7 +3825,7 @@ final class AppState {
                                         speed: snap.speed,
                                         allowDwell: snap.allowDwell,
                                         dwellOverride: snap.allowDwell ? true : nil,
-                                        dwellSecondsOverride: snap.allowDwell ? snap.dwellSecondsForRoute : nil,
+                                        dwellRangeOverride: snap.allowDwell ? snap.dwellRangeForRoute : nil,
                                         suppressDwellContext: true)
                 }
             } else {
@@ -4382,9 +4383,15 @@ struct LoopContext: Sendable, Equatable {
     /// in StartRouteSheet; does NOT read the global dwellEnabled toggle so that
     /// multi-stop dwell setting doesn't leak into route playback).
     var allowDwell: Bool = false
-    /// Seconds to pause at each intermediate waypoint and at the end of each lap
-    /// before looping (only meaningful when allowDwell == true).
-    var dwellSecondsForRoute: Int = 5
+    /// How long to pause at each intermediate waypoint and at the end
+    /// of each lap before looping (only meaningful when
+    /// allowDwell == true).
+    ///
+    /// v1.17: a range, drawn fresh at every pause. Route playback was
+    /// the last place still holding one fixed number — twelve laps
+    /// pausing for exactly the same eight seconds is the pattern the
+    /// range exists to break.
+    var dwellRangeForRoute: DwellRange = .standard
 }
 
 /// Per-stop dwell sequence (Feat #3 / v1.11.0). When the user enables

@@ -1,4 +1,5 @@
 import SwiftUI
+import LociiGhostCore
 
 /// Sheet shown when the user clicks a sidebar Route. Replaces the
 /// earlier `.alert(presenting:)` so we can host a Toggle inside —
@@ -33,7 +34,8 @@ struct StartRouteSheet: View {
     /// sheet; the choice does NOT persist to the global dwellEnabled
     /// toggle (routes and multi-stop are independent settings).
     @State private var routeDwell: Bool = false
-    @State private var routeDwellText: String = "5"
+    @State private var routeDwellMin: Int = 5
+    @State private var routeDwellMax: Int = 20
 
     /// Where in the route to begin playback.
     enum StartMode: Hashable { case beginning, resume, specific }
@@ -86,10 +88,8 @@ struct StartRouteSheet: View {
         return 0
     }
 
-    private var resolvedDwellSeconds: Int {
-        let trimmed = routeDwellText.trimmingCharacters(in: .whitespaces)
-        if let n = Int(trimmed), n >= 1 { return n }
-        return 5
+    private var resolvedDwellRange: DwellRange {
+        DwellRange(min: routeDwellMin, max: routeDwellMax)
     }
 
     /// v1.11.2 bug #3: when a navigation / random walk / joystick is
@@ -249,35 +249,22 @@ struct StartRouteSheet: View {
                 .padding(.leading, 22)
             }
 
-            Toggle(isOn: $routeDwell) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Pause at each waypoint",
-                         comment: "Start-route sheet — per-waypoint dwell checkbox label")
-                        .font(.callout)
-                    Text("Stop and wait at each point along the route before continuing.",
-                         comment: "Start-route sheet — per-waypoint dwell checkbox explanation")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .toggleStyle(.checkbox)
-
-            if routeDwell {
-                HStack(spacing: 8) {
-                    Text("Pause seconds:",
-                         comment: "Start-route sheet — dwell seconds field label")
-                        .font(.callout)
-                    TextField("5", text: $routeDwellText)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 60)
-                    Text("sec per waypoint",
-                         comment: "Start-route sheet — dwell seconds unit label")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                }
-                .padding(.leading, 22)
+            // The same control the Multi-Stop and Random Walk panels
+            // use. Route playback held the last fixed dwell in the app;
+            // one shared control means the next change to how a pause is
+            // chosen lands in all three at once.
+            VStack(alignment: .leading, spacing: 4) {
+                DwellRangeControl(
+                    enabled: $routeDwell,
+                    minSeconds: $routeDwellMin,
+                    maxSeconds: $routeDwellMax,
+                    title: "Pause at each waypoint",
+                )
+                Text("Stop and wait at each point along the route before continuing.",
+                     comment: "Start-route sheet — per-waypoint dwell checkbox explanation")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             HStack {
@@ -297,14 +284,14 @@ struct StartRouteSheet: View {
                     let r = route
                     let lapCount = resolvedLapCount
                     let dwell = routeDwell
-                    let dwellSecs = resolvedDwellSeconds
+                    let dwellRange = resolvedDwellRange
                     let startIdx = resolvedStartIndex
                     state.routePendingConfirm = nil
                     dismiss()
                     Task { @MainActor in
                         await state.runRoute(r, udid: udid, lapCount: lapCount,
                                              allowDwell: dwell,
-                                             dwellSecondsForRoute: dwellSecs,
+                                             dwellRangeForRoute: dwellRange,
                                              startFromIndex: startIdx)
                     }
                 } label: {
@@ -320,12 +307,13 @@ struct StartRouteSheet: View {
         .padding(24)
         .frame(minWidth: 460)
         .onAppear {
-            // Pre-fill from the global setting so the user doesn't have to
-            // re-enter what they already tuned in the Multi-Stop panel.
-            // Saved-route playback still takes ONE number rather than a
-            // range, so a range collapses to its midpoint here -- the
-            // same number the ETA would have used anyway.
-            routeDwellText = "\(Int(state.dwellRange.expectedSeconds.rounded()))"
+            // Pre-fill from the global setting so the user doesn't have
+            // to re-enter what they already tuned in the Multi-Stop
+            // panel. It carries the range across as a range now — the
+            // midpoint collapse this used to do was a workaround for
+            // route playback taking a single number.
+            routeDwellMin = state.dwellMinSeconds
+            routeDwellMax = state.dwellMaxSeconds
         }
     }
 }
