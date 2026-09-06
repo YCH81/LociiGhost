@@ -1,5 +1,5 @@
 {
-  "version": "1.16.0",
+  "version": "1.17.0",
   "url": "https://drive.google.com/drive/folders/120WcPQLsSddBR_A4hDipw4USQGbMFHlf?usp=sharing",
-  "notes": "v1.16.0 — 新增：把 iPhone 螢幕釘在 LociiGhost 旁邊（用 macOS 內建的 iPhone 鏡像）。標題列「Mirror」打開後會自動啟動鏡像 app、抓到它的視窗貼在主視窗側邊，跟著移動／縮放／隱藏；點擊走 Apple 原生輸入路徑，LociiGhost 不在事件迴圈裡，所以沒有額外延遲。需要一次性的「輔助使用」授權。同時併入全面稽核的修正：Wi-Fi 斷線恢復（改用 keepalive 成功率判斷存活 + 有上限的自動重連，取代原本會直接把 session 拆掉的健康檢查）、移動狀態統一由 DeviceManager 收斂、多點模式圈數、手機端 PIN 改 8 碼並加上失敗鎖定、Google API key 改存 Keychain、以及 per-tick 主執行緒工作的效能整理。行為變更：location.pause／resume 現在回傳 applied、停止時廣播 stopped（原為 idle）。"
+  "notes": "v1.17.0 — 新增：花農專用模式（繞著每個途經點走小圈，可設半徑、每圈幾站、每點幾圈、輪數、到站前後等待與每站停留，點間可走可瞬移；途經點與多點模式共用同一份清單，預估總時長由 daemon 計算所以不會與實際分岔；斷線會自動接回續跑；手機遙控也能開）。每站停頓改為範圍（預設 5–20 秒）逐站重抽，上下限設成相同即為舊行為。三裝置群組同步：多支 iPhone 跑同一段，可給副機距離＋方位偏移，瞬移／導航／隨機漫步／花農全支援；主機失敗停止整段，副機失敗只踢出該支、其餘續跑。地址搜尋可選 Apple／Nominatim／Photon／Google 四家，Apple 仍為預設（唯一有逐字自動完成、免金鑰）；Nominatim 依其使用條款改為輸入停止後才送出。收藏可匯出 GPX（分類、圖示、照片連結走標準欄位，能在 Garmin Connect、Gaia、Organic Maps、Google Earth 開啟），原 JSON 匯出保留。分類顏色可自訂，未指定者由分類名稱算出穩定顏色；地圖釘新增六款花形（雛菊、櫻花、鬱金香、向日葵、酢漿草、梅花）。新增 Cooldown 防偵測閘門：以「最快合理速度」與「跳躍最小間隔」推算下次跳躍最早可送出的時間，未到則擋下並顯示倒數；預設關閉，只擋跳躍不打斷進行中的路線，桌面與手機遙控共用同一份設定。內部：隨機漫步與花農共用同一組位移迴圈，花圈幾何改用球面公式；手機遙控頁新增元素 id 與雙語字串的靜態檢查；修掉手機端四處會顯示「[object Object]」或靜默失敗的錯誤提示。"
 }
