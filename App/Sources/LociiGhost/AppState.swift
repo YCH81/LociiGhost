@@ -2733,6 +2733,16 @@ final class AppState {
             if engine == .google, let key = googleGeocodeAPIKey {
                 navParams["engine_api_key"] = AnyCodable(key)
             }
+            // v1.17.1: navigate was the one mover that never attached
+            // the group. Teleport, random walk and flower all did, so
+            // group sync looked like it worked — both phones jumped to
+            // the coordinate you typed — and then only the leader
+            // walked the route. The daemon has accepted `group` on
+            // location.navigate since v1.17.0; the app simply never
+            // sent it.
+            if let group = groupParams(leader: udid) {
+                navParams["group"] = AnyCodable(group)
+            }
             let reply: Reply = try await client.call("location.navigate", params: navParams)
             let coords = reply.route.coordinates.map { Coordinate(lat: $0.lat, lng: $0.lng) }
             let displayedDistanceM = reply.route.distance_m
@@ -2834,6 +2844,21 @@ final class AppState {
                         nav.dwellTotalLaps = dctx.totalLaps
                         navigation = nav
                     }
+                    // Multi-stop laps ran with nothing on screen saying
+                    // so: `NavigationVM.laps` is clamped to 1 here
+                    // (the daemon only ever runs one lap), so the
+                    // counter read "1" for the whole run. Laps 2 and 3
+                    // did happen — each just looked like a fresh trip
+                    // starting over, which reads as "it stopped after
+                    // one lap".
+                    if dwellContext == nil,
+                       let mctx = multiStopLapContext, mctx.udid == udid,
+                       mctx.totalLaps > 1,
+                       var nav = navigation {
+                        nav.dwellCurrentLap = mctx.totalLaps - mctx.remainingLaps
+                        nav.dwellTotalLaps = mctx.totalLaps
+                        navigation = nav
+                    }
                 }
             } else {
                 dwellMonitor = nil
@@ -2857,6 +2882,7 @@ final class AppState {
             if allowDwell, !isLapContinuation, dwellContext == nil, routeLaps >= 2 {
                 multiStopLapContext = MultiStopLapContext(
                     udid: udid,
+                    totalLaps: routeLaps,
                     routePoints: waypoints,      // origin first — see L6
                     profile: profile,
                     speed: speed,
@@ -3374,7 +3400,7 @@ final class AppState {
     /// Bumped every time the daemon source breaks ABI or behaviour in
     /// a way that requires an in-place restart. Must match the
     /// `__version__` in `Daemon/lociighostd/__init__.py`.
-    static let expectedDaemonVersion = "1.17.0"
+    static let expectedDaemonVersion = "1.17.2"
 
     // MARK: - Update check (v1.5)
 
@@ -4802,6 +4828,11 @@ struct DwellMonitor: Sendable {
 /// natural idle, mirroring the loopContext pattern for route replay.
 struct MultiStopLapContext: Sendable {
     let udid: String
+    /// How many laps the run was started with. `remainingLaps` alone
+    /// cannot answer "which lap is this", and reading `routeLaps` back
+    /// off AppState would follow the stepper if the user nudged it
+    /// mid-run.
+    var totalLaps: Int = 1
     /// The FULL waypoint list for one lap, origin first — the same
     /// array `navigate()` sends to the daemon.
     ///
