@@ -582,6 +582,21 @@ final class AppState {
     ///     re-fetching for every puck twitch would be pure waste.
     ///   * Caller's coord far from the in-flight target (or no task
     ///     running) — cancel the previous, start fresh.
+    /// Where the last reverse geocode was resolved, and when.
+    ///
+    /// The country flag and timezone come from `CLGeocoder`, which is
+    /// the slowest thing on this path by a wide margin — measured at
+    /// up to 5.5 s — and it answers a question that does not change
+    /// when a simulated phone walks a few blocks. Weather does move
+    /// with the coordinate; a country does not.
+    @ObservationIgnored private var lastGeoContextCoord: Coordinate?
+    @ObservationIgnored private var lastGeoContextAt: Date?
+
+    /// Far enough that the answer could plausibly differ, rather than
+    /// the 1 km the weather fetch coalesces on.
+    private static let geoContextReuseMeters: Double = 5_000
+    private static let geoContextMaxAge: TimeInterval = 600
+
     private func scheduleWeatherAndTzRefresh() {
         // Source the coord from `currentMapFocus`, which auto-picks
         // browseCursor vs simulatedLocation based on selectedUDID.
@@ -602,6 +617,18 @@ final class AppState {
         weatherRefreshTask?.cancel()
         pendingWeatherTarget = coord
         let target = coord
+        // Decided here, on the main actor, so the task carries a plain
+        // Bool instead of reaching back for state it would have to
+        // re-check after the await.
+        let cachedGeo: GeoContextCache? = {
+            guard let last = lastGeoContextCoord,
+                  let at = lastGeoContextAt,
+                  let ctx = simulatedGeoContext,
+                  StopOrdering.haversineMeters(last, target) < Self.geoContextReuseMeters,
+                  Date().timeIntervalSince(at) < Self.geoContextMaxAge
+            else { return nil }
+            return GeoContextCache(context: ctx)
+        }()
         weatherRefreshTask = Task { [weak self] in
             // Short coalescing window — under a second so the
             // chip updates feel responsive, but long enough that a
@@ -624,12 +651,18 @@ final class AppState {
                     return nil
                 }
             }()
-            async let ctx: TimezoneService.GeoContext = TimezoneService.context(
-                forLat: target.lat, lng: target.lng,
-            )
+            // Reuse rather than re-ask. Every device switch used to
+            // start a fresh geocode, and a run's position updates
+            // started more on top of those, so one switch could land
+            // three or four times — each one a network round trip and
+            // a CLGeocoder call to re-learn the same country.
+            async let ctx: TimezoneService.GeoContext = {
+                if let cached = cachedGeo { return cached.context }
+                return await TimezoneService.context(forLat: target.lat, lng: target.lng)
+            }()
             let (s, c) = await (snap, ctx)
             if Task.isCancelled { return }
-            if c.isoCountryCode == nil {
+            if cachedGeo == nil, c.isoCountryCode == nil {
                 NSLog("LociiGhost: reverse geocode returned no country for %f,%f",
                       target.lat, target.lng)
             }
@@ -637,6 +670,10 @@ final class AppState {
                 guard let self else { return }
                 self.currentWeather = s
                 self.simulatedGeoContext = c
+                if cachedGeo == nil {
+                    self.lastGeoContextCoord = target
+                    self.lastGeoContextAt = Date()
+                }
                 // Clear the marker once the fetch this task started
                 // for has actually landed in state. A later schedule
                 // (e.g. user teleports to a new continent) will see
@@ -4592,6 +4629,15 @@ enum MapTileLayer: String, CaseIterable, Identifiable, Sendable {
         case .openStreetMap, .cartoVoyager, .esriSatellite: return false
         }
     }
+}
+
+/// Carries a reusable geocode result into the refresh task.
+///
+/// A plain struct rather than passing `GeoContext?` directly so the
+/// "did we reuse it" question has one answer at the call site and
+/// inside the task, instead of two nil checks that can disagree.
+struct GeoContextCache: Sendable {
+    let context: TimezoneService.GeoContext
 }
 
 struct MapFlyRequest: Hashable, Sendable {

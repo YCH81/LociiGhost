@@ -29,8 +29,7 @@ struct RoutesSection: View {
                     .font(.caption)
                 Text("Routes",
                      comment: "Sidebar section header for saved GPX routes")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .font(.headline)
                 if !routes.isEmpty {
                     Text("\(routes.count)")
                         .font(.caption2)

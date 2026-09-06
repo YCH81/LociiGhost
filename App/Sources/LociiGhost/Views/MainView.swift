@@ -789,9 +789,7 @@ private struct WiFiSection: View {
                 Image(systemName: "wifi")
                     .foregroundStyle(.tint)
                     .font(.caption)
-                Text("WiFi Devices")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                Text("WiFi Devices").font(.headline)
                 Spacer(minLength: 0)
                 // Refresh stays visible even when the section is
                 // collapsed so the user doesn't have to expand the
@@ -1303,9 +1301,7 @@ private struct SystemSection: View {
                 Image(systemName: "gearshape.fill")
                     .foregroundStyle(.tint)
                     .font(.caption)
-                Text("System Functions")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                Text("System Functions").font(.headline)
                 Spacer()
                 Image(systemName: sectionCollapsed ? "chevron.down" : "chevron.up")
                     .font(.caption2)

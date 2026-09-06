@@ -144,8 +144,7 @@ struct BookmarksSection: View {
                 .font(.caption)
             Text("Bookmarks",
                  comment: "Sidebar section header for saved locations")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .font(.headline)
             if !bookmarks.isEmpty {
                 Text("\(bookmarks.count)")
                     .font(.caption2)
