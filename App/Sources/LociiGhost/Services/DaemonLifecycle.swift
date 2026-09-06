@@ -9,7 +9,9 @@ import LociiGhostCore
 /// Discovery order for the daemon executable:
 ///
 /// 1. Bundle resource named `lociighostd` (when shipped as a packaged .app).
-/// 2. The development venv at `~/Documents/LociiGhost/Daemon/.venv/bin/python -m lociighostd`.
+/// 2. The development venv inside the checkout that `DaemonStaging`
+///    resolves, staged to `~/Library/Application Support` first:
+///    `<staged>/.venv/bin/python -m lociighostd`.
 ///
 /// Phase 1 keeps this deliberately simple: the app spawns one daemon
 /// instance, owns its lifetime, and kills it on `stop()`. Later phases

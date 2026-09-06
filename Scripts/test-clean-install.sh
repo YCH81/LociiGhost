@@ -26,8 +26,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
 
-SOURCE_DIR="$HOME/Documents/LociiGhost"
-BAK_DIR="$HOME/Documents/LociiGhost.devbak.test"
+# The checkout is wherever this script was run from — never a
+# hardcoded path, so the test works from any clone location.
+SOURCE_DIR="$ROOT"
+BAK_DIR="${ROOT}.devbak.test"
 APP_PATH="/Applications/LociiGhost.app"
 
 # CFBundleIdentifier is `com.lociighost.app` (see Scripts/package-app.sh).
@@ -70,8 +72,8 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # ── 1. Hide source tree ─────────────────────────────────────────
-# Covers ~/Documents/LociiGhost/Daemon/ (the source DaemonStaging
-# defaulted to in v1.10.0) and App/.build/.../release/...bundle
+# Covers the checkout's Daemon/ (the source DaemonStaging resolves)
+# and App/.build/.../release/...bundle
 # (the hardcoded fallback path SwiftPM's `Bundle.module` accessor
 # generates — saved the dev from v1.10.2 / v1.10.3 fatalErrors).
 if [[ -d "$SOURCE_DIR" ]]; then

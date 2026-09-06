@@ -66,7 +66,7 @@ type it this once.
 ## Release build
 
 ```bash
-cd ~/Documents/LociiGhost
+cd ~/Developer/LociiGhost
 
 export LOCIIGHOST_SIGN_IDENTITY="Developer ID Application: Your Name (ABCDEFGHIJ)"
 export LOCIIGHOST_NOTARY_PROFILE="LociiGhost"

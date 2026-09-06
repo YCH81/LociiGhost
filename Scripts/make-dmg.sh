@@ -105,10 +105,12 @@ mkdir -p "$STAGE/.dmg-bg"
 cp "$BG_SRC" "$STAGE/.dmg-bg/bg.png"
 
 # Build, sign, notarise, and staple the DMG entirely under /tmp.
-# Same File Provider gotcha as package-app.sh: if the DMG sits in
-# ~/Documents/LociiGhost/dist/ during sign/staple, iCloud Drive can
-# re-attach `com.apple.fileprovider.fpfs#P` between steps and break
+# Same File Provider gotcha as package-app.sh: if the DMG sits in an
+# iCloud-synced folder (anything under ~/Documents or ~/Desktop once
+# "Desktop & Documents" sync is on) during sign/staple, iCloud Drive
+# can re-attach `com.apple.fileprovider.fpfs#P` between steps and break
 # codesign mid-flight. Only the final stapled DMG moves into dist/.
+# Staging under /tmp keeps this true no matter where the checkout is.
 TMP_DMG="$STAGE_DIR/$(basename "$DMG")"
 RW_DMG="$STAGE_DIR/LociiGhost-rw.dmg"
 

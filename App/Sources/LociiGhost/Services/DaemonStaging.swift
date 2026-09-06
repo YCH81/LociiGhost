@@ -1,17 +1,18 @@
 import Foundation
 import LociiGhostCore
 
-/// Copy the developer-mode daemon source + venv out of `~/Documents`
-/// (TCC-protected on macOS 15+) into `~/Library/Application Support`,
-/// where root scripts launched via `osascript with administrator
-/// privileges` can actually read it.
+/// Copy the developer-mode daemon source + venv out of the developer
+/// checkout into `~/Library/Application Support`, where root scripts
+/// launched via `osascript with administrator privileges` can actually
+/// read it.
 ///
 /// Without this step, the root daemon dies at `import site` because
-/// even root can't read `~/Documents/LociiGhost/Daemon/.venv/pyvenv.cfg`
-/// without the user explicitly granting Full Disk Access. Staging once
-/// to `~/Library/...` sidesteps the whole TCC dance — the user-mode app
-/// has read access to its own `~/Documents`, and the destination isn't
-/// in any TCC-protected folder.
+/// even root can't read the checkout's `.venv/pyvenv.cfg` when it sits
+/// under a TCC-protected folder (`~/Documents` and `~/Desktop` on
+/// macOS 15+) without the user explicitly granting Full Disk Access.
+/// Staging once to `~/Library/...` sidesteps the whole TCC dance — the
+/// user-mode app has read access to the checkout, and the destination
+/// isn't in any TCC-protected folder.
 enum DaemonStaging {
     enum StagingError: LocalizedError {
         case sourceMissing(URL)
@@ -20,7 +21,7 @@ enum DaemonStaging {
         var errorDescription: String? {
             switch self {
             case .sourceMissing(let u):
-                return "Daemon source not found at \(u.path). Did you check out the project under ~/Documents/LociiGhost?"
+                return "Daemon source not found at \(u.path). Check the project out under ~/Developer/LociiGhost, or point LOCIIGHOST_DAEMON_SOURCE at its Daemon directory."
             case .copyFailed(let s, let c):
                 return "Daemon copy failed (\(c)): \(s)"
             case .rsyncMissing:
@@ -29,9 +30,9 @@ enum DaemonStaging {
         }
     }
 
-    /// Where the staged daemon lives. Mirrors the layout under the
-    /// developer's `~/Documents/LociiGhost/Daemon/` so paths inside
-    /// the venv stay valid.
+    /// Where the staged daemon lives. Mirrors the layout of the
+    /// developer checkout's `Daemon/` so paths inside the venv stay
+    /// valid.
     static var stagedRoot: URL {
         LociiGhostPaths.appSupportDir
             .appending(path: "runtime/Daemon", directoryHint: .isDirectory)
@@ -39,7 +40,7 @@ enum DaemonStaging {
 
     /// The Python interpreter inside the staged venv. This is what
     /// `PrivilegedDaemonInstaller` and `DaemonLifecycle` actually
-    /// invoke — never the original under `~/Documents`.
+    /// invoke — never the original inside the checkout.
     static var stagedPython: URL {
         stagedRoot.appending(path: ".venv/bin/python")
     }
@@ -47,12 +48,41 @@ enum DaemonStaging {
     /// PYTHONPATH to point at the staged source tree.
     static var stagedPYTHONPATH: URL { stagedRoot }
 
+    /// Where we look for the developer checkout, in priority order.
+    ///
+    /// `~/Documents` stays on the list so existing checkouts keep
+    /// working, but it is deliberately no longer first. It is both
+    /// TCC-protected and — when "Desktop & Documents" iCloud sync is
+    /// on — a folder whose file contents get evicted: a venv there
+    /// produces reads that either stall for seconds per file or
+    /// succeed while returning zero bytes, which looks like corrupt
+    /// bytecode rather than a storage problem.
+    static var sourceCandidates: [URL] {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        return [
+            "Developer/LociiGhost/Daemon",
+            "Documents/LociiGhost/Daemon",
+        ].map { home.appending(path: $0, directoryHint: .isDirectory) }
+    }
+
     /// Source location — the developer checkout we copy *from*. The
-    /// user's app process has TCC access to this (it's their own
-    /// Documents); root scripts spawned via osascript do not.
+    /// user's app process can read it; root scripts spawned via
+    /// osascript may not, which is the whole reason staging exists.
+    ///
+    /// `LOCIIGHOST_DAEMON_SOURCE` overrides the search outright, so a
+    /// checkout anywhere can be pointed at without a rebuild. When
+    /// nothing is found we return the first candidate so the
+    /// `sourceMissing` error names a useful path.
     static var sourceRoot: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appending(path: "Documents/LociiGhost/Daemon", directoryHint: .isDirectory)
+        if let override = ProcessInfo.processInfo.environment["LOCIIGHOST_DAEMON_SOURCE"],
+           !override.isEmpty {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
+        let fm = FileManager.default
+        let candidates = sourceCandidates
+        return candidates.first {
+            fm.fileExists(atPath: $0.path(percentEncoded: false))
+        } ?? candidates[0]
     }
 
     /// True when the .app ships a self-contained PyInstaller daemon
@@ -89,7 +119,7 @@ enum DaemonStaging {
         // PrivilegedDaemonInstaller will go anywhere near the staged
         // tree. Calling ensureStaged() in that case would crash with
         // "Daemon source not found" on machines that — correctly —
-        // don't have the LociiGhost repo cloned at ~/Documents/.
+        // don't have the LociiGhost repo cloned at all.
         // Short-circuit before touching the filesystem so AppState
         // can blindly call this on every daemon boot.
         if hasBundledDaemon {
@@ -147,8 +177,8 @@ enum DaemonStaging {
 
         // The editable-install path files inside the venv still point
         // at the source location after copy. Rewrite them so `import
-        // lociighostd` resolves to the staged tree, not back into
-        // ~/Documents.
+        // lociighostd` resolves to the staged tree, not back into the
+        // checkout.
         rewriteEditablePathFiles(
             stagedRoot: stagedRoot,
             sourcePath: source.path,
