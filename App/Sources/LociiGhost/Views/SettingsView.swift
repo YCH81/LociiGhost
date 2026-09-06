@@ -21,6 +21,16 @@ struct SettingsView: View {
     /// ~5 s after each result.
     @State private var routesIOMessage: String?
 
+    /// Which pane is showing. Defaults to About: the settings sheet is
+    /// opened far more often to check a version or find the support
+    /// links than to change a setting, and landing on a pane full of
+    /// switches invites changing one by accident.
+    @State private var tab: SettingsTab = .about
+
+    private enum SettingsTab: Hashable {
+        case appearance, bookmarksRoutes, backupSystem, mapAddress, gameplay, about
+    }
+
     var body: some View {
         // NB: We can't shadow-bind `@Bindable var state = state` at
         // the `body` scope and have `$state.x` work inside the
@@ -58,44 +68,90 @@ struct SettingsView: View {
 
             Divider()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    appearanceSection
-                    Divider()
-                    bookmarksSection
-                    Divider()
-                    routesSection
-                    Divider()
-                    backupSection
-                    Divider()
-                    routingEngineSection
-                    Divider()
-                    cooldownSection
-                    Divider()
-                    groupSyncSection
-                    Divider()
-                    logsSection
-                    Divider()
-                    geocodingSection
-                    Divider()
-                    alertsSection
-                    Divider()
-                    troubleshootingSection
-                    Divider()
-                    advancedSection
-                    Divider()
-                    aboutSection
+            TabView(selection: $tab) {
+                pane {
+                    // Two short, unrelated panels. Stacked they left
+                    // half the sheet empty and pushed Alerts below the
+                    // fold for no reason.
+                    sideBySide(appearanceSection, alertsSection)
                 }
-                .padding(20)
+                .tabItem { Label("Appearance & Alerts", systemImage: "paintbrush") }
+                .tag(SettingsTab.appearance)
+
+                pane { sideBySide(bookmarksSection, routesSection) }
+                    .tabItem { Label("Bookmarks & Routes", systemImage: "bookmark") }
+                    .tag(SettingsTab.bookmarksRoutes)
+
+                pane {
+                    VStack(alignment: .leading, spacing: 20) {
+                        backupSection
+                        Divider()
+                        troubleshootingSection
+                        Divider()
+                        advancedSection
+                        Divider()
+                        logsSection
+                    }
+                }
+                .tabItem { Label("Backup & Permissions", systemImage: "externaldrive") }
+                .tag(SettingsTab.backupSystem)
+
+                pane {
+                    VStack(alignment: .leading, spacing: 20) {
+                        routingEngineSection
+                        Divider()
+                        geocodingSection
+                    }
+                }
+                .tabItem { Label("Maps & Addresses", systemImage: "map") }
+                .tag(SettingsTab.mapAddress)
+
+                pane {
+                    VStack(alignment: .leading, spacing: 20) {
+                        cooldownSection
+                        Divider()
+                        groupSyncSection
+                    }
+                }
+                .tabItem { Label("Gameplay", systemImage: "gamecontroller") }
+                .tag(SettingsTab.gameplay)
+
+                pane { aboutSection }
+                    .tabItem { Label("About me", systemImage: "person.crop.circle") }
+                    .tag(SettingsTab.about)
             }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 12)
         }
-        .frame(minWidth: 580, minHeight: 660)
+        .frame(minWidth: 760, minHeight: 660)
         .sheet(isPresented: $showingBulkPasteSheet) {
             BulkPasteBookmarksSheet()
                 .environment(state)
         }
         .onAppear {
             googleKeyDraft = state.googleGeocodeAPIKey ?? ""
+        }
+    }
+
+    /// Every pane scrolls and pads the same way, so the tab bodies
+    /// above stay a list of what is in them rather than a repeated
+    /// ScrollView/VStack/padding incantation.
+    private func pane<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        ScrollView {
+            content()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+        }
+    }
+
+    /// Two panels across, top-aligned and equal width. Falls back to
+    /// nothing clever on narrow windows — the sheet has a 760pt floor
+    /// precisely so this always has room.
+    private func sideBySide<A: View, B: View>(_ first: A, _ second: B) -> some View {
+        HStack(alignment: .top, spacing: 20) {
+            first.frame(maxWidth: .infinity, alignment: .leading)
+            Divider()
+            second.frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -143,6 +199,30 @@ struct SettingsView: View {
 
             Text("Default appearance uses the sage palette from the LociiGhost icon. System appearance reverts every tinted element to macOS's accent colour. Switching is live — no restart needed.",
                  comment: "Help text under the appearance picker")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Divider()
+
+            Text("Device list",
+                 comment: "Settings — heading for the sidebar device layout picker")
+                .font(.headline)
+            HStack {
+                Picker(selection: Binding(
+                    get: { state.deviceListLayout },
+                    set: { state.deviceListLayout = $0 },
+                )) {
+                    ForEach(DeviceListLayout.allCases) { layout in
+                        Text(layout.labelKey).tag(layout)
+                    }
+                } label: { EmptyView() }
+                .pickerStyle(.menu)
+                .frame(maxWidth: 280)
+                Spacer()
+            }
+            Text("Compact cards put the phones two-up with just their icon and connection — right-click a card for connection, details and icon. Detailed rows are the wider one-per-line layout, with the iOS version, developer mode and connect button on the row itself.",
+                 comment: "Help text under the device-layout picker")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

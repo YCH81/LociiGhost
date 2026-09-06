@@ -191,7 +191,7 @@ struct BottomBar: View {
 
     @ViewBuilder
     private func pauseButton(udid: String) -> some View {
-        if state.navigationPaused {
+        if state.navigationPaused || state.flowerRun?.isPaused == true {
             Button {
                 Task { await state.resumeNavigation(udid: udid) }
             } label: {
@@ -204,8 +204,8 @@ struct BottomBar: View {
             } label: {
                 Label("Pause", systemImage: "pause.fill")
             }
-            .disabled(!state.navigationActive)
-            .help(state.navigationActive
+            .disabled(!canPause)
+            .help(canPause
                   ? "Hold position; iPhone stays where it currently is."
                   : "No active navigation to pause.")
         }
@@ -214,11 +214,19 @@ struct BottomBar: View {
     /// Stop the current trip. Always calls `stopNavigation`. After
     /// stopping, if the user is in multi-stop mode with staged stops,
     /// offers to clear them (iPhone stays at last position either way).
+    /// Anything the daemon can hold in place. Flower runs are movers
+    /// like any other; the button was gated on navigation alone, which
+    /// is why it was dead during an orbit.
+    private var canPause: Bool {
+        state.navigationActive || state.flowerActive
+    }
+
     private func stopButton(udid: String) -> some View {
         Button(role: .destructive) {
             Task {
                 await state.stopNavigation(udid: udid)
-                if state.activeMovementMode == .multiStop,
+                if let mode = state.activeMovementMode,
+                   AppState.stopStagingModes.contains(mode),
                    !state.pendingStops.isEmpty {
                     showClearStopsAlert = true
                 }

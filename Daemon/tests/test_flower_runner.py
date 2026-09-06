@@ -166,3 +166,79 @@ async def test_an_event_listener_that_throws_does_not_kill_the_run():
 def test_a_run_needs_a_waypoint():
     with pytest.raises(ValueError):
         FlowerRunner(FakeLocation(), [], _settings())
+
+
+# ----------------------------------------------------------------------
+# Pause / resume. The runner used to have neither, so the toolbar's
+# pause button raised "No active navigation" during an orbit.
+# ----------------------------------------------------------------------
+
+
+# The runner ticks once a second, and a segment short enough to finish
+# inside one tick never sleeps at all. So a pause test has to pick a
+# speed that needs several ticks per segment, and then wait longer than
+# a tick to prove nothing moved.
+SLOW = 10.0
+TICK_AND_A_BIT = 1.3
+
+
+@pytest.mark.asyncio
+async def test_pause_holds_position_and_resume_carries_on():
+    loc = FakeLocation()
+    runner = FlowerRunner(loc, [TAIPEI], _settings(speed_mps=SLOW, segments=20),
+                          start_position=TAIPEI)
+    runner.start()
+    await asyncio.sleep(0.05)
+
+    assert await runner.pause() is True
+    assert runner.state == "paused"
+
+    settled = len(loc.calls)
+    await asyncio.sleep(TICK_AND_A_BIT)
+    assert len(loc.calls) == settled, "the phone kept moving while paused"
+
+    assert await runner.resume() is True
+    assert runner.state == "moving"
+    await asyncio.sleep(TICK_AND_A_BIT)
+    assert len(loc.calls) > settled, "the run did not carry on after resume"
+
+    await runner.stop()
+
+
+@pytest.mark.asyncio
+async def test_pause_and_resume_report_whether_they_applied():
+    """A pause that lands on a run which is not moving must say so,
+    rather than leaving the Mac rendering 'paused' over nothing."""
+    loc = FakeLocation()
+    runner = FlowerRunner(loc, [TAIPEI], _settings(speed_mps=1.0, segments=20),
+                          start_position=TAIPEI)
+
+    # Nothing started yet.
+    assert await runner.pause() is False
+    assert await runner.resume() is False
+
+    runner.start()
+    await asyncio.sleep(0.05)
+    assert await runner.pause() is True
+    # Already paused — a second press is not a second pause.
+    assert await runner.pause() is False
+    assert await runner.resume() is True
+    assert await runner.resume() is False
+
+    await runner.stop()
+
+
+@pytest.mark.asyncio
+async def test_stop_while_paused_actually_stops():
+    """The regression this pairs with: the loop waits on the resume
+    gate, so a stop that only sets the stop flag would leave the task
+    parked there forever and `stop()` awaiting it."""
+    loc = FakeLocation()
+    runner = FlowerRunner(loc, [TAIPEI], _settings(speed_mps=1.0, segments=20),
+                          start_position=TAIPEI)
+    runner.start()
+    await asyncio.sleep(0.05)
+    assert await runner.pause() is True
+
+    await asyncio.wait_for(runner.stop(), timeout=2.0)
+    assert runner.state == "stopped"

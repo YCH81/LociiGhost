@@ -227,6 +227,52 @@ struct NativeMapView: View {
                     style: StrokeStyle(lineWidth: 3, dash: [4, 4]),
                 )
         }
+        // ── Flower rings ────────────────────────────────────────────
+        // One ring per staged waypoint while the flower panel is open,
+        // plus a label sitting on each ring's east edge so the radius
+        // is a distance you can see rather than a number you have to
+        // imagine from the sidebar slider.
+        //
+        // The MKMapView layer has drawn these since v1.17 and this one
+        // never did, which is why the radius slider looked completely
+        // inert on Apple tiles — the same one-layer-only gap that made
+        // flower-mode map clicks do nothing.
+        if state.activeMovementMode == .flower {
+            // Read the radius HERE, in the builder's own scope, not
+            // inside the ForEach closures below.
+            //
+            // This view deliberately avoids re-evaluating on every
+            // state change, and a ForEach's content closure is
+            // evaluated lazily — outside the scope observation is
+            // tracking. A radius read in there registers no
+            // dependency, so dragging the slider changed the number
+            // in the sidebar and nothing on the map, while adding a
+            // point (read in this scope) worked fine.
+            let ringRadius = state.flowerConfig.radiusM
+            ForEach(Array(state.pendingStops.enumerated()), id: \.offset) { _, centre in
+                MapCircle(center: centre.cl, radius: ringRadius)
+                    .foregroundStyle(Color.lociSage.opacity(0.10))
+                    .stroke(
+                        Color.lociSage.opacity(0.75),
+                        style: StrokeStyle(lineWidth: 2, dash: [5, 4]),
+                    )
+            }
+            ForEach(Array(state.pendingStops.enumerated()), id: \.offset) { _, centre in
+                Annotation("", coordinate: Geodesy.destination(
+                    from: centre,
+                    bearingDegrees: 90,
+                    distanceM: ringRadius).cl
+                ) {
+                    Text("\(Int(ringRadius)) m")
+                        .font(.caption2.monospacedDigit())
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .foregroundStyle(.white)
+                        .background(Color.lociSageDark.opacity(0.92), in: .capsule)
+                }
+                .annotationTitles(.hidden)
+            }
+        }
         // ── Staging stops (red, numbered) ───────────────────────────
         // Only when not currently navigating; once Navigate fires
         // these get promoted into activeWaypoints (blue) and the
@@ -654,12 +700,10 @@ struct NativeMapView: View {
             state.browseCursor = c
             return
         }
-        // Left-click stop-adding: only when Multi-stop mode is the
-        // active panel AND no navigation is running. Same rule as
-        // the imperative map's handleClick.
-        guard state.activeMovementMode == .multiStop,
-              !state.navigationActive
-        else { return }
+        // Left-click stop-adding: same shared rule as the imperative
+        // map's handleClick — a staging panel is open and no trip is
+        // in flight.
+        guard state.canStageStopByClick else { return }
         state.appendQueueStop(c)
     }
 

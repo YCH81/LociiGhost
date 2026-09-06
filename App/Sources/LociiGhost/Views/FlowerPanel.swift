@@ -91,8 +91,21 @@ struct FlowerPanel: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
+            // Worth saying out loud: multi-stop routes follow streets,
+            // so it is reasonable to assume this does too. It never
+            // has — the hop between two waypoints is interpolated in
+            // a straight line, with no route lookup at all.
+            Text("Walked hops between waypoints go in a straight line — flower mode never follows streets.",
+                 comment: "FlowerPanel — hops between waypoints are never road-routed")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
             estimateLine
             actionRow
+        }
+        .sheet(isPresented: $state.flowerRoutePickerShown) {
+            LoadFlowerRouteSheet()
         }
         .task { await refreshEstimate() }
         .onChange(of: state.flowerConfig) { _, _ in scheduleEstimate() }
@@ -135,6 +148,33 @@ struct FlowerPanel: View {
                     .disabled(state.flowerRun != nil)
                 }
             }
+            if state.navigationControlsHidden && !waypoints.isEmpty {
+                Button {
+                    state.navigationControlsHidden = false
+                } label: {
+                    Label {
+                        Text("Show waypoint controls",
+                             comment: "FlowerPanel — reopen the minimised on-map control panel")
+                            .font(.caption2)
+                    } icon: {
+                        Image(systemName: "list.bullet.below.rectangle")
+                    }
+                }
+                .buttonStyle(.link)
+            }
+            Button {
+                state.flowerRoutePickerShown = true
+            } label: {
+                Label {
+                    Text("Orbit a saved route",
+                         comment: "FlowerPanel — open the saved-route picker")
+                        .font(.caption2)
+                } icon: {
+                    Image(systemName: "point.topleft.down.curvedto.point.bottomright.up")
+                }
+            }
+            .buttonStyle(.link)
+            .disabled(state.flowerRun != nil)
         }
     }
 

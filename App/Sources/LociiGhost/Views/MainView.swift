@@ -252,6 +252,17 @@ struct MainView: View {
         // `.alert(presenting:)` for a `.sheet` so the "Loop until I
         // stop" Toggle can live inline — SwiftUI's standard alert
         // doesn't accept inline controls.
+        // Snap-to-real with no usable Mac fix. Root-level because the
+        // button that raises it lives in the top status bar, which is
+        // rebuilt often enough that hanging a sheet off it would make
+        // the sheet blink out mid-read.
+        .sheet(isPresented: Binding(
+            get: { state.showingLocationPermissionHelp },
+            set: { state.showingLocationPermissionHelp = $0 },
+        )) {
+            LocationPermissionSheet()
+                .environment(state)
+        }
         .sheet(isPresented: Binding(
             get: { state.routePendingConfirm != nil },
             set: { isOpen in
@@ -447,6 +458,12 @@ private struct Sidebar: View {
                     .font(.caption)
                 Text("Devices").font(.headline)
                 Spacer()
+                // Group sync is a per-session choice about these
+                // phones, so it belongs in their header rather than
+                // below the list where it scrolled away with them.
+                if state.devices.count > 1 {
+                    GroupSyncButton(compact: true)
+                }
                 Button {
                     Task { await state.refreshDevices() }
                 } label: {
@@ -488,8 +505,13 @@ private struct Sidebar: View {
                 // every row at its natural height; the outer
                 // sidebar ScrollView handles overflow once the
                 // combined sidebar content exceeds the window.
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(state.displayedDevices) { device in
+                // Map stays a full-width row: it is one entry with a
+                // sentence of explanation, and squeezing it into a
+                // card next to the phones would cost that sentence.
+                // The phones go two-up, where the glyph carries the
+                // identity and the text sits under it.
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(state.displayedDevices.filter { $0.udid == AppState.virtualMapUDID }) { device in
                         DeviceRow(device: device)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
@@ -505,18 +527,49 @@ private struct Sidebar: View {
                                 state.selectedUDID = device.udid
                             }
                     }
+
+                    if state.deviceListLayout == .classic {
+                        ForEach(state.displayedDevices.filter { $0.udid != AppState.virtualMapUDID }) { device in
+                            DeviceRow(device: device)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(
+                                    state.selectedUDID == device.udid
+                                    ? Color.lociSage.opacity(0.18)
+                                    : Color.clear,
+                                    in: .rect(cornerRadius: 6)
+                                )
+                                .contentShape(.rect)
+                                .onTapGesture { state.selectedUDID = device.udid }
+                        }
+                    } else {
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 92), spacing: 6)],
+                        spacing: 6,
+                    ) {
+                        ForEach(state.displayedDevices.filter { $0.udid != AppState.virtualMapUDID }) { device in
+                            DeviceRow(device: device)
+                                .frame(maxWidth: .infinity)
+                                .background(
+                                    state.selectedUDID == device.udid
+                                    ? Color.lociSage.opacity(0.18)
+                                    : Color.secondary.opacity(0.06),
+                                    in: .rect(cornerRadius: 8)
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .strokeBorder(
+                                            state.selectedUDID == device.udid
+                                            ? Color.lociSage.opacity(0.55)
+                                            : Color.clear,
+                                            lineWidth: 1)
+                                )
+                        }
+                    }
+                    }
                 }
                 .padding(.horizontal, 6)
-
-                // Group sync sits with the phones it is about: turning
-                // it on is a per-session choice, not a setting you
-                // visit once. (It is also in Settings, where the rest
-                // of the configuration lives.)
-                if state.devices.count > 1 {
-                    GroupSyncButton()
-                        .padding(.horizontal, 10)
-                        .padding(.bottom, 4)
-                }
 
                 if state.devices.isEmpty {
                     Text("Plug an iPhone into USB and tap **Trust this computer** when prompted.")
@@ -532,15 +585,22 @@ private struct Sidebar: View {
 
             // Section order, top → bottom (per user request):
             //
-            //   Devices  → Bookmarks → Routes → Movement Modes →
+            //   Devices  → Movement Modes → Bookmarks → Routes →
             //   WiFi Devices → System Functions
             //
-            // Bookmarks + Routes float to the top because they're
-            // the most-used everyday surfaces. Movement Modes
-            // follows since picking a mode is the typical next
-            // step. WiFi Devices drops below — pairing / scanning
-            // is rare day-to-day work. System Functions stays
-            // last as the catch-all for one-time setup.
+            // Movement Modes sits directly under Devices because
+            // picking a phone and then picking what it should do is
+            // the one sequence every session starts with; those two
+            // are also the only sections that open expanded.
+            // Bookmarks and Routes follow as the everyday surfaces,
+            // WiFi Devices below them since pairing / scanning is
+            // rare day-to-day work, and System Functions stays last
+            // as the catch-all for one-time setup.
+
+            MovementModesSection()
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+            Divider()
 
             BookmarksSection()
                 .padding(.horizontal, 12)
@@ -548,11 +608,6 @@ private struct Sidebar: View {
             Divider()
 
             RoutesSection()
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-            Divider()
-
-            MovementModesSection()
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
             Divider()
@@ -714,7 +769,7 @@ private struct WiFiSection: View {
     @Environment(AppState.self) private var state
     /// Whole-section collapse — title row stays visible so the
     /// Refresh button doesn't disappear with the body.
-    @State private var sectionCollapsed: Bool = false
+    @State private var sectionCollapsed: Bool = true
 
     /// Any device in the sidebar list whose pair record is missing —
     /// determines whether the Pair button should be inviting or muted.
@@ -1239,7 +1294,7 @@ private struct ManualIPEntry: View {
 private struct SystemSection: View {
     @Environment(AppState.self) private var state
     @State private var showingDevModeSheet = false
-    @State private var sectionCollapsed: Bool = false
+    @State private var sectionCollapsed: Bool = true
 
     var body: some View {
         @Bindable var state = state
@@ -1381,6 +1436,8 @@ private struct DeviceRow: View {
     let device: DeviceVM
     @Environment(AppState.self) private var state
     @State private var showingDevModeSheet = false
+    @State private var showingDetails = false
+    @State private var showingConnectChooser = false
 
     /// True when this row is the always-present Map device.
     /// Renders with a map glyph + a "browse-only" subtitle and no
@@ -1392,8 +1449,10 @@ private struct DeviceRow: View {
     var body: some View {
         if isVirtualMap {
             virtualMapBody
+        } else if state.deviceListLayout == .cards {
+            compactCardBody
         } else {
-            iphoneBody
+            classicIphoneBody
         }
     }
 
@@ -1421,23 +1480,185 @@ private struct DeviceRow: View {
                         .padding(.vertical, 1)
                         .background(Color.lociSage, in: .capsule)
                 }
-                Text("Look up locations without a connected iPhone.",
-                     comment: "Subtitle on the synthetic Map device row")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 4)
         }
         .padding(.vertical, 4)
     }
 
-    private var iphoneBody: some View {
+    /// Small card: who this phone is, and whether it is reachable.
+    ///
+    /// Everything else — iOS version, developer mode, the connect
+    /// menu — moved to the right-click menu and the details sheet.
+    /// Two-up cards are about telling three phones apart at a glance;
+    /// a card carrying five facts is just a row with the words
+    /// stacked, which is what made the first attempt feel cramped.
+    private var compactCardBody: some View {
+        VStack(spacing: 4) {
+            deviceGlyph(size: 22)
+                .foregroundStyle(glyphTint)
+                .frame(height: 26)
+            Text(device.name)
+                .font(.caption.weight(.medium))
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Text(connectionLabel)
+                .font(.caption2)
+                .foregroundStyle(device.connected ? Color.lociSage : Color.secondary)
+                .lineLimit(1)
+            if let role = state.groupRole(for: device.udid) {
+                Text(role.labelKey)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(role.tint)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity)
+        // The padding and both gestures live in here rather than on the
+        // caller's wrapper so the whole card is the target. Previously
+        // only the icon and the two labels were, and a right-click that
+        // landed in the padding did nothing — which is why the menu
+        // "sometimes" needed a second or third try.
+        .contentShape(.rect)
+        .onTapGesture(count: 2) {
+            state.selectedUDID = device.udid
+            showingConnectChooser = true
+        }
+        .onTapGesture { state.selectedUDID = device.udid }
+        .contextMenu { cardMenu }
+        .sheet(isPresented: $showingConnectChooser) {
+            DeviceConnectChooserSheet(device: device)
+                .environment(state)
+        }
+        .sheet(isPresented: $showingDetails) {
+            DeviceDetailsSheet(device: device)
+                .environment(state)
+        }
+        .sheet(isPresented: $showingDevModeSheet) {
+            DeveloperModeSheet(device: device)
+                .environment(state)
+        }
+    }
+
+    /// Green means connected — until the phone has a part to play in
+    /// a group, at which point the role is the more useful fact and
+    /// takes the glyph. The connection is still on the line below it.
+    private var glyphTint: Color {
+        if let role = state.groupRole(for: device.udid) { return role.tint }
+        return device.connected ? Color.green : Color.secondary
+    }
+
+    /// Connected: which transport is carrying it right now, because
+    /// that is what decides whether it survives a reboot. Otherwise
+    /// say so plainly rather than leaving the card ambiguous.
+    private var connectionLabel: LocalizedStringKey {
+        guard device.connected else { return "Not connected" }
+        return device.isUSB ? "USB" : "WiFi"
+    }
+
+    @ViewBuilder
+    private var cardMenu: some View {
+        Menu {
+            Button {
+                Task { await state.connect(udid: device.udid, preferWiFi: false) }
+            } label: {
+                Label("Connect via USB", systemImage: "cable.connector")
+            }
+            .disabled(device.connected || !device.supportsUSB)
+
+            Button {
+                state.openWiFiConnectFlow(udid: device.udid)
+            } label: {
+                Label("Connect via WiFi…", systemImage: "wifi")
+            }
+            .disabled(device.connected || !device.supportsWiFi)
+        } label: {
+            Text("Connection", comment: "Device card menu — connection submenu")
+        }
+
+        // Top level rather than inside Connection: hanging up is the
+        // one thing you reach for mid-session, and burying it behind
+        // a submenu of ways to *start* a session had it in the wrong
+        // place entirely.
+        Button {
+            Task { await state.disconnect(udid: device.udid) }
+        } label: {
+            Label("Disconnect", systemImage: "xmark.circle")
+        }
+        .disabled(!device.connected)
+
+        Button {
+            showingDetails = true
+        } label: {
+            Text("Details…", comment: "Device card menu — open the details sheet")
+        }
+
+        Menu {
+            ForEach(AppState.deviceIconChoices, id: \.self) { symbol in
+                Button {
+                    state.setDeviceIcon(symbol, for: device.udid)
+                } label: {
+                    Label {
+                        Text(AppState.deviceIconTitle(symbol))
+                    } icon: {
+                        Image(systemName: symbol)
+                    }
+                }
+            }
+            Divider()
+            Button {
+                state.setDeviceIcon(nil, for: device.udid)
+            } label: {
+                Text("Use the default icon",
+                     comment: "Device card context menu — clear the chosen glyph")
+            }
+        } label: {
+            Text("Icon", comment: "Device card menu — icon submenu")
+        }
+    }
+
+    /// The phone's glyph, with its transport folded in.
+    ///
+    /// No custom icon: the stock phone, gaining the arcs when the
+    /// session is running over WiFi. With a custom icon: the icon
+    /// itself, and the same arcs flanking it over WiFi — the mark says
+    /// which phone, the arcs say how it is attached, and neither has
+    /// to give up its slot for the other.
+    @ViewBuilder
+    private func deviceGlyph(size: CGFloat) -> some View {
+        let wireless = device.connected && !device.isUSB
+        if let custom = state.deviceIconOverrides[device.udid] {
+            if wireless {
+                HStack(spacing: 1) {
+                    Image(systemName: "radiowaves.left")
+                        .font(.system(size: size * 0.55))
+                    Image(systemName: custom)
+                        .font(.system(size: size))
+                    Image(systemName: "radiowaves.right")
+                        .font(.system(size: size * 0.55))
+                }
+            } else {
+                Image(systemName: custom)
+                    .font(.system(size: size))
+            }
+        } else {
+            Image(systemName: wireless
+                  ? "iphone.gen3.radiowaves.left.and.right"
+                  : "iphone.gen3")
+                .font(.system(size: size))
+        }
+    }
+
+    /// The pre-v1.17.1 row: everything about the phone on one
+    /// wide line. Kept because the compact card trades detail for
+    /// density, and that is a preference, not an improvement.
+    private var classicIphoneBody: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
-                Image(systemName: device.isUSB ? "iphone" : "iphone.gen3.radiowaves.left.and.right")
-                    .foregroundStyle(device.connected ? .green : .secondary)
+                deviceGlyph(size: 15)
+                    .foregroundStyle(glyphTint)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
                         Text(device.name)
@@ -1479,6 +1700,11 @@ private struct DeviceRow: View {
                         Text(device.developerModeLabel)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
+                        if let role = state.groupRole(for: device.udid) {
+                            Text(role.labelKey)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(role.tint)
+                        }
                     }
                 }
                 Spacer()
@@ -1698,9 +1924,19 @@ private struct Overlay: View {
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "list.bullet.below.rectangle")
-                            Text("\(state.pendingStops.count) stops — show controls",
-                                 comment: "Floating chip shown when ControlPanel is minimised — click to bring it back")
-                                .font(.caption)
+                            // The chip has to name what it is holding:
+                            // in flower mode these are ring centres, and
+                            // offering to restore "stops" reads as a
+                            // leftover from a mode the user isn't in.
+                            if state.activeMovementMode == .flower {
+                                Text("\(state.pendingStops.count) waypoints — show controls",
+                                     comment: "Floating chip shown when the flower ControlPanel is minimised")
+                                    .font(.caption)
+                            } else {
+                                Text("\(state.pendingStops.count) stops — show controls",
+                                     comment: "Floating chip shown when ControlPanel is minimised — click to bring it back")
+                                    .font(.caption)
+                            }
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)

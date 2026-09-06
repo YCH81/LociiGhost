@@ -19,6 +19,10 @@ struct FlowerRunVM: Equatable {
     var etaSeconds: Double
     var plannedPath: [Coordinate]
     var isMoving: Bool
+    /// Held by the user rather than finished. Kept apart from
+    /// `!isMoving`, which is also true while a run is waiting out a
+    /// dwell — the toolbar must offer Resume for one and not the other.
+    var isPaused: Bool
 
     /// 0…1 for the progress bar. Guarded because a plan of zero steps
     /// would otherwise divide by zero the moment a run is set up with
@@ -111,6 +115,9 @@ extension AppState {
 
     @MainActor
     func stopFlower(udid: String) async {
+        // Stopping the leader ends the formation; the sidebar should
+        // stop calling anyone a follower the moment it does.
+        if activeGroup?.leader == udid { activeGroup = nil }
         flowerRun = nil
         guard let client else { return }
         do {
@@ -200,6 +207,7 @@ extension AppState {
                 Coordinate(lat: $0.lat, lng: $0.lng)
             },
             isMoving: reply.state == "moving",
+            isPaused: reply.state == "paused",
         )
     }
 }

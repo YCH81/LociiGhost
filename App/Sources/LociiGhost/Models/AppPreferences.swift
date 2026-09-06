@@ -117,6 +117,16 @@ final class AppPreferences {
     /// get a colour derived from their name -- see `CategoryPalette`.
     var bookmarkCategoryColorsJSON: String? = nil
 
+    /// Per-device sidebar glyphs, as a JSON object of
+    /// `{ "<udid>": "<sf symbol name>" }`. One optional String rather
+    /// than a SwiftData model for the same reason as the colours
+    /// above: it is a lookup table nothing else joins against.
+    var deviceIconsJSON: String? = nil
+
+    /// Raw value of `DeviceListLayout`. String rather than the enum so
+    /// SwiftData's schema doesn't move when a layout is added.
+    var deviceListLayoutRaw: String? = nil
+
     // ── v1.17: Address-search provider ──────────────────────────
     /// Raw value of `GeocodeProvider` — which service the search bar
     /// asks. "apple" (the default) is the only one with true

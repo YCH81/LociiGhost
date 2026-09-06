@@ -134,3 +134,139 @@ def test_a_member_without_a_service_is_a_programming_error():
 def test_an_empty_group_is_rejected():
     with pytest.raises(ValueError):
         GroupLocation(DeviceGroup(()), {})
+
+
+# ----------------------------------------------------------------------
+# Detaching mid-run — the "turn sync off and only the leader keeps
+# going" behaviour. The group is bound when a run starts, so this is
+# the only thing that can reach a run already in flight.
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_detach_leaves_the_leader_moving_and_stops_the_followers():
+    lead, b, c = FakeLocation(), FakeLocation(), FakeLocation()
+    loc = GroupLocation(
+        _group(GroupMember("lead"), GroupMember("b"), GroupMember("c")),
+        {"lead": lead, "b": b, "c": c})
+
+    await loc.set(*TAIPEI)
+    assert lead.calls == b.calls == c.calls == [TAIPEI]
+
+    dropped = loc.detach_followers()
+    assert sorted(dropped) == ["b", "c"]
+
+    later = (25.0400, 121.5700)
+    await loc.set(*later)
+
+    # The leader carried on…
+    assert lead.calls == [TAIPEI, later]
+    # …and the followers stopped where they were.
+    assert b.calls == [TAIPEI]
+    assert c.calls == [TAIPEI]
+
+
+@pytest.mark.asyncio
+async def test_detach_is_idempotent_and_keeps_the_leader():
+    lead, b = FakeLocation(), FakeLocation()
+    loc = GroupLocation(_group(GroupMember("lead"), GroupMember("b")),
+                        {"lead": lead, "b": b})
+    assert loc.detach_followers() == ["b"]
+    # Nothing left to drop, and the leader is never a candidate — a
+    # second toggle must not leave the run with no one to move.
+    assert loc.detach_followers() == []
+    assert loc.group.udids == ("lead",)
+
+    await loc.set(*TAIPEI)
+    assert lead.calls == [TAIPEI]
+    assert b.calls == []
+
+
+@pytest.mark.asyncio
+async def test_detach_during_a_push_takes_effect_on_that_same_tick():
+    """The switch has to bite immediately, not one position later.
+
+    `set` computes every member's coordinate up front and then awaits
+    the leader. A detach arriving in that window used to still push the
+    followers, because the list had already been built — so the phone
+    the user just cut loose took one more step.
+    """
+    b = FakeLocation()
+
+    class DetachingLeader(FakeLocation):
+        async def set(self, lat, lng, *, retries=None):
+            await super().set(lat, lng, retries=retries)
+            loc.detach_followers()
+
+    lead = DetachingLeader()
+    loc = GroupLocation(_group(GroupMember("lead"), GroupMember("b")),
+                        {"lead": lead, "b": b})
+
+    await loc.set(*TAIPEI)
+
+    assert lead.calls == [TAIPEI]
+    assert b.calls == [], "follower moved after being detached mid-tick"
+
+
+# ----------------------------------------------------------------------
+# Reporting follower positions. Followers are driven here and nowhere
+# else, so if this file stays quiet the Mac never learns where they are.
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_follower_positions_are_reported():
+    seen: list[list[tuple[str, float, float]]] = []
+
+    async def on_positions(moved):
+        seen.append(list(moved))
+
+    a, b = FakeLocation(), FakeLocation()
+    loc = GroupLocation(
+        _group(GroupMember("lead"), GroupMember("b", offset_m=30.0, bearing_deg=0.0)),
+        {"lead": a, "b": b},
+        on_positions=on_positions)
+
+    await loc.set(*TAIPEI)
+
+    assert len(seen) == 1
+    (udid, lat, lng), = seen[0]
+    assert udid == "b"
+    # The follower's own offset coordinate, not the leader's.
+    assert haversine_m(TAIPEI, (lat, lng)) == pytest.approx(30.0, abs=0.01)
+
+
+@pytest.mark.asyncio
+async def test_a_follower_that_failed_is_not_reported_as_moved():
+    """Reporting a position for a phone whose push just failed would
+    put a pin on the map for a device that never went there."""
+    reported: list[str] = []
+
+    async def on_positions(moved):
+        reported.extend(udid for udid, _, _ in moved)
+
+    lead, bad, good = FakeLocation(), FakeLocation(fail_after=0), FakeLocation()
+    loc = GroupLocation(
+        _group(GroupMember("lead"), GroupMember("bad"), GroupMember("good")),
+        {"lead": lead, "bad": bad, "good": good},
+        on_positions=on_positions)
+
+    await loc.set(*TAIPEI)
+
+    assert reported == ["good"]
+    assert loc.group.udids == ("lead", "good")
+
+
+@pytest.mark.asyncio
+async def test_a_broken_positions_handler_does_not_stop_the_run():
+    async def boom(_moved):
+        raise RuntimeError("listener exploded")
+
+    lead, b = FakeLocation(), FakeLocation()
+    loc = GroupLocation(_group(GroupMember("lead"), GroupMember("b")),
+                        {"lead": lead, "b": b},
+                        on_positions=boom)
+
+    await loc.set(*TAIPEI)          # must not raise
+    assert lead.calls == [TAIPEI]
+    assert b.calls == [TAIPEI]

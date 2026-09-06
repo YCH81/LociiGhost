@@ -136,19 +136,36 @@ final class AppState {
     /// rest of the app (map click handler, control panel, etc.) can
     /// react. nil → no panel open, map click is inert.
     ///
-    /// v1.11.0: when the user switches AWAY from Multi-Stop, the
+    /// v1.11.0: when the user switches AWAY from a staging mode, the
     /// staged `pendingStops` list is cleared. Without this, stops
     /// staged for one feature would linger in state after the user
     /// moved on to Random Walk / Joystick / etc., visible in any
     /// future Multi-Stop session. Spec ("跳到別的功能" should clear)
     /// is exactly this transition.
+    ///
+    /// v1.17: the test is `stopStagingModes`, not `== .multiStop`.
+    /// Flower mode orbits the very same list, so multi-stop → flower
+    /// is not "moving on to another feature" — wiping there threw
+    /// away the route the user had just clicked out and contradicted
+    /// the one-shared-list design the panel promises.
     var activeMovementMode: MovementMode? = nil {
         didSet {
-            if oldValue == .multiStop && activeMovementMode != .multiStop {
+            let wasStaging = oldValue.map(Self.stopStagingModes.contains) ?? false
+            let isStaging = activeMovementMode.map(Self.stopStagingModes.contains) ?? false
+            if wasStaging && !isStaging {
                 pendingStops = []
             }
         }
     }
+
+    /// The movement modes that stage their waypoints in `pendingStops`.
+    ///
+    /// Single source of truth on purpose. v1.17 added flower mode to
+    /// `canQueueStop` and nowhere else, and because both map layers
+    /// carried their own copy of the same condition, clicking the map
+    /// in flower mode stayed silently inert — the fix never reached
+    /// the code that decides anything.
+    static let stopStagingModes: Set<MovementMode> = [.multiStop, .flower]
 
     /// v1.11.2 round 17: per-device snapshots of the active movement
     /// mode + pending stops. AppState's `activeMovementMode` and
@@ -739,13 +756,24 @@ final class AppState {
     /// re-routing. The stop is staged in `pendingStops` by `appendQueueStop`
     /// and stays there for the next Navigate after the current trip ends.
     var canQueueStop: Bool {
-        if activeMovementMode == .multiStop { return true }
-        // Flower mode orbits this same list — the panel says "click the
-        // map to add the points to orbit", and without this the clicks
-        // did nothing at all.
-        if activeMovementMode == .flower { return true }
+        if let mode = activeMovementMode, Self.stopStagingModes.contains(mode) {
+            return true
+        }
         if navigationActive && !pendingStops.isEmpty { return true }
         return false
+    }
+
+    /// The narrower window that a plain left-click on the map obeys:
+    /// a staging mode is open AND no trip is in flight.
+    ///
+    /// Both map layers read this instead of re-deriving it, which is
+    /// the whole point — the previous duplicated `== .multiStop &&
+    /// !navigationActive` guards are why flower mode's map clicks did
+    /// nothing. Mid-trip injection stays on the right-click "Add as
+    /// stop" path, which `canQueueStop` describes.
+    var canStageStopByClick: Bool {
+        guard let mode = activeMovementMode else { return false }
+        return Self.stopStagingModes.contains(mode) && !navigationActive
     }
 
     /// Append `coord` to the staging queue.
@@ -883,6 +911,8 @@ final class AppState {
 
     private func loadGroup() {
         groupSyncEnabled = preferences?.groupSyncEnabled ?? false
+        deviceListLayout = preferences?.deviceListLayoutRaw
+            .flatMap(DeviceListLayout.init(rawValue:)) ?? .cards
         guard let json = preferences?.groupUDIDsJSON,
               let data = json.data(using: .utf8),
               let decoded = try? JSONDecoder().decode([String].self, from: data)
@@ -910,6 +940,122 @@ final class AppState {
               let decoded = try? JSONDecoder().decode(FlowerConfig.self, from: data)
         else { return }
         flowerConfig = decoded
+    }
+
+    /// The phone the group was set up on, remembered so the sidebar
+    /// can name a leader before anything is running.
+    ///
+    /// Without it the pre-run roles were derived from `selectedUDID`,
+    /// which meant clicking a follower to look at it recomputed the
+    /// group around that phone and the badges vanished. The group was
+    /// configured on one particular iPhone; that is the fact worth
+    /// showing, not "whichever card you are looking at right now".
+    var plannedGroupLeader: String?
+
+    /// The group the running mover was handed, or nil when no run
+    /// has attached one. Written by `groupParams(leader:)`, which
+    /// every group-capable call goes through.
+    var activeGroup: ActiveGroup?
+
+    /// Raised when Snap-to-real has no Mac fix to work with.
+    var showingLocationPermissionHelp: Bool = false
+
+    /// How the sidebar draws the phones.
+    ///
+    /// Offered as a choice rather than replaced outright: the cards
+    /// trade detail for density, and which of those you want depends
+    /// on whether you are watching three phones or configuring one.
+    var deviceListLayout: DeviceListLayout = .cards {
+        didSet {
+            guard !isHydratingPreferences, deviceListLayout != oldValue else { return }
+            preferences?.deviceListLayoutRaw = deviceListLayout.rawValue
+            try? modelContext?.save()
+        }
+    }
+
+    /// Glyph the user picked for each iPhone, keyed by udid.
+    ///
+    /// Backed by `AppPreferences.deviceIconsJSON`. Three phones of the
+    /// same model are three identical rows; letting each carry its own
+    /// mark is the cheapest way to tell them apart at a glance.
+    var deviceIconOverrides: [String: String] = [:] {
+        didSet {
+            guard !isHydratingPreferences, deviceIconOverrides != oldValue else { return }
+            persistDeviceIcons()
+        }
+    }
+
+    /// The glyphs offered in the picker. Two phone shapes plus six
+    /// marks that are unmistakable at 24pt — an icon you have to
+    /// squint at defeats the point.
+    static let deviceIconChoices: [String] = [
+        "iphone.gen3",
+        "iphone.gen3.radiowaves.left.and.right",
+        "star.fill",
+        "heart.fill",
+        "leaf.fill",
+        "bolt.fill",
+        "flame.fill",
+        "pawprint.fill",
+    ]
+
+    /// A readable name for the picker. The raw SF Symbol string is an
+    /// implementation detail; "pawprint.fill" in a menu is a leak, not
+    /// a label.
+    static func deviceIconTitle(_ symbol: String) -> LocalizedStringKey {
+        switch symbol {
+        case "iphone.gen3": return "Phone"
+        case "iphone.gen3.radiowaves.left.and.right": return "Phone (wireless)"
+        case "star.fill": return "Star"
+        case "heart.fill": return "Heart"
+        case "leaf.fill": return "Leaf"
+        case "bolt.fill": return "Bolt"
+        case "flame.fill": return "Flame"
+        case "pawprint.fill": return "Paw"
+        default: return "Icon"
+        }
+    }
+
+    /// The chosen glyph, or `fallback` when the user hasn't picked one.
+    func deviceIcon(for udid: String, fallback: String) -> String {
+        deviceIconOverrides[udid] ?? fallback
+    }
+
+    /// Passing nil clears the override and returns the device to its
+    /// transport-derived default.
+    func setDeviceIcon(_ symbol: String?, for udid: String) {
+        if let symbol, Self.deviceIconChoices.contains(symbol) {
+            deviceIconOverrides[udid] = symbol
+        } else {
+            deviceIconOverrides.removeValue(forKey: udid)
+        }
+    }
+
+    private func persistDeviceIcons() {
+        guard let prefs = preferences else { return }
+        if deviceIconOverrides.isEmpty {
+            prefs.deviceIconsJSON = nil
+            return
+        }
+        guard let data = try? JSONEncoder().encode(deviceIconOverrides),
+              let json = String(data: data, encoding: .utf8) else {
+            NSLog("LociiGhost: could not encode device icons; keeping the stored value")
+            return
+        }
+        prefs.deviceIconsJSON = json
+    }
+
+    /// Called from bootstrap once the model context exists.
+    func loadDeviceIcons() {
+        guard let prefs = preferences,
+              let json = prefs.deviceIconsJSON,
+              let data = json.data(using: .utf8),
+              let map = try? JSONDecoder().decode([String: String].self, from: data)
+        else { return }
+        // Only symbols we still offer survive the trip: a name dropped
+        // from a later build would otherwise render as a blank square
+        // with no way to fix it from the UI.
+        deviceIconOverrides = map.filter { Self.deviceIconChoices.contains($0.value) }
     }
 
     private func persistCategoryColors() {
@@ -1287,6 +1433,17 @@ final class AppState {
             guard !isHydratingPreferences, groupSyncEnabled != oldValue else { return }
             preferences?.groupSyncEnabled = groupSyncEnabled
             try? modelContext?.save()
+            // Whoever is selected when you switch it on is the phone
+            // you are setting the group up from, and stays the leader
+            // until you switch it off and set it up somewhere else.
+            plannedGroupLeader = groupSyncEnabled ? selectedUDID : nil
+            // The group is bound to a run when that run starts, so the
+            // flag alone only ever reached the *next* one: switching
+            // off mid-trip left the followers being driven until the
+            // leader finished. Reach into the running one.
+            if !groupSyncEnabled {
+                Task { await detachFollowersFromRunningRun() }
+            }
         }
     }
 
@@ -1429,6 +1586,31 @@ final class AppState {
         }
     }
 
+    /// Non-nil while the flower panel's route picker is up.
+    var flowerRoutePickerShown: Bool = false
+
+    /// Orbit a saved route's points instead of navigating through
+    /// them. A route and a flower waypoint list are the same shape —
+    /// an ordered coordinate list — so the only work is pointing the
+    /// staging list at it and making sure the flower panel is the one
+    /// on screen when the user looks up.
+    @MainActor
+    func loadRouteAsFlowerWaypoints(_ route: Route) {
+        let coords = route.points
+        guard !coords.isEmpty else { return }
+        // Order matters: switching modes first means `didSet` has
+        // already run by the time the new points land, so a stale
+        // mode transition can never wipe what we just staged.
+        activeMovementMode = .flower
+        pendingStops = coords
+        if let first = coords.first {
+            pendingMapFly = MapFlyRequest(
+                coordinate: first,
+                spanMeters: 2_000,
+            )
+        }
+    }
+
     /// Delete a saved preset. Defensive — caller (preset row context
     /// menu) is the only path.
     @MainActor
@@ -1493,6 +1675,7 @@ final class AppState {
         // redundant write-back-to-disk that would otherwise fire here.
         isHydratingPreferences = true
         loadCategoryColors()
+        loadDeviceIcons()
         alertSoundEnabled = prefs.alertSoundEnabled
         // X8 migration: an older build stored the key in plaintext
         // here. Move it into the Keychain on first launch and wipe the
@@ -2715,6 +2898,9 @@ final class AppState {
     }
 
     func stopNavigation(udid: String) async {
+        // Stopping the leader ends the formation; the sidebar should
+        // stop calling anyone a follower the moment it does.
+        if activeGroup?.leader == udid { activeGroup = nil }
         guard let client else { return }
         // Explicit Stop cancels any auto-loop OR dwell-mode sequence
         // in flight. Clearing before the RPC means an
@@ -2817,6 +3003,9 @@ final class AppState {
     }
 
     func stopRandomWalk(udid: String) async {
+        // Stopping the leader ends the formation; the sidebar should
+        // stop calling anyone a follower the moment it does.
+        if activeGroup?.leader == udid { activeGroup = nil }
         guard let client else { return }
         _ = try? await client.callRaw("location.stop", params: ["udid": AnyCodable(udid)])
         randomWalk = nil
@@ -2907,6 +3096,9 @@ final class AppState {
     }
 
     func stopJoystick(udid: String) async {
+        // Stopping the leader ends the formation; the sidebar should
+        // stop calling anyone a follower the moment it does.
+        if activeGroup?.leader == udid { activeGroup = nil }
         guard let client else { return }
         _ = try? await client.callRaw("location.stop", params: ["udid": AnyCodable(udid)])
         joystick = nil
@@ -3427,6 +3619,8 @@ final class AppState {
         case "event.state_changed":
             applyStateEvent(event.params)
             applyFlowerEvent(event.params)
+        case "event.group_positions":
+            applyGroupPositionsEvent(event.params)
         case "event.group_changed":
             // A member was skipped (not connected) or dropped mid-run
             // (its channel failed). The run continues without it, so
@@ -3483,6 +3677,10 @@ final class AppState {
     func applyGroupChangedEvent(_ params: [String: AnyCodable]) {
         let affected = parseUDIDList(params["skipped"])
             .union(parseUDIDList(params["dropped"]))
+        if var group = activeGroup, !affected.isEmpty {
+            group.followers.removeAll { affected.contains($0) }
+            activeGroup = group
+        }
         let names = affected
             .map { udid in devices.first { $0.udid == udid }?.name ?? udid }
             .sorted()
@@ -3492,6 +3690,51 @@ final class AppState {
                 localized: "Group sync: %@ isn't moving with the others.",
                 comment: "Toast when a group member is skipped or dropped"),
             names.joined(separator: ", "))
+    }
+
+    /// Where the followers of a group run actually are.
+    ///
+    /// Followers are driven inside `GroupLocation`, which sits below
+    /// every mover, so none of the per-run events ever mention them —
+    /// the Mac only ever heard about the leader. Selecting a follower
+    /// therefore showed a map with no phone on it while that phone was
+    /// visibly moving in your hand.
+    ///
+    /// Recorded per-device exactly like `applyPositionEvent` does, so
+    /// switching to a follower shows its current position and the
+    /// selected device's chips refresh while the others stay quiet.
+    private func applyGroupPositionsEvent(_ params: [String: AnyCodable]) {
+        guard let wrapped = params["members"] else { return }
+        let entries: [[String: Any]]
+        if let codables = wrapped.value as? [AnyCodable] {
+            entries = codables.compactMap { $0.value as? [String: Any] }
+        } else if let any = wrapped.value as? [Any] {
+            entries = any.compactMap { $0 as? [String: Any] }
+        } else {
+            return
+        }
+        // The values arrive as whatever the JSON decoder produced —
+        // Double, an AnyCodable box, or an NSNumber once it has been
+        // through Foundation. Coordinates are too important to drop on
+        // a representation detail.
+        func number(_ raw: Any?) -> Double? {
+            switch raw {
+            case let d as Double: return d
+            case let i as Int: return Double(i)
+            case let n as NSNumber: return n.doubleValue
+            case let c as AnyCodable: return number(c.value)
+            default: return nil
+            }
+        }
+        for entry in entries {
+            let rawUDID = (entry["udid"] as? String)
+                ?? ((entry["udid"] as? AnyCodable)?.value as? String)
+            guard let udid = rawUDID,
+                  let lat = number(entry["lat"]),
+                  let lng = number(entry["lng"])
+            else { continue }
+            setSimulatedLocation(Coordinate(lat: lat, lng: lng), for: udid)
+        }
     }
 
     private func applyPositionEvent(_ params: [String: AnyCodable]) {
@@ -3762,6 +4005,14 @@ final class AppState {
             lastError = detail.isEmpty
                 ? String(localized: "The route stopped: lost the connection to the iPhone.")
                 : String(localized: "The route stopped: ") + detail
+        }
+
+        // A run that ends by itself must clear the formation too,
+        // otherwise the badges outlive the thing they describe.
+        if ["idle", "stopped", "failed"].contains(stateRaw),
+           let leader = activeGroup?.leader,
+           stringValue(params["udid"]) == leader {
+            activeGroup = nil
         }
 
         let mapped: NavigationVM.State?
@@ -4200,6 +4451,57 @@ struct DeviceVM: Codable, Identifiable, Hashable, Sendable {
 /// `AppState.activeMovementMode`; other code paths (map-click
 /// handler, etc.) read it to know whether map clicks should add
 /// stops, joystick input should fire, etc.
+/// The group actually bound to a run, captured when it starts.
+///
+/// Not derived from the sidebar selection: the leader is whichever
+/// phone the run was started on, and it stays the leader no matter
+/// who the user clicks afterwards.
+struct ActiveGroup: Hashable, Sendable {
+    let leader: String
+    var followers: [String]
+}
+
+/// A phone's part in an active device group.
+enum GroupRole: Hashable, Sendable {
+    case leading
+    case following
+
+    /// Yellow leads, orange follows. Deliberately neither green nor
+    /// grey: those already mean "connected" and "not connected" in
+    /// this sidebar, and a role is a different question from a
+    /// connection.
+    var tint: Color {
+        switch self {
+        case .leading: return .yellow
+        case .following: return .orange
+        }
+    }
+
+    var labelKey: LocalizedStringKey {
+        switch self {
+        case .leading: return "Leading"
+        case .following: return "Following"
+        }
+    }
+}
+
+/// Sidebar device layouts.
+enum DeviceListLayout: String, CaseIterable, Identifiable, Hashable, Sendable {
+    /// v1.17.1 default: small two-up cards, glyph and connection only.
+    case cards
+    /// The wide one-per-line rows shipped up to v1.17.0.
+    case classic
+
+    var id: String { rawValue }
+
+    var labelKey: LocalizedStringKey {
+        switch self {
+        case .cards: return "Compact cards"
+        case .classic: return "Detailed rows"
+        }
+    }
+}
+
 enum MovementMode: String, Hashable, Sendable {
     case joystick
     case randomWalk

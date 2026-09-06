@@ -19,7 +19,7 @@ struct RoutesSection: View {
     @State private var collapsed: Set<String> = []
     /// Whole-section collapse — title + + button stay visible so the
     /// user can still import a GPX even when the body is folded.
-    @State private var sectionCollapsed: Bool = false
+    @State private var sectionCollapsed: Bool = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {

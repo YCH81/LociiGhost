@@ -24,12 +24,27 @@ struct ControlPanel: View {
 
     @Environment(AppState.self) private var state
 
+    /// Typed km/h for flower mode's custom speed, and whether the
+    /// user has actually chosen the Custom segment. The flag has to
+    /// be sticky: the config stores only a speed, so tapping Custom
+    /// while sitting on a preset would otherwise be undone the
+    /// instant the picker re-derived its selection from that
+    /// unchanged number.
+    @State private var flowerCustomInput: String = ""
+    @State private var flowerCustomSelected: Bool = false
+
     var body: some View {
         @Bindable var state = state
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 Image(systemName: "list.bullet.below.rectangle")
-                if stops.count > 1 {
+                if isFlower {
+                    // Same word the sidebar's flower panel uses: these
+                    // are centres to orbit, not stops to pass through.
+                    Text("Waypoints",
+                         comment: "Header — staged waypoint list in flower mode")
+                        .font(.headline)
+                } else if stops.count > 1 {
                     Text("\(stops.count) stops",
                          comment: "Header — number of staged multi-stop targets")
                         .font(.headline)
@@ -82,6 +97,9 @@ struct ControlPanel: View {
                 Text("Travel mode")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if isFlower {
+                    flowerTravelPicker
+                } else {
                 SpeedPicker()
                     .disabled(state.useStraightLine)
 
@@ -162,10 +180,26 @@ struct ControlPanel: View {
                 .help(isLockedDuringNavigation
                       ? "Cannot change routing mode while a trip is running. Stop first."
                       : "Walk a great-circle line straight through every stop, ignoring streets. Applies on the next Navigate click.")
+                }
             }
 
             // Actions
             HStack(spacing: 8) {
+                if isFlower {
+                    // The staged points mean something different here:
+                    // Navigate would drive straight through them and
+                    // never orbit anything.
+                    Button {
+                        Task { await state.startFlower(udid: udid, points: stops) }
+                    } label: {
+                        Label("Start Flower Mode", systemImage: "play.fill")
+                    }
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(connectedDevice == nil || stops.isEmpty
+                              || state.flowerRun != nil)
+                    .help("Orbit every staged waypoint, lap after lap")
+                } else {
                 Button {
                     Task {
                         await state.navigate(udid: udid,
@@ -182,6 +216,7 @@ struct ControlPanel: View {
                 .help(stops.count > 1
                       ? "Plan a route through all \(stops.count) stops in order"
                       : "Plan a route and animate the iPhone along it")
+                }
 
                 if stops.count == 1, let only = stops.first {
                     Button {
@@ -196,8 +231,12 @@ struct ControlPanel: View {
 
                 Button("Cancel") {
                     Task {
-                        if let udid = state.selectedUDID, state.navigationActive {
-                            await state.stopNavigation(udid: udid)
+                        if let udid = state.selectedUDID {
+                            if state.flowerActive {
+                                await state.stopFlower(udid: udid)
+                            } else if state.navigationActive {
+                                await state.stopNavigation(udid: udid)
+                            }
                         }
                         state.pendingStops = []
                         state.schedulePreviewRefresh()
@@ -224,6 +263,128 @@ struct ControlPanel: View {
     // MARK: -
 
     private var stops: [Coordinate] { state.pendingStops }
+
+    private var isFlower: Bool { state.activeMovementMode == .flower }
+
+    /// Flower mode walks or cycles its rings — nothing else. Driving a
+    /// 70 m circle is not a thing a person does, so the third segment
+    /// is gone rather than merely discouraged.
+    ///
+    /// It writes `flowerConfig.speedMps` directly. The daemon reads
+    /// that, never `travelProfile`, so binding this to the multi-stop
+    /// picker would show a speed that the run then ignored.
+    private var flowerTravelPicker: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Picker("", selection: Binding(
+                get: { flowerSpeedChoice },
+                set: { choice in
+                    switch choice {
+                    case .custom:
+                        flowerCustomSelected = true
+                        if flowerCustomInput.isEmpty {
+                            flowerCustomInput = String(
+                                format: "%.1f", state.flowerConfig.speedMps * 3.6)
+                        }
+                    case .walking:
+                        flowerCustomSelected = false
+                        state.flowerConfig.speedMps = TravelProfile.walking.defaultSpeedMps
+                    case .cycling:
+                        flowerCustomSelected = false
+                        state.flowerConfig.speedMps = TravelProfile.cycling.defaultSpeedMps
+                    }
+                }
+            )) {
+                Label(TravelProfile.walking.labelKey,
+                      systemImage: TravelProfile.walking.symbol)
+                    .tag(FlowerSpeedChoice.walking)
+                Label(TravelProfile.cycling.labelKey,
+                      systemImage: TravelProfile.cycling.symbol)
+                    .tag(FlowerSpeedChoice.cycling)
+                Text("Custom",
+                     comment: "Label for the free-form speed entry next to the travel presets")
+                    .tag(FlowerSpeedChoice.custom)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
+            if flowerSpeedChoice == .custom {
+                HStack(spacing: 6) {
+                    TextField("km/h", text: $flowerCustomInput)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 70)
+                        .onSubmit { applyFlowerCustomSpeed() }
+                    Button("Use") { applyFlowerCustomSpeed() }
+                        .controlSize(.small)
+                        .disabled(parsedFlowerCustomKmh == nil)
+                    Spacer(minLength: 0)
+                }
+            }
+
+            HStack(spacing: 6) {
+                Image(systemName: "speedometer")
+                    .foregroundStyle(.secondary)
+                Text("Speed: \(String(format: "%.1f", state.flowerConfig.speedMps * 3.6)) km/h",
+                     comment: "Effective speed readout under the SpeedPicker; first %@ is the km/h value")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+            }
+
+            // Only a hand-typed speed earns the warning. The cycling
+            // preset is 19.8 km/h and is exempt by design: it is a
+            // speed the user picked off a list we offered, not one
+            // they overshot into.
+            if flowerSpeedWarnsAboutPlanting {
+                HStack(alignment: .top, spacing: 4) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.caption2)
+                    Text("Over 15 km/h the flower may fail to plant.",
+                         comment: "Flower mode — caution under a hand-typed speed above 15 km/h")
+                        .font(.caption2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .foregroundStyle(.orange)
+            }
+        }
+        .disabled(state.flowerRun != nil)
+    }
+
+    private enum FlowerSpeedChoice: Hashable { case walking, cycling, custom }
+
+    /// Which segment lights up. Derived from the stored speed so a
+    /// value set anywhere else still shows correctly, with the sticky
+    /// flag winning so Custom stays selected while the user types.
+    private var flowerSpeedChoice: FlowerSpeedChoice {
+        if flowerCustomSelected { return .custom }
+        let speed = state.flowerConfig.speedMps
+        if abs(speed - TravelProfile.walking.defaultSpeedMps) < 0.001 { return .walking }
+        if abs(speed - TravelProfile.cycling.defaultSpeedMps) < 0.001 { return .cycling }
+        return .custom
+    }
+
+    /// 15 km/h is roughly where a "walked" ring stops looking walked.
+    private static let flowerPlantingSpeedLimitKmh = 15.0
+
+    private var flowerSpeedWarnsAboutPlanting: Bool {
+        flowerSpeedChoice == .custom
+            && state.flowerConfig.speedMps * 3.6 > Self.flowerPlantingSpeedLimitKmh
+    }
+
+    private var parsedFlowerCustomKmh: Double? {
+        let trimmed = flowerCustomInput.trimmingCharacters(in: .whitespaces)
+        guard let v = Double(trimmed), v > 0, v < 1_000 else { return nil }
+        return v
+    }
+
+    /// Applies but never clamps: the ceiling is advice, and silently
+    /// rewriting a number the user typed is worse than letting them
+    /// run a ring that may not plant.
+    private func applyFlowerCustomSpeed() {
+        guard let kmh = parsedFlowerCustomKmh else { return }
+        flowerCustomSelected = true
+        state.flowerConfig.speedMps = kmh / 3.6
+    }
+
+    private static let flowerProfiles: [TravelProfile] = [.walking, .cycling]
 
     private var stopsList: some View {
         // Cap the on-map control's stops list at ~280pt height so a

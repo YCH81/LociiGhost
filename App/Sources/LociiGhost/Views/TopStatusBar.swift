@@ -20,6 +20,12 @@ import LociiGhostCore
 /// highlight still helps users learn the layout).
 struct TopStatusBar: View {
     @Environment(AppState.self) private var state
+
+    /// Icons-only once the bar is narrower than this. Approximate on
+    /// purpose — see `readingBarWidth` for why an exact fit is not
+    /// worth what it used to cost.
+    private static let compactLabelWidth: CGFloat = 1_040
+    @State private var compactLabels = false
     /// SwiftUI's locale, set by `LociiGhostApp` from the
     /// AppLanguage picker (`.environment(\.locale, …)`). We pass
     /// this into `CountryDisplay.displayName` so the country chip
@@ -38,7 +44,21 @@ struct TopStatusBar: View {
         // outer TopStatusBar body re-evaluates only on event-driven
         // state changes (selection / weather refresh / etc).
         HStack(spacing: 12) {
-            leftButtons
+            // Full labels while they fit; icons alone once they don't.
+            // Narrowing the window used to clip the row — the buttons
+            // kept their text and the clock on the far right fell off
+            // the edge instead, which is the one thing on this bar you
+            // cannot hover to recover.
+            // Full labels while the bar is wide enough, icons alone
+            // once it isn't. The threshold is approximate on purpose:
+            // being a few points early or late costs nothing, whereas
+            // measuring the exact fit on every layout pass is what
+            // made switching devices stutter.
+            if compactLabels {
+                leftButtons.labelStyle(.iconOnly)
+            } else {
+                leftButtons.labelStyle(.titleAndIcon)
+            }
             Spacer(minLength: 12)
             rightInfo
         }
@@ -51,6 +71,10 @@ struct TopStatusBar: View {
         .frame(maxWidth: .infinity, minHeight: 44)
         .background(.bar)
         .overlay(Divider(), alignment: .bottom)
+        .readingBarWidth { width in
+            let compact = width < Self.compactLabelWidth
+            if compact != compactLabels { compactLabels = compact }
+        }
     }
 
     // MARK: - Left: 還原 / 中斷連線 / 重新整理 / 退出
@@ -168,13 +192,19 @@ struct TopStatusBar: View {
         helpKey: LocalizedStringKey?,
         action: @escaping () -> Void,
     ) -> some View {
+        // A Label rather than a hand-rolled HStack: `leftButtons` is
+        // wrapped in a ViewThatFits that retries the whole row with
+        // `.labelStyle(.iconOnly)`, and that only reaches a button
+        // whose text SwiftUI knows about. The `.help` below is what
+        // keeps the icon-only row readable.
         Button(action: action) {
-            HStack(spacing: 5) {
-                Image(systemName: symbol)
+            Label {
                 Text(titleKey)
                     .font(.callout.weight(.medium))
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
+            } icon: {
+                Image(systemName: symbol)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
@@ -345,10 +375,11 @@ struct TopStatusBar: View {
         var coord = await state.macLocation.fetchFreshFix(timeout: 2.0)
         if coord == nil { coord = state.macLocation.coordinate }
         guard let c = coord else {
-            state.lastError = String(
-                localized: "Mac location unavailable — open System Settings → Privacy → Location and allow LociiGhost.",
-                comment: "Toast when Snap-to-real fires with no Mac CoreLocation fix yet",
-            )
+            // Not a transient failure worth a toast: if permission was
+            // refused, macOS will never show its prompt again and the
+            // user has to go and flip the switch. The sheet carries the
+            // steps and a button that opens the right pane.
+            state.showingLocationPermissionHelp = true
             return
         }
         state.pendingMapFly = MapFlyRequest(

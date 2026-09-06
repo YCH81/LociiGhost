@@ -24,6 +24,7 @@ log = logging.getLogger(__name__)
 
 
 MemberFailureHandler = Callable[[str, BaseException], Awaitable[None]]
+PositionsHandler = Callable[[list[tuple[str, float, float]]], Awaitable[None]]
 
 
 class GroupLocation(LocationService):
@@ -41,6 +42,7 @@ class GroupLocation(LocationService):
         group: DeviceGroup,
         services: dict[str, LocationService],
         on_member_dropped: Optional[MemberFailureHandler] = None,
+        on_positions: Optional[PositionsHandler] = None,
     ) -> None:
         missing = [udid for udid in group.udids if udid not in services]
         if missing:
@@ -51,6 +53,10 @@ class GroupLocation(LocationService):
         self._group = group
         self._services = dict(services)
         self._on_member_dropped = on_member_dropped
+        # Followers are driven here and nowhere else, so without this
+        # the Mac never learns where they are: selecting one showed a
+        # map with no phone on it while that phone was visibly moving.
+        self._on_positions = on_positions
         self.last_lat_lng: Optional[tuple[float, float]] = None
         self._call_lock = asyncio.Lock()
 
@@ -78,7 +84,12 @@ class GroupLocation(LocationService):
         await self._services[leader_udid].set(leader_lat, leader_lng, retries=retries)
         self.last_lat_lng = (lat, lng)
 
-        followers = positions[1:]
+        # Re-checked against the group as it stands *now*, not as it
+        # stood when `positions` was computed: a detach that arrives
+        # while we were awaiting the leader must not get one more push
+        # out to a follower that has already been told to stop.
+        current = set(self._group.udids)
+        followers = [entry for entry in positions[1:] if entry[0] in current]
         if not followers:
             return
 
@@ -87,9 +98,20 @@ class GroupLocation(LocationService):
               for udid, flat, flng in followers),
             return_exceptions=True,
         )
-        for (udid, _, _), result in zip(followers, results):
+        moved: list[tuple[str, float, float]] = []
+        for entry, result in zip(followers, results):
             if isinstance(result, BaseException):
-                await self._drop(udid, result)
+                await self._drop(entry[0], result)
+            else:
+                moved.append(entry)
+
+        if moved and self._on_positions is not None:
+            try:
+                await self._on_positions(moved)
+            except Exception:                              # noqa: BLE001
+                # Reporting is not the run. A listener that blows up
+                # must not stop three phones from moving.
+                log.exception("group: positions handler failed")
 
     async def clear(self) -> None:
         """Restore every member. One failure must not leave the others
@@ -103,6 +125,29 @@ class GroupLocation(LocationService):
         for udid, result in zip(self._group.udids, results):
             if isinstance(result, BaseException):
                 log.warning("group: could not restore %s: %r", udid, result)
+
+    def detach_followers(self) -> list[str]:
+        """Shrink to the leader alone and report who left.
+
+        Turning group sync off mid-run has to reach the run that is
+        already going. The group is bound once, when the run starts, so
+        without this the switch only ever applied to the *next* run —
+        the followers kept being driven until the leader finished,
+        which reads as the toggle doing nothing.
+
+        A follower stops by no longer being written to: a spoofed phone
+        only moves because something sets a position on it. Its last
+        position stands, matching what Stop does for a single device.
+        """
+        leader = self._group.leader
+        if leader is None:
+            return []
+        followers = [udid for udid in self._group.udids if udid != leader]
+        for udid in followers:
+            self._group = self._group.without(udid)
+        if followers:
+            log.info("group: detached %d follower(s) mid-run", len(followers))
+        return followers
 
     async def _drop(self, udid: str, error: BaseException) -> None:
         log.warning("group: dropping %s after a failed push: %r", udid, error)

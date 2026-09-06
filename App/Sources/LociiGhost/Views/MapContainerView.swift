@@ -194,6 +194,7 @@ struct MapContainerView: NSViewRepresentable {
         /// MKCircle's initialisers are class factories — the renderer
         /// tells these apart by identity instead.
         private var flowerRingCircles: [MKCircle] = []
+        private var flowerRadiusAnnotations: [FlowerRadiusAnnotation] = []
         private var lastFlowerSignature: ([Coordinate], Double)?
         private var randomWalkPathPolyline: StyledPolyline?
         private var lastRWPathSignature: [Coordinate] = []
@@ -293,8 +294,10 @@ struct MapContainerView: NSViewRepresentable {
             } onChange: { [weak self] in
                 Task { @MainActor in
                     guard let self else { return }
-                    self.applyStateToMap()
+                    // Re-subscribe FIRST so a mutation landing while we
+                    // coalesce is not missed, then ask for one apply.
                     self.scheduleNextObservation()
+                    self.scheduleApply()
                 }
             }
         }
@@ -302,6 +305,27 @@ struct MapContainerView: NSViewRepresentable {
         /// Push the current state snapshot onto MKMapView. Same work
         /// updateNSView used to do — now triggered by the observation
         /// loop above instead of SwiftUI's per-body schedule.
+        /// Collapse a burst of observed mutations into one map pass.
+        ///
+        /// Selecting a different iPhone writes `navigation`, `joystick`,
+        /// `activeMovementMode`, `pendingStops`, `randomWalk` and
+        /// `pendingMapFly` back to back. Each of those used to fire the
+        /// observation callback, which applied the whole map — six
+        /// annotation-and-overlay rebuilds for one click, and the
+        /// stutter the user feels while switching devices.
+        private var applyScheduled = false
+
+        @MainActor
+        private func scheduleApply() {
+            guard !applyScheduled else { return }
+            applyScheduled = true
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.applyScheduled = false
+                self.applyStateToMap()
+            }
+        }
+
         private func applyStateToMap() {
             guard let mv = mapView else { return }
             refreshAnnotations(on: mv)
@@ -579,13 +603,14 @@ struct MapContainerView: NSViewRepresentable {
                 refreshAnnotations(on: map)
                 return
             }
-            // Left-click stop-adding: only when Multi-stop mode is the
-            // active panel AND no navigation is running. Once a trip
-            // is in flight, left-click is disabled to prevent accidental
-            // stops — use the right-click context menu to inject stops
-            // mid-trip (right-click "Add as stop" is not restricted).
-            guard state.activeMovementMode == .multiStop,
-                  !state.navigationActive else { return }
+            // Left-click stop-adding: only when a staging panel
+            // (multi-stop or flower) is open AND no navigation is
+            // running. Once a trip is in flight, left-click is disabled
+            // to prevent accidental stops — use the right-click context
+            // menu to inject stops mid-trip (right-click "Add as stop"
+            // is not restricted). The rule lives on AppState so this
+            // layer and NativeMapView can't drift apart again.
+            guard state.canStageStopByClick else { return }
             // Append rather than replace so successive clicks build a
             // multi-stop trip. In dwell mode this also injects the new
             // coord into dwellContext.remainingStops so the iPhone
@@ -729,6 +754,11 @@ struct MapContainerView: NSViewRepresentable {
                     map.removeOverlays(flowerRingCircles)
                     flowerRingCircles = []
                 }
+                if !flowerRadiusAnnotations.isEmpty {
+                    map.removeAnnotations(flowerRadiusAnnotations)
+                    flowerRadiusAnnotations = []
+                }
+                let radiusLabel = "\(Int(flowerRadius)) m"
                 for centre in flowerCenters {
                     let ring = MKCircle(
                         center: CLLocationCoordinate2D(latitude: centre.lat,
@@ -737,6 +767,19 @@ struct MapContainerView: NSViewRepresentable {
                     )
                     map.addOverlay(ring, level: .aboveLabels)
                     flowerRingCircles.append(ring)
+
+                    // Tag on the ring's east edge. A circle alone says
+                    // "some radius"; the tag says which one, without
+                    // the user reading it off the sidebar slider and
+                    // guessing at the scale.
+                    let edge = Geodesy.destination(from: centre,
+                                                   bearingDegrees: 90,
+                                                   distanceM: flowerRadius)
+                    let tag = FlowerRadiusAnnotation(label: radiusLabel)
+                    tag.coordinate = CLLocationCoordinate2D(latitude: edge.lat,
+                                                            longitude: edge.lng)
+                    map.addAnnotation(tag)
+                    flowerRadiusAnnotations.append(tag)
                 }
                 lastFlowerSignature = flowerCenters.isEmpty
                     ? nil
@@ -1244,6 +1287,19 @@ struct MapContainerView: NSViewRepresentable {
 
         func mapView(_ mapView: MKMapView, viewFor annotation: any MKAnnotation) -> MKAnnotationView? {
             switch annotation {
+            case let flower as FlowerRadiusAnnotation:
+                let id = "flowerRadius"
+                let v = (mapView.dequeueReusableAnnotationView(withIdentifier: id) as? MKMarkerAnnotationView)
+                    ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: id)
+                v.annotation = annotation
+                v.glyphText = flower.label
+                v.markerTintColor = NSColor(Color.lociSageDark)
+                v.canShowCallout = false
+                // A radius tag must never win screen space against a
+                // stop pin — it is scenery, not a target.
+                v.displayPriority = .defaultLow
+                return v
+
             case is MacAnnotation:
                 let id = "mac"
                 let v = (mapView.dequeueReusableAnnotationView(withIdentifier: id) as? MKAnnotationView)
@@ -1564,6 +1620,14 @@ private final class StopAnnotation: MKPointAnnotation {
     init(stopNumber: Int, isActive: Bool = false) {
         self.stopNumber = stopNumber
         self.isActive = isActive
+        super.init()
+    }
+}
+/// Carries the "70 m" text for the flower ring's edge tag.
+private final class FlowerRadiusAnnotation: MKPointAnnotation {
+    let label: String
+    init(label: String) {
+        self.label = label
         super.init()
     }
 }

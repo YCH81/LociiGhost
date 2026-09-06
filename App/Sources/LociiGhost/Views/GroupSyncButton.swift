@@ -8,6 +8,11 @@ import LociiGhostCore
 /// these two together"), and it belongs next to the list of phones it
 /// is about.
 struct GroupSyncButton: View {
+    /// Header form: icon plus the member count, no label and no
+    /// full-width pill. The row it sits in already says "Devices", so
+    /// repeating "Group sync" there costs width the title needs.
+    var compact: Bool = false
+
     @Environment(AppState.self) private var state
     @State private var showingPopover = false
 
@@ -15,6 +20,9 @@ struct GroupSyncButton: View {
         Button {
             showingPopover = true
         } label: {
+            if compact {
+                compactLabel
+            } else {
             HStack(spacing: 5) {
                 Image(systemName: "iphone.gen3.radiowaves.left.and.right")
                     .font(.caption)
@@ -43,13 +51,42 @@ struct GroupSyncButton: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .contentShape(.rect)
+            }
         }
         .buttonStyle(.plain)
         .hoverHighlight(cornerRadius: 5, changesCursor: false)
+        .help(state.groupSyncEnabled && followerCount > 0
+              ? "Group sync is on — the selected iPhones move together"
+              : "Group sync — move several iPhones together")
         .popover(isPresented: $showingPopover, arrowEdge: .trailing) {
             GroupSyncPopover()
                 .environment(state)
         }
+    }
+
+    private var compactLabel: some View {
+        HStack(spacing: 3) {
+            // Deliberately NOT a phone glyph. The wireless-phone
+            // symbol this used to carry is the same one a WiFi-
+            // connected device shows in the list right below, so the
+            // header looked like it was reporting a device state.
+            // A link says "these move together" and belongs to
+            // nothing else on screen.
+            Image(systemName: "link")
+            Text("Group sync", comment: "Sidebar — group sync pill")
+                .font(.caption2)
+            if state.groupSyncEnabled && followerCount > 0 {
+                // Same rule as the wide form: the count *is* the
+                // status, because "on" with no follower syncs nothing.
+                Text("\(followerCount + 1)")
+                    .font(.caption2.monospacedDigit())
+            }
+        }
+        .foregroundStyle(state.groupSyncEnabled && followerCount > 0
+                         ? AnyShapeStyle(Color.lociSage)
+                         : AnyShapeStyle(.secondary))
+        .padding(4)
+        .contentShape(.rect)
     }
 
     private var followerCount: Int {

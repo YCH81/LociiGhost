@@ -100,6 +100,12 @@ class FlowerRunner:
         self._state = "idle"
         self._task: asyncio.Task[None] | None = None
         self._stop_event = asyncio.Event()
+        # Set means "keep going". Same shape as Navigator's, so the
+        # RPC means the same thing whichever runner is moving: the
+        # phone holds its position and the plan resumes from there,
+        # rather than the run being torn down and restarted.
+        self._resume_event = asyncio.Event()
+        self._resume_event.set()
 
     # ── Lifecycle ───────────────────────────────────────────────────
 
@@ -113,7 +119,35 @@ class FlowerRunner:
         self._state = "moving"
         self._task = asyncio.create_task(self._run(), name="flower-runner")
 
+    async def pause(self) -> bool:
+        """Hold position. Returns whether it actually applied.
+
+        Refused unless something is genuinely in motion — a pause that
+        lands after the last vertex used to leave the Mac rendering
+        "paused" over a run that had already finished, with a resume
+        that did nothing either.
+        """
+        if self._state not in ("moving", "waiting"):
+            return False
+        self._resume_event.clear()
+        self._state = "paused"
+        self._current_speed = 0.0
+        await self._emit("event.state_changed")
+        return True
+
+    async def resume(self) -> bool:
+        """Carry on from where the ring was left."""
+        if self._state != "paused":
+            return False
+        self._state = "moving"
+        self._resume_event.set()
+        await self._emit("event.state_changed")
+        return True
+
     async def stop(self) -> None:
+        # A stop must not be swallowed by a pause: release the gate
+        # first so a waiting loop wakes up and sees the stop.
+        self._resume_event.set()
         self._stop_event.set()
         if self._task is not None:
             try:
@@ -166,6 +200,8 @@ class FlowerRunner:
             for step in resume_from(self._steps, self._completed):
                 if self._stop_event.is_set():
                     break
+                if not await self._await_resume():
+                    break
                 if not await self._go_to(step):
                     break
                 if not await self._wait_after(step):
@@ -198,6 +234,16 @@ class FlowerRunner:
         self._current_speed = self._settings.speed_mps
 
         async def on_step(position: tuple[float, float], covered_m: float) -> None:
+            # Gate BEFORE the push, not after. The walk loop wakes from
+            # its tick sleep with the next position already computed,
+            # so gating afterwards let one more coordinate out the door
+            # — the phone took a final step after the user had pressed
+            # pause. Holding here parks that position until resume, and
+            # `walk_segment` advances by a fixed distance per tick
+            # rather than by wall clock, so the wait never makes the
+            # phone jump to catch up.
+            if not await self._await_resume():
+                return
             self._distance_total += covered_m
             self._current = position
             await self._location.set(*position)
@@ -212,6 +258,13 @@ class FlowerRunner:
             on_step=on_step,
         )
 
+    async def _await_resume(self) -> bool:
+        """Block while paused. False if we were stopped instead."""
+        if self._resume_event.is_set():
+            return not self._stop_event.is_set()
+        await self._resume_event.wait()
+        return not self._stop_event.is_set()
+
     async def _wait_after(self, step: FlowerStep) -> bool:
         if step.wait_s <= 0:
             return not self._stop_event.is_set()
@@ -219,6 +272,8 @@ class FlowerRunner:
         self._current_speed = 0.0
         await self._emit("event.state_changed")
         completed = await sleep_or_stop(self._stop_event, step.wait_s)
+        if completed and not await self._await_resume():
+            return False
         if completed:
             self._state = "moving"
         return completed

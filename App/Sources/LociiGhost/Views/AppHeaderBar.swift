@@ -15,6 +15,9 @@ import LociiGhostCore
 /// chrome already gets crowded by Settings's window controls.
 struct AppHeaderBar: View {
     @Environment(AppState.self) private var state
+
+    private static let compactLabelWidth: CGFloat = 900
+    @State private var compactLabels = false
     /// SwiftUI's macOS 14+ programmatic Settings opener. Triggered
     /// from the gear button we sit left of the language toggle.
     @Environment(\.openSettings) private var openSettings
@@ -52,6 +55,31 @@ struct AppHeaderBar: View {
                 }
             }
             Spacer(minLength: 12)
+            // Same deal as the status bar below: keep the words while
+            // they fit, fall back to icons rather than letting the row
+            // run off the edge of a narrowed window. The language
+            // toggle is already two characters, so it rides along
+            // unchanged either way.
+            if compactLabels {
+                headerControls.labelStyle(.iconOnly)
+            } else {
+                headerControls.labelStyle(.titleAndIcon)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 5)
+        .frame(maxWidth: .infinity)
+        .background(.bar.opacity(0.9))
+        .overlay(Divider(), alignment: .bottom)
+        .readingBarWidth { width in
+            let compact = width < Self.compactLabelWidth
+            if compact != compactLabels { compactLabels = compact }
+        }
+    }
+
+    @ViewBuilder
+    private var headerControls: some View {
+        HStack(spacing: 12) {
             s2GridButton
             MirrorDockButton()
             autoRecenterToggle
@@ -60,11 +88,6 @@ struct AppHeaderBar: View {
             Divider().frame(height: 14)
             phoneControlButton
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 5)
-        .frame(maxWidth: .infinity)
-        .background(.bar.opacity(0.9))
-        .overlay(Divider(), alignment: .bottom)
     }
 
     /// Small green capsule next to the version label. Visible only
@@ -112,16 +135,17 @@ struct AppHeaderBar: View {
         return Button {
             state.mapAutoRecenter.toggle()
         } label: {
-            HStack(spacing: 4) {
+            Label {
+                Text("Auto-center",
+                     comment: "Header bar — toggle for map auto-recenter during simulated movement")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(state.mapAutoRecenter ? .primary : .secondary)
+            } icon: {
                 Image(systemName: state.mapAutoRecenter
                       ? "location.viewfinder"
                       : "location.slash")
                     .font(.caption)
                     .foregroundStyle(state.mapAutoRecenter ? Color.lociSage : Color.secondary)
-                Text("Auto-center",
-                     comment: "Header bar — toggle for map auto-recenter during simulated movement")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(state.mapAutoRecenter ? .primary : .secondary)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
@@ -154,12 +178,13 @@ struct AppHeaderBar: View {
         Button {
             openSettings()
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "gearshape.fill")
-                    .font(.caption)
+            Label {
                 Text("Settings",
                      comment: "Header bar — opens the Settings sheet")
                     .font(.caption.weight(.medium))
+            } icon: {
+                Image(systemName: "gearshape.fill")
+                    .font(.caption)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
@@ -224,12 +249,13 @@ struct AppHeaderBar: View {
         Button {
             state.openPhoneControlSheet()
         } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "iphone.gen3.radiowaves.left.and.right")
-                    .font(.body)
+            Label {
                 Text("Phone Control",
                      comment: "Header bar — opens the LAN URL + PIN modal")
                     .font(.callout.weight(.medium))
+            } icon: {
+                Image(systemName: "iphone.gen3.radiowaves.left.and.right")
+                    .font(.body)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
@@ -265,7 +291,13 @@ struct AppHeaderBar: View {
         return Button {
             showingS2Picker.toggle()
         } label: {
-            HStack(spacing: 4) {
+            Label {
+                Text(state.showS2GridOnMap
+                     ? "S2 L\(state.s2GridLevel)"
+                     : String(localized: "S2 grid",
+                              comment: "Header bar — button label for the S2 map grid system popover (off state)"))
+                    .font(.caption.weight(.medium))
+            } icon: {
                 Image(systemName: state.showS2GridOnMap
                       ? "grid.circle.fill"
                       : "grid.circle")
@@ -273,11 +305,6 @@ struct AppHeaderBar: View {
                     .foregroundStyle(state.showS2GridOnMap
                                      ? Color.indigo
                                      : Color.secondary)
-                Text(state.showS2GridOnMap
-                     ? "S2 L\(state.s2GridLevel)"
-                     : String(localized: "S2 grid",
-                              comment: "Header bar — button label for the S2 map grid system popover (off state)"))
-                    .font(.caption.weight(.medium))
                     .foregroundStyle(state.showS2GridOnMap
                                      ? .primary
                                      : .secondary)

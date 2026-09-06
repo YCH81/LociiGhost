@@ -38,16 +38,17 @@ struct MirrorDockButton: View {
         Button {
             showingPopover.toggle()
         } label: {
-            HStack(spacing: 4) {
+            Label {
+                Text("Mirror",
+                     comment: "Header bar — button label for the docked iPhone Mirroring panel")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(isOn ? .primary : .secondary)
+            } icon: {
                 Image(systemName: isOn
                       ? "iphone.gen3.badge.play"
                       : "iphone.gen3")
                     .font(.caption)
                     .foregroundStyle(isOn ? accent : Color.secondary)
-                Text("Mirror",
-                     comment: "Header bar — button label for the docked iPhone Mirroring panel")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(isOn ? .primary : .secondary)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 3)

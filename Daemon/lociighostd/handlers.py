@@ -245,7 +245,18 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
                 "detail": str(error),
             })
 
-        return GroupLocation(resolved, services, on_member_dropped=dropped)
+        async def positions(moved: list[tuple[str, float, float]]) -> None:
+            await server.broadcast_event("event.group_positions", {
+                "udid": udid,
+                "members": [
+                    {"udid": member, "lat": lat, "lng": lng}
+                    for member, lat, lng in moved
+                ],
+            })
+
+        return GroupLocation(resolved, services,
+                             on_member_dropped=dropped,
+                             on_positions=positions)
 
     # ------------------------------------------------------------------
     # Cooldown — the user's own plausibility gate (v1.17)
@@ -621,9 +632,31 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
             "speed_mps": speed_mps,
         }
 
+    @server.method("location.group_detach")
+    async def location_group_detach(udid: str) -> dict[str, Any]:
+        """Drop every follower from the run that is already moving.
+
+        The leader keeps going — that is the whole point of turning
+        sync off rather than pressing Stop.
+        """
+        sess = await manager.session_for(udid)
+        dropped: list[str] = []
+        for attr in manager.MOVER_ATTRS:
+            runner = getattr(sess, attr, None)
+            loc = getattr(runner, "_location", None) if runner is not None else None
+            if isinstance(loc, GroupLocation):
+                dropped.extend(loc.detach_followers())
+        if dropped:
+            await server.broadcast_event("event.group_changed", {
+                "udid": udid,
+                "dropped": dropped,
+                "reason": "sync_disabled",
+            })
+        return {"dropped": dropped}
+
     @server.method("location.pause")
     async def location_pause(udid: str) -> dict[str, Any]:
-        nav = await _navigator_for(manager, udid)
+        nav = await _pausable_for(manager, udid)
         applied = await nav.pause()
         # `applied` lets the Mac tell "paused" from "there was nothing
         # left to pause" instead of optimistically rendering the former
@@ -632,7 +665,7 @@ def register(server: RpcServer, manager: DeviceManager, osrm: OsrmClient) -> Non
 
     @server.method("location.resume")
     async def location_resume(udid: str) -> dict[str, Any]:
-        nav = await _navigator_for(manager, udid)
+        nav = await _pausable_for(manager, udid)
         applied = await nav.resume()
         return {"state": nav.state, "applied": applied}
 
@@ -943,6 +976,25 @@ def _validate_coord(lat: float, lng: float) -> None:
             code=errors.PYMD3_ERROR,
             message=f"Invalid longitude: {lng} (must be -180..180)",
         )
+
+
+async def _pausable_for(manager: DeviceManager, udid: str) -> Any:
+    """Whatever is moving `udid` and knows how to hold position.
+
+    Pause used to reach only `sess.navigator`, so pressing it during a
+    flower run raised "No active navigation" — the button looked broken
+    rather than unimplemented. Any mover that grows a `pause`/`resume`
+    pair is picked up here without another edit.
+    """
+    sess = await manager.session_for(udid)
+    for attr in manager.MOVER_ATTRS:
+        runner = getattr(sess, attr, None)
+        if runner is not None and hasattr(runner, "pause"):
+            return runner
+    raise errors.RpcError(
+        code=errors.PYMD3_ERROR,
+        message=f"Nothing is moving {udid} that can be paused",
+    )
 
 
 async def _navigator_for(manager: DeviceManager, udid: str) -> Navigator:

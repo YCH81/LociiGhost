@@ -88,12 +88,15 @@ enum MapContextMenuPolicy {
             .first(where: { $0.udid == state.selectedUDID })?
             .connected ?? false
 
-        // "Add as stop" only makes sense once Multi-stop is open —
-        // left-clicking the map follows the same rule. Right-clicking
-        // while a route / random walk / joystick is running used to
-        // append to pendingStops anyway, which was confusing because
-        // the new pin never appeared in any visible staging list.
-        let canAddStop = state.activeMovementMode == .multiStop
+        // "Add as stop" only makes sense once a panel that stages into
+        // pendingStops is open — left-clicking the map follows the same
+        // rule. Right-clicking while a route / random walk / joystick is
+        // running used to append to pendingStops anyway, which was
+        // confusing because the new pin never appeared in any visible
+        // staging list. Flower mode stages into the same list, so it
+        // gets the same menu item.
+        let canAddStop = state.activeMovementMode
+            .map(AppState.stopStagingModes.contains) ?? false
 
         return [
             MapMenuItemSpec(
