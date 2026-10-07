@@ -249,12 +249,22 @@ struct NativeMapView: View {
             // in the sidebar and nothing on the map, while adding a
             // point (read in this scope) worked fine.
             let ringRadius = state.flowerConfig.radiusM
+            // v1.17.3: don't draw rings nobody can see.
+            //
+            // Past ~100 km of span a 300 m ring is a pixel or two: it
+            // carries no information, and it is still geometry MapKit
+            // has to tessellate and keep. The real cost of these rings
+            // was how often they were re-submitted, which `LivePuckContent`
+            // fixes; this is the second half — at this scale there is
+            // nothing worth submitting at all.
+            let showRings = lastCameraDistance <= Self.flowerRingMaxSpanMeters
+            if showRings {
             ForEach(Array(state.pendingStops.enumerated()), id: \.offset) { _, centre in
                 MapCircle(center: centre.cl, radius: ringRadius)
                     .foregroundStyle(Color.lociSage.opacity(0.10))
                     .stroke(
                         Color.lociSage.opacity(0.75),
-                        style: StrokeStyle(lineWidth: 2, dash: [5, 4]),
+                        style: StrokeStyle(lineWidth: 2, dash: [6, 4]),
                     )
             }
             ForEach(Array(state.pendingStops.enumerated()), id: \.offset) { _, centre in
@@ -271,6 +281,7 @@ struct NativeMapView: View {
                         .background(Color.lociSageDark.opacity(0.92), in: .capsule)
                 }
                 .annotationTitles(.hidden)
+            }
             }
         }
         // ── Staging stops (red, numbered) ───────────────────────────
@@ -326,28 +337,22 @@ struct NativeMapView: View {
                 flagBadge(color: .orange, glyph: "magnifyingglass")
             }
         }
-        // ── Simulated / browse puck ─────────────────────────────────
-        if let focus = state.currentMapFocus {
-            Annotation(
-                simulatedTitle,
-                coordinate: focus.cl,
-            ) {
-                simulatedPuck
-            }
-            .annotationTitles(.visible)
-        }
-        // ── Mac proxy pin ───────────────────────────────────────────
-        // Hidden whenever a simulated / browse pin already shows so
-        // we don't render two "you are here" dots.
-        if state.currentMapFocus == nil,
-           let mac = state.macLocation.coordinate {
-            Annotation(
-                "Mac location (≈ iPhone real GPS)",
-                coordinate: mac,
-            ) {
-                macPuck
-            }
-        }
+        // ── Live pucks (simulated / browse, and the Mac proxy) ──────
+        // Deliberately its own MapContent node, NOT inline here.
+        //
+        // The phone's position changes once a second for the whole of a
+        // route or flower run. Read inline, that dependency belongs to
+        // this builder, so every tick re-emitted every overlay above --
+        // rings, route polyline, stop pins -- none of which had changed.
+        // Measured on a flower run: 4 ring re-submissions per second,
+        // ~14 000 an hour, for four circles that never moved. MapKit
+        // falls behind on that and the backlog is what the 97 GB report
+        // was. The MKMapView renderer never had the problem because it
+        // guards every overlay with a change signature
+        // (`lastFlowerSignature` and friends in MapContainerView); this
+        // is the SwiftUI equivalent -- give the moving thing its own
+        // node so the static overlays stop being rebuilt with it.
+        LivePuckContent(state: state)
         // ── S2 grid overlay ─────────────────────────────────────────
         // One `MapPolyline` per grid scanline (horizontal or vertical),
         // not per cell — a typical level-17 city viewport that needed
@@ -475,45 +480,6 @@ struct NativeMapView: View {
         }
     }
 
-    private var simulatedTitle: String {
-        state.isVirtualMapSelected
-            ? String(localized: "You",
-                     comment: "Native map puck label in browse-only Map mode — \"you are here\"")
-            : "iPhone (simulated)"
-    }
-
-    private var simulatedPuck: some View {
-        ZStack {
-            Circle()
-                .fill((state.isVirtualMapSelected ? Color.blue : Color.green)
-                      .opacity(0.25))
-                .frame(width: 28, height: 28)
-            Circle()
-                .fill(.white)
-                .frame(width: 20, height: 20)
-            Circle()
-                .fill(state.isVirtualMapSelected ? Color.blue : Color.green)
-                .frame(width: 16, height: 16)
-            Image(systemName: state.isVirtualMapSelected ? "person.fill" : "iphone")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(.white)
-        }
-    }
-
-    private var macPuck: some View {
-        ZStack {
-            Circle()
-                .fill(Color.blue.opacity(0.25))
-                .frame(width: 22, height: 22)
-            Circle()
-                .fill(.white)
-                .frame(width: 14, height: 14)
-            Circle()
-                .fill(Color.blue)
-                .frame(width: 11, height: 11)
-        }
-    }
-
     // MARK: - Map style
 
     private var currentMapStyle: MapStyle {
@@ -596,6 +562,11 @@ struct NativeMapView: View {
     /// before .onMapCameraChange has fired at least once, so we keep
     /// the last known distance in a stored @State for the next fly.
     @State private var lastCameraDistance: CLLocationDistance = 4_000
+
+    /// Past this camera span the flower rings are not drawn. See the
+    /// comment at the ring builder for why this is a leak guard, not
+    /// just decluttering.
+    static let flowerRingMaxSpanMeters: CLLocationDistance = 100_000
 
     // ── Cached MapContent inputs (v1.15.2 audit P6) ─────────────────
     // `annotations` is rebuilt on every body pass, and body runs on
@@ -898,4 +869,72 @@ fileprivate final class S2GridHolder {
     }
 
     init() {}
+}
+
+/// The two "you are here" pucks, isolated from the rest of the map's
+/// content.
+///
+/// This exists purely so that the phone's once-a-second position update
+/// invalidates this node and nothing else. Folding it back into
+/// `NativeMapView.annotations` would put the live coordinate back in
+/// that builder's dependency set and re-emit every static overlay on
+/// every tick again — see the comment at the call site.
+private struct LivePuckContent: MapContent {
+    var state: AppState
+
+    var body: some MapContent {
+        if let focus = state.currentMapFocus {
+            Annotation(simulatedTitle, coordinate: focus.cl) {
+                simulatedPuck
+            }
+            .annotationTitles(.visible)
+        }
+        // Hidden whenever a simulated / browse pin already shows so
+        // we don't render two "you are here" dots.
+        if state.currentMapFocus == nil,
+           let mac = state.macLocation.coordinate {
+            Annotation("Mac location (≈ iPhone real GPS)", coordinate: mac) {
+                macPuck
+            }
+        }
+    }
+
+    private var simulatedTitle: String {
+        state.isVirtualMapSelected
+            ? String(localized: "You",
+                     comment: "Native map puck label in browse-only Map mode — \"you are here\"")
+            : "iPhone (simulated)"
+    }
+
+    private var simulatedPuck: some View {
+        ZStack {
+            Circle()
+                .fill((state.isVirtualMapSelected ? Color.blue : Color.green)
+                      .opacity(0.25))
+                .frame(width: 28, height: 28)
+            Circle()
+                .fill(.white)
+                .frame(width: 20, height: 20)
+            Circle()
+                .fill(state.isVirtualMapSelected ? Color.blue : Color.green)
+                .frame(width: 16, height: 16)
+            Image(systemName: state.isVirtualMapSelected ? "person.fill" : "iphone")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.white)
+        }
+    }
+
+    private var macPuck: some View {
+        ZStack {
+            Circle()
+                .fill(Color.blue.opacity(0.25))
+                .frame(width: 22, height: 22)
+            Circle()
+                .fill(.white)
+                .frame(width: 14, height: 14)
+            Circle()
+                .fill(Color.blue)
+                .frame(width: 11, height: 11)
+        }
+    }
 }

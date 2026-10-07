@@ -3400,7 +3400,7 @@ final class AppState {
     /// Bumped every time the daemon source breaks ABI or behaviour in
     /// a way that requires an in-place restart. Must match the
     /// `__version__` in `Daemon/lociighostd/__init__.py`.
-    static let expectedDaemonVersion = "1.17.2"
+    static let expectedDaemonVersion = "1.17.3"
 
     // MARK: - Update check (v1.5)
 
